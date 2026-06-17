@@ -14,37 +14,97 @@ Nous Research).
 
 **Requirements:** Python 3.10+ (stdlib only — no install needed for the demo)
 
-### 1. Clone the repo
-
 ```bash
 git clone https://github.com/ianalloway/solvent-agent.git
 cd solvent-agent
+python3 run_demo.py
 ```
 
-### 2. Run the demo
+No API keys, no `pip install`. The agent runs on built-in offline stubs.
+
+---
+
+## Starting the agent
+
+**There is no separate server or daemon.** The agent is the `Solvent` class in
+`solvent/agent.py` — a job-processing orchestrator. You start it by creating a
+`Solvent` instance and feeding it work. `run_demo.py` is the CLI wrapper around
+that class.
+
+SOLVENT is **batch-oriented**, not a long-running web service: each run processes
+one or more jobs, updates the treasury, writes a dashboard, and exits.
+
+### What happens on startup
+
+When you start the agent (via `run_demo.py` or Python), `Solvent.__init__`:
+
+1. **Resets the treasury** — clears the SQLite ledger in `data/solvent.db`
+2. **Seeds capital** — books $100.00 of starting cash (`seed_cents=10_000`)
+3. **Wires dependencies** — spend guardrails, Stripe client (simulated unless
+   `STRIPE_API_KEY` is set), and pricing policy
+4. **Opens the event log** — every quote, payment, fulfillment, and spend is
+   recorded; `treasury_dashboard.html` updates live as jobs run
+
+For each inbound job, the agent runs: **quote → earn → fulfil → spend → book P&L**.
+Unprofitable jobs are declined before any money moves.
+
+### Mode 1 — Batch demo (default)
+
+Runs four pre-loaded sample jobs and exits. Best for judges: shows margin gating,
+Stripe earn/spend, Nemotron fulfillment, and guardrails in ~30 seconds.
 
 ```bash
 python3 run_demo.py
 ```
 
-That's it. No API keys, no `pip install`. The demo runs on built-in offline stubs.
+- **Jobs J1, J2, J4** — quoted, paid, fulfilled, vendor costs paid
+- **Job J3** — declined (customer budget below cost)
 
-You'll see the agent process four jobs in the terminal:
-- **Jobs 1, 2, 4** — quoted, paid, fulfilled, vendor costs paid
-- **Job 3** — declined (costs more than the customer pays)
-
-At the end you'll get a summary like:
+Session summary example:
 
 ```
-Earned:   $223.00
-Spent:    $ 13.35
-Margin:      94%
-Balance:  $310.00  (started with $100 seed)
+Revenue        $223.00
+Operating spend $ 13.35
+Net profit     $209.65  (94% margin)
+Cash balance   $310.00  (seed was $100.00)
 ```
 
-### 3. Open the dashboard
+### Mode 2 — Interactive agent (your own jobs)
 
-After the demo finishes, open the generated balance sheet in your browser:
+Same agent, but you type research topics and client budgets at a prompt. The
+session keeps running until you quit — this is how you **start the agent for
+custom work**, not just watch the canned demo.
+
+```bash
+python3 run_demo.py --interactive
+# or
+python3 run_demo.py -i
+```
+
+You'll be prompted for a topic and budget per job. Type `y` to submit another
+request, or anything else to finish and print the balance sheet.
+
+### Mode 3 — Programmatic (import in Python)
+
+Use the agent as a library — no CLI required:
+
+```python
+from solvent.agent import Solvent
+from solvent.jobs import SAMPLE_JOBS
+
+agent = Solvent(seed_cents=10_000)          # reset treasury, seed $100
+agent.handle_job(SAMPLE_JOBS[0])            # process one job
+snap = agent.run(SAMPLE_JOBS[1:])           # process a list; returns snapshot
+
+print(snap["balance_cents"], snap["margin_pct"])
+```
+
+Pass `fresh=False` to keep an existing treasury across runs, and `on_event=fn`
+to hook into the same event stream `run_demo.py` prints to the terminal.
+
+### Open the dashboard
+
+After any run, open the generated balance sheet:
 
 ```bash
 open treasury_dashboard.html        # macOS
@@ -52,27 +112,26 @@ open treasury_dashboard.html        # macOS
 # start treasury_dashboard.html     # Windows
 ```
 
-This shows revenue, expenses, profit, and every transaction the agent logged.
+### Guardrails demo (not the agent)
 
-### 4. Run the safety demo (optional, ~10 seconds)
+`demo_guardrails.py` is a **standalone policy demo** — it does not start the
+agent or process jobs. It shows five spend attempts and which ones guardrails
+block:
 
 ```bash
 python3 demo_guardrails.py
 ```
 
-Shows four payments being **blocked** by the spend guardrails (unknown vendor,
-over cap, reserve breach, negative ROI) before any money moves.
-
 ---
 
-## Other commands
+## Command reference
 
 | Command | What it does |
 |---|---|
-| `python3 run_demo.py` | Run the 4-job batch demo (default) |
-| `python3 run_demo.py --interactive` | Enter your own research topics and budgets |
-| `python3 demo_guardrails.py` | Show the spend-safety policy layer |
-| `python3 -m pytest tests/ -q` | Run unit tests (needs `pip install pytest`) |
+| `python3 run_demo.py` | **Start the agent** — batch mode, 4 sample jobs |
+| `python3 run_demo.py --interactive` | **Start the agent** — interactive mode, your jobs |
+| `python3 demo_guardrails.py` | Spend-policy demo only (no agent loop) |
+| `python3 -m pytest tests/ -q` | Unit tests (needs `pip install pytest`) |
 
 ---
 
