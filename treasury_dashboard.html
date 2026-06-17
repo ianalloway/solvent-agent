@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SOLVENT — Autonomous Treasury</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+    :root {
+      --color-bg: #070a0e;
+      --color-surface: #0f141c;
+      --color-border: #1c2430;
+      --color-text-primary: #f3f4f6;
+      --color-text-muted: #9ca3af;
+      --color-primary: #6366f1;
+      --color-primary-glow: rgba(99, 102, 241, 0.15);
+      --color-success: #10b981;
+      --color-success-glow: rgba(16, 185, 129, 0.15);
+      --color-danger: #f43f5e;
+      --color-danger-glow: rgba(244, 63, 94, 0.15);
+      --color-warning: #fbbf24;
+      --font-display: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-display);
+      background: var(--color-bg);
+      color: var(--color-text-primary);
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    a {
+      color: var(--color-primary);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Layout structure */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    header p.sub {
+      color: var(--color-text-muted);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .header-pills {
+      display: flex;
+      gap: 12px;
+    }
+
+    .pill {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-muted);
+    }
+
+    /* Card Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--color-primary);
+    }
+
+    .metric-card .label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--color-text-muted);
+    }
+
+    .metric-card .val {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .green { color: var(--color-success); }
+    .red { color: var(--color-danger); }
+
+    /* Main Content Sections */
+    .dashboard-body {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard-body {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .panel h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* SVG Line Chart styling */
+    .chart-container {
+      height: 160px;
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .line-chart {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .chart-dot {
+      fill: var(--color-surface);
+      stroke: var(--color-primary);
+      stroke-width: 2.5px;
+      cursor: pointer;
+      transition: r 0.2s ease, stroke-width 0.2s ease;
+    }
+
+    .chart-dot:hover {
+      r: 6.5px;
+      stroke-width: 3px;
+      stroke: var(--color-success);
+    }
+
+    /* Vendor Allocation Progress Bars */
+    .vendor-metric {
+      margin-bottom: 12px;
+    }
+
+    .vendor-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .vendor-name {
+      color: var(--color-text-primary);
+      font-weight: 500;
+    }
+
+    .vendor-amount {
+      color: var(--color-text-muted);
+    }
+
+    .progress-bar-bg {
+      background: var(--color-border);
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      background: var(--color-primary);
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.5s ease;
+    }
+
+    /* Job Card list style */
+    .jobs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--color-bg);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-border);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--color-text-muted);
+    }
+
+    .job-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .job-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--color-text-muted);
+    }
+
+    .job-card.status-completed::before { background: var(--color-success); }
+    .job-card.status-failed::before { background: var(--color-danger); }
+    .job-card.status-declined::before { background: var(--color-danger); }
+    .job-card.status-awaiting_payment::before { background: var(--color-warning); }
+
+    .job-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--color-text-muted);
+    }
+
+    .job-id {
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+
+    .badge {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-completed { background: var(--color-success-glow); color: var(--color-success); }
+    .badge-failed { background: var(--color-danger-glow); color: var(--color-danger); }
+    .badge-declined { background: var(--color-danger-glow); color: var(--color-danger); }
+    .badge-awaiting_payment { background: rgba(251, 191, 36, 0.15); color: var(--color-warning); }
+    .badge-accepted { background: var(--color-primary-glow); color: var(--color-primary); }
+
+    .job-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      margin: 4px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .job-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .job-metric-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .job-metric-lbl {
+      font-size: 9px;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+    }
+
+    .job-metric-val {
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .job-card-footer {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+
+    .decline-label {
+      font-size: 11px;
+      color: var(--color-danger);
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: var(--font-display);
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 11px;
+    }
+
+    .btn-primary {
+      background: var(--color-primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #4f46e5;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border-color: var(--color-border);
+      color: var(--color-text-primary);
+    }
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--color-text-muted);
+    }
+
+    .btn-close {
+      background: transparent;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .btn-close:hover {
+      color: white;
+    }
+
+    /* System Console Panel */
+    .console-panel {
+      background: #090d13;
+      border: 1px solid var(--color-border);
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .console-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 8px;
+    }
+
+    .console-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    .console-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-success);
+      box-shadow: 0 0 8px var(--color-success);
+      display: inline-block;
+    }
+
+    .console-body {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 250px;
+      overflow-y: auto;
+      color: #cbd5e1;
+    }
+
+    .console-line {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 4px;
+      white-space: pre-wrap;
+    }
+
+    .console-time {
+      color: #64748b;
+      user-select: none;
+    }
+
+    .console-job-id {
+      color: var(--color-primary);
+      font-weight: 500;
+    }
+
+    .green-txt { color: var(--color-success); }
+    .red-txt { color: var(--color-danger); }
+    .grey-txt { color: var(--color-text-muted); }
+    .gold-txt { color: var(--color-warning); }
+    .filepath-txt { color: #38bdf8; font-weight: 500; }
+    
+    .vendor-badge {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--color-border);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+
+    .console-link {
+      color: #38bdf8;
+      text-decoration: underline;
+    }
+
+    /* Side Drawer Overlay & Panel */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+      z-index: 100;
+    }
+
+    .overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: -450px;
+      width: 450px;
+      height: 100%;
+      background: var(--color-surface);
+      border-left: 1px solid var(--color-border);
+      box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
+      z-index: 101;
+      display: flex;
+      flex-direction: column;
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .drawer.open {
+      right: 0;
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .drawer-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .drawer-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex-grow: 1;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+
+    .drawer-divider {
+      border: 0;
+      border-top: 1px solid var(--color-border);
+      margin: 16px 0;
+    }
+
+    .drawer-body h3 {
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: var(--color-text-primary);
+    }
+
+    .drawer-expenses-list {
+      list-style-type: none;
+      padding-left: 0;
+      font-size: 12px;
+    }
+
+    .drawer-expenses-list li {
+      padding: 6px 0;
+      border-bottom: 1px dashed var(--color-border);
+    }
+
+    /* Markdown preview box inside drawer */
+    .brief-container {
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+
+    .markdown-body h1, .markdown-body h2 {
+      margin-top: 12px;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .markdown-body h1 { font-size: 15px; border-bottom: 1px solid var(--color-border); padding-bottom: 4px; }
+    .markdown-body h2 { font-size: 13px; }
+    .markdown-body p { margin-bottom: 10px; }
+    .markdown-body ul { margin-bottom: 10px; padding-left: 16px; }
+    .markdown-body li { margin-bottom: 4px; }
+
+    .no-data-msg {
+      color: var(--color-text-muted);
+      font-size: 12px;
+      text-align: center;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>🪙 SOLVENT — Autonomous Treasury</h1>
+      <p class="sub">A self-funding analyst agent · earns on Stripe · spends to provision resources · profit-gated loop</p>
+    </div>
+    <div class="header-pills">
+      <div class="pill">Seed Capital: $100.00</div>
+      <div class="pill">Net Growth: <span class="green">+$209.65</span></div>
+    </div>
+  </header>
+
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="label">Cash Balance</div>
+      <div class="val">$309.65</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Revenue</div>
+      <div class="val green">$223.00</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Operating Spend</div>
+      <div class="val red">$13.35</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Net Profit</div>
+      <div class="val green">$209.65</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Total Margin</div>
+      <div class="val">94.0%</div>
+    </div>
+  </div>
+
+  <div class="dashboard-body">
+    
+    <div class="panel">
+      <h2>Financial Performance <span style="font-size:11px;color:var(--color-text-muted);font-weight:normal">cumulative ledger balance</span></h2>
+      <div class="chart-container">
+        
+    <svg viewBox="0 0 600 140" class="line-chart" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--color-primary)" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="var(--color-primary)" stop-opacity="0.0"/>
+        </linearGradient>
+      </defs>
+      <line x1="0" y1="42.5" x2="600" y2="42.5" stroke="var(--color-border)" stroke-width="0.8" stroke-dasharray="4,4" opacity="0.3" /><line x1="0" y1="70.0" x2="600" y2="70.0" stroke="var(--color-border)" stroke-width="0.8" stroke-dasharray="4,4" opacity="0.3" /><line x1="0" y1="97.5" x2="600" y2="97.5" stroke="var(--color-border)" stroke-width="0.8" stroke-dasharray="4,4" opacity="0.3" />
+      <path d="M 0.0,140.0 L 0.0,112.3 L 33.3,93.0 L 66.7,93.0 L 100.0,94.0 L 133.3,94.2 L 166.7,94.4 L 200.0,94.4 L 233.3,64.8 L 266.7,64.8 L 300.0,66.3 L 333.3,66.6 L 366.7,66.7 L 400.0,66.7 L 433.3,27.7 L 466.7,27.7 L 500.0,29.1 L 533.3,29.4 L 566.7,29.6 L 600.0,29.6 L 600.0,140.0 Z" fill="url(#chart-grad)" />
+      <path d="M 0.0,112.3 L 33.3,93.0 L 66.7,93.0 L 100.0,94.0 L 133.3,94.2 L 166.7,94.4 L 200.0,94.4 L 233.3,64.8 L 266.7,64.8 L 300.0,66.3 L 333.3,66.6 L 366.7,66.7 L 400.0,66.7 L 433.3,27.7 L 466.7,27.7 L 500.0,29.1 L 533.3,29.4 L 566.7,29.6 L 600.0,29.6" fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="0.0" cy="112.3" r="4.5" class="chart-dot" data-val="10000" onclick="alert('Balance: ' + formatCents(10000))"><title>Balance: $100.00</title></circle><circle cx="33.3" cy="93.0" r="4.5" class="chart-dot" data-val="14900" onclick="alert('Balance: ' + formatCents(14900))"><title>Balance: $149.00</title></circle><circle cx="66.7" cy="93.0" r="4.5" class="chart-dot" data-val="14892" onclick="alert('Balance: ' + formatCents(14892))"><title>Balance: $148.92</title></circle><circle cx="100.0" cy="94.0" r="4.5" class="chart-dot" data-val="14652" onclick="alert('Balance: ' + formatCents(14652))"><title>Balance: $146.52</title></circle><circle cx="133.3" cy="94.2" r="4.5" class="chart-dot" data-val="14588" onclick="alert('Balance: ' + formatCents(14588))"><title>Balance: $145.88</title></circle><circle cx="166.7" cy="94.4" r="4.5" class="chart-dot" data-val="14548" onclick="alert('Balance: ' + formatCents(14548))"><title>Balance: $145.48</title></circle><circle cx="200.0" cy="94.4" r="4.5" class="chart-dot" data-val="14543" onclick="alert('Balance: ' + formatCents(14543))"><title>Balance: $145.43</title></circle><circle cx="233.3" cy="64.8" r="4.5" class="chart-dot" data-val="22043" onclick="alert('Balance: ' + formatCents(22043))"><title>Balance: $220.43</title></circle><circle cx="266.7" cy="64.8" r="4.5" class="chart-dot" data-val="22035" onclick="alert('Balance: ' + formatCents(22035))"><title>Balance: $220.35</title></circle><circle cx="300.0" cy="66.3" r="4.5" class="chart-dot" data-val="21675" onclick="alert('Balance: ' + formatCents(21675))"><title>Balance: $216.75</title></circle><circle cx="333.3" cy="66.6" r="4.5" class="chart-dot" data-val="21595" onclick="alert('Balance: ' + formatCents(21595))"><title>Balance: $215.95</title></circle><circle cx="366.7" cy="66.7" r="4.5" class="chart-dot" data-val="21555" onclick="alert('Balance: ' + formatCents(21555))"><title>Balance: $215.55</title></circle><circle cx="400.0" cy="66.7" r="4.5" class="chart-dot" data-val="21550" onclick="alert('Balance: ' + formatCents(21550))"><title>Balance: $215.50</title></circle><circle cx="433.3" cy="27.7" r="4.5" class="chart-dot" data-val="31450" onclick="alert('Balance: ' + formatCents(31450))"><title>Balance: $314.50</title></circle><circle cx="466.7" cy="27.7" r="4.5" class="chart-dot" data-val="31442" onclick="alert('Balance: ' + formatCents(31442))"><title>Balance: $314.42</title></circle><circle cx="500.0" cy="29.1" r="4.5" class="chart-dot" data-val="31082" onclick="alert('Balance: ' + formatCents(31082))"><title>Balance: $310.82</title></circle><circle cx="533.3" cy="29.4" r="4.5" class="chart-dot" data-val="31010" onclick="alert('Balance: ' + formatCents(31010))"><title>Balance: $310.10</title></circle><circle cx="566.7" cy="29.6" r="4.5" class="chart-dot" data-val="30970" onclick="alert('Balance: ' + formatCents(30970))"><title>Balance: $309.70</title></circle><circle cx="600.0" cy="29.6" r="4.5" class="chart-dot" data-val="30965" onclick="alert('Balance: ' + formatCents(30965))"><title>Balance: $309.65</title></circle>
+    </svg>
+    
+      </div>
+      
+      <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Resource Allocation Breakdown</h2>
+      <div class="vendor-breakdown-list">
+        
+        <div class="vendor-metric">
+          <div class="vendor-info">
+            <span class="vendor-name">market-data-api</span>
+            <span class="vendor-amount">$9.60 (71.9%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: 71.91011235955057%"></div>
+          </div>
+        </div>
+        
+        <div class="vendor-metric">
+          <div class="vendor-info">
+            <span class="vendor-name">web-search-api</span>
+            <span class="vendor-amount">$2.16 (16.2%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: 16.179775280898877%"></div>
+          </div>
+        </div>
+        
+        <div class="vendor-metric">
+          <div class="vendor-info">
+            <span class="vendor-name">pdf-render-saas</span>
+            <span class="vendor-amount">$1.20 (9.0%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: 8.98876404494382%"></div>
+          </div>
+        </div>
+        
+        <div class="vendor-metric">
+          <div class="vendor-info">
+            <span class="vendor-name">nvidia-nemotron</span>
+            <span class="vendor-amount">$0.24 (1.8%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: 1.7977528089887642%"></div>
+          </div>
+        </div>
+        
+        <div class="vendor-metric">
+          <div class="vendor-info">
+            <span class="vendor-name">email-delivery-saas</span>
+            <span class="vendor-amount">$0.15 (1.1%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: 1.1235955056179776%"></div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Inbound & Outbound Jobs</h2>
+      <div class="jobs-list">
+        
+        <div class="job-card status-completed">
+          <div class="job-card-header">
+            <span class="job-id">J1</span>
+            <span class="badge badge-completed">COMPLETED</span>
+          </div>
+          <h3 class="job-title">Competitive landscape for AI inference chips, 2026</h3>
+          
+          <div class="job-metrics">
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Budget</span>
+              <span class="job-metric-val">$49.00</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">COGS</span>
+              <span class="job-metric-val">$3.57</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">P&L</span>
+              <span class="job-metric-val green">+$45.43</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Margin</span>
+              <span class="job-metric-val">87.4%</span>
+            </div>
+          </div>
+          
+          <div class="job-card-footer">
+            <button class="btn btn-primary btn-sm" onclick="openDrawer('J1')">View Brief</button>
+          </div>
+        </div>
+        
+        <div class="job-card status-completed">
+          <div class="job-card-header">
+            <span class="job-id">J2</span>
+            <span class="badge badge-completed">COMPLETED</span>
+          </div>
+          <h3 class="job-title">Stablecoin payment volumes and the take-rate outlook</h3>
+          
+          <div class="job-metrics">
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Budget</span>
+              <span class="job-metric-val">$75.00</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">COGS</span>
+              <span class="job-metric-val">$4.93</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">P&L</span>
+              <span class="job-metric-val green">+$70.07</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Margin</span>
+              <span class="job-metric-val">88.7%</span>
+            </div>
+          </div>
+          
+          <div class="job-card-footer">
+            <button class="btn btn-primary btn-sm" onclick="openDrawer('J2')">View Brief</button>
+          </div>
+        </div>
+        
+        <div class="job-card status-declined">
+          <div class="job-card-header">
+            <span class="job-id">J3</span>
+            <span class="badge badge-declined">DECLINED</span>
+          </div>
+          <h3 class="job-title">One-line definition of EBITDA</h3>
+          
+          <div class="job-metrics">
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Budget</span>
+              <span class="job-metric-val">$6.00</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">COGS</span>
+              <span class="job-metric-val">$0.00</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">P&L</span>
+              <span class="job-metric-val green">+$0.00</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Margin</span>
+              <span class="job-metric-val">9.5%</span>
+            </div>
+          </div>
+          
+          <div class="job-card-footer">
+            <span class="decline-label">Declined: order $6 below minimum order size $15</span>
+          </div>
+        </div>
+        
+        <div class="job-card status-completed">
+          <div class="job-card-header">
+            <span class="job-id">J4</span>
+            <span class="badge badge-completed">COMPLETED</span>
+          </div>
+          <h3 class="job-title">Edge-AI adoption in industrial robotics: 18-month outlook</h3>
+          
+          <div class="job-metrics">
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Budget</span>
+              <span class="job-metric-val">$99.00</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">COGS</span>
+              <span class="job-metric-val">$4.85</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">P&L</span>
+              <span class="job-metric-val green">+$94.15</span>
+            </div>
+            <div class="job-metric-item">
+              <span class="job-metric-lbl">Margin</span>
+              <span class="job-metric-val">91.8%</span>
+            </div>
+          </div>
+          
+          <div class="job-card-footer">
+            <button class="btn btn-primary btn-sm" onclick="openDrawer('J4')">View Brief</button>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+
+  </div>
+
+  <div class="console-panel">
+    <div class="console-header">
+      <span class="console-title"><span class="console-dot"></span> AGENT TRANSACTION & LOG FEED</span>
+      <span>SYSTEM: ACTIVE</span>
+    </div>
+    <div class="console-body" id="consoleBody">
+      
+        <div class="console-line">
+          <span class="console-time">18:39:18</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">Quoting topic: "Competitive landscape for AI inference chips, 2026" | Price: $49.00 | Est. Cost: $6.19 | Margin: 87.4% → <span class='green-txt'>ACCEPT</span></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:18</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">📄 Issued Stripe Payment Link for $49.00 (simulated) → <a href='https://pay.stripe.test/plink_sim_13d403b6dcbc' target='_blank' class='console-link'>https://pay.stripe.test/plink_sim_13d403b6dcbc</a></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:19</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">💵 Stripe payment confirmed: <span class='green-txt'>+$49.00</span> received from client</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:21</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">📝 Job fulfilled. Deliverable written to <span class='filepath-txt'>J1.md</span> (260 tokens)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:22</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>nvidia-nemotron</span>: <span class='red-txt'>−$0.08</span> (Nemotron inference (260 tokens))</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:23</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>market-data-api</span>: <span class='red-txt'>−$2.40</span> (2 market-data pulls)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:23</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>web-search-api</span>: <span class='red-txt'>−$0.64</span> (8 web searches)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:23</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>pdf-render-saas</span>: <span class='red-txt'>−$0.40</span> (Render brief to PDF)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:24</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>email-delivery-saas</span>: <span class='red-txt'>−$0.05</span> (Deliver to customer)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:24</span>
+          <span class='console-job-id'>[J1]</span>
+          <span class="console-msg">✓ Booked P&L. Job net: <span class='green-txt'>+$45.43</span> | Current Capital Balance: <span class='gold-txt'>$145.43</span></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:25</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">Quoting topic: "Stablecoin payment volumes and the take-rate outlook" | Price: $75.00 | Est. Cost: $8.45 | Margin: 88.7% → <span class='green-txt'>ACCEPT</span></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:25</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">📄 Issued Stripe Payment Link for $75.00 (simulated) → <a href='https://pay.stripe.test/plink_sim_413a17eff3f1' target='_blank' class='console-link'>https://pay.stripe.test/plink_sim_413a17eff3f1</a></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:26</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">💵 Stripe payment confirmed: <span class='green-txt'>+$75.00</span> received from client</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:27</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">📝 Job fulfilled. Deliverable written to <span class='filepath-txt'>J2.md</span> (260 tokens)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:29</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>nvidia-nemotron</span>: <span class='red-txt'>−$0.08</span> (Nemotron inference (260 tokens))</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:29</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>market-data-api</span>: <span class='red-txt'>−$3.60</span> (3 market-data pulls)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:30</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>web-search-api</span>: <span class='red-txt'>−$0.80</span> (10 web searches)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:30</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>pdf-render-saas</span>: <span class='red-txt'>−$0.40</span> (Render brief to PDF)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:30</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>email-delivery-saas</span>: <span class='red-txt'>−$0.05</span> (Deliver to customer)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:31</span>
+          <span class='console-job-id'>[J2]</span>
+          <span class="console-msg">✓ Booked P&L. Job net: <span class='green-txt'>+$70.07</span> | Current Capital Balance: <span class='gold-txt'>$215.50</span></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:31</span>
+          <span class='console-job-id'>[J3]</span>
+          <span class="console-msg">Quoting topic: "One-line definition of EBITDA" | Price: $6.00 | Est. Cost: $5.43 | Margin: 9.5% → <span class='red-txt'>DECLINE</span></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:32</span>
+          <span class='console-job-id'>[J3]</span>
+          <span class="console-msg">✋ Declined job. Reason: <span class='grey-txt'>order $6 below minimum order size $15</span></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:33</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">Quoting topic: "Edge-AI adoption in industrial robotics: 18-month outlook" | Price: $99.00 | Est. Cost: $8.07 | Margin: 91.8% → <span class='green-txt'>ACCEPT</span></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:33</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">📄 Issued Stripe Payment Link for $99.00 (simulated) → <a href='https://pay.stripe.test/plink_sim_3dd626bbf0ff' target='_blank' class='console-link'>https://pay.stripe.test/plink_sim_3dd626bbf0ff</a></span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:34</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">💵 Stripe payment confirmed: <span class='green-txt'>+$99.00</span> received from client</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:35</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">📝 Job fulfilled. Deliverable written to <span class='filepath-txt'>J4.md</span> (262 tokens)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:37</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>nvidia-nemotron</span>: <span class='red-txt'>−$0.08</span> (Nemotron inference (262 tokens))</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:37</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>market-data-api</span>: <span class='red-txt'>−$3.60</span> (3 market-data pulls)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:38</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>web-search-api</span>: <span class='red-txt'>−$0.72</span> (9 web searches)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:38</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>pdf-render-saas</span>: <span class='red-txt'>−$0.40</span> (Render brief to PDF)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:38</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">↳ Paid vendor <span class='vendor-badge'>email-delivery-saas</span>: <span class='red-txt'>−$0.05</span> (Deliver to customer)</span>
+        </div>
+        
+        <div class="console-line">
+          <span class="console-time">18:39:39</span>
+          <span class='console-job-id'>[J4]</span>
+          <span class="console-msg">✓ Booked P&L. Job net: <span class='green-txt'>+$94.15</span> | Current Capital Balance: <span class='gold-txt'>$309.65</span></span>
+        </div>
+        
+    </div>
+  </div>
+
+  <!-- Drawer Overlay & Container -->
+  <div id="overlay" class="overlay" onclick="closeDrawer()"></div>
+  <div id="drawer" class="drawer">
+    <div class="drawer-header">
+      <h2 id="drawer-title">Job Audit Details</h2>
+      <button class="btn-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="drawer-metadata"></div>
+      <hr class="drawer-divider">
+      <h3>Deliverable Report Brief</h3>
+      <div id="drawer-brief" class="brief-container markdown-body"></div>
+    </div>
+  </div>
+
+  <script>
+    const briefs = {"E_budget_9": "# Research Brief: Daily budget exhaust job 9\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C9": "# Research Brief: Concurrency Test Job 9\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C8": "# Research Brief: Concurrency Test Job 8\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_8": "# Research Brief: Daily budget exhaust job 8\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_3": "# Research Brief: Daily budget exhaust job 3\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_14": "# Research Brief: Daily budget exhaust job 14\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "J1": "# Research Brief: Competitive landscape for AI inference chips, 2026\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C7": "# Research Brief: Concurrency Test Job 7\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "B_neg_params": "# Research Brief: Negative parameters test\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_7": "# Research Brief: Daily budget exhaust job 7\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C3": "# Research Brief: Concurrency Test Job 3\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_10": "# Research Brief: Daily budget exhaust job 10\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_6": "# Research Brief: Daily budget exhaust job 6\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C2": "# Research Brief: Concurrency Test Job 2\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_11": "# Research Brief: Daily budget exhaust job 11\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "J4": "# Research Brief: Edge-AI adoption in industrial robotics: 18-month outlook\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_2": "# Research Brief: Daily budget exhaust job 2\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_15": "# Research Brief: Daily budget exhaust job 15\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C6": "# Research Brief: Concurrency Test Job 6\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_5": "# Research Brief: Daily budget exhaust job 5\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C1": "# Research Brief: Concurrency Test Job 1\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_12": "# Research Brief: Daily budget exhaust job 12\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_1": "# Research Brief: Daily budget exhaust job 1\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "J3": "# Research Brief: One-line definition of EBITDA\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_16": "# Research Brief: Daily budget exhaust job 16\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C5": "# Research Brief: Concurrency Test Job 5\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_0": "# Research Brief: Daily budget exhaust job 0\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "J2": "# Research Brief: Stablecoin payment volumes and the take-rate outlook\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_17": "# Research Brief: Daily budget exhaust job 17\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "R1": "# Research Brief: Reserve breach test job\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C4": "# Research Brief: Concurrency Test Job 4\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_4": "# Research Brief: Daily budget exhaust job 4\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "C0": "# Research Brief: Concurrency Test Job 0\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_13": "# Research Brief: Daily budget exhaust job 13\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_18": "# Research Brief: Daily budget exhaust job 18\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "B_strings": "# Research Brief: String budget test\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "B_massive_budget": "# Research Brief: Massive budget test\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n", "E_budget_19": "# Research Brief: Daily budget exhaust job 19\n\n## Executive summary\nThree findings drive the outlook. (1) Demand signals are accelerating off a low base. (2) Unit economics improve with scale but hinge on input costs. (3) The competitive set is consolidating, which favors incumbents with distribution.\n\n## Key data points\n- Market is growing roughly 18-24% YoY by the most defensible estimates.\n- Gross margins cluster in the 55-65% range for the leaders.\n- Customer acquisition cost has risen ~30% over two years.\n\n## Risks\n- Regulatory exposure in two major jurisdictions.\n- Concentration risk among the top three buyers.\n\n## Recommendation\nSelective exposure with strict position sizing; revisit on the next earnings print. (Generated by SOLVENT \u2014 offline Nemotron stub.)\n"};
+    const jobsData = {"J1": {"id": "J1", "title": "Competitive landscape for AI inference chips, 2026", "status": "completed", "price": 4900, "est_cost": 619, "margin_pct": 87.4, "reason": "", "invoice_url": "https://pay.stripe.test/plink_sim_13d403b6dcbc", "tokens": 260, "deliverable": "/Users/ianalloway/Library/Mobile Documents/com~apple~CloudDocs/SOLVENT/data/reports/J1.md", "expenses": [{"vendor": "nvidia-nemotron", "amount": 8, "memo": "Nemotron inference (260 tokens)"}, {"vendor": "market-data-api", "amount": 240, "memo": "2 market-data pulls"}, {"vendor": "web-search-api", "amount": 64, "memo": "8 web searches"}, {"vendor": "pdf-render-saas", "amount": 40, "memo": "Render brief to PDF"}, {"vendor": "email-delivery-saas", "amount": 5, "memo": "Deliver to customer"}], "pnl": 4543}, "J2": {"id": "J2", "title": "Stablecoin payment volumes and the take-rate outlook", "status": "completed", "price": 7500, "est_cost": 845, "margin_pct": 88.7, "reason": "", "invoice_url": "https://pay.stripe.test/plink_sim_413a17eff3f1", "tokens": 260, "deliverable": "/Users/ianalloway/Library/Mobile Documents/com~apple~CloudDocs/SOLVENT/data/reports/J2.md", "expenses": [{"vendor": "nvidia-nemotron", "amount": 8, "memo": "Nemotron inference (260 tokens)"}, {"vendor": "market-data-api", "amount": 360, "memo": "3 market-data pulls"}, {"vendor": "web-search-api", "amount": 80, "memo": "10 web searches"}, {"vendor": "pdf-render-saas", "amount": 40, "memo": "Render brief to PDF"}, {"vendor": "email-delivery-saas", "amount": 5, "memo": "Deliver to customer"}], "pnl": 7007}, "J3": {"id": "J3", "title": "One-line definition of EBITDA", "status": "declined", "price": 600, "est_cost": 543, "margin_pct": 9.5, "reason": "order $6 below minimum order size $15", "invoice_url": "", "tokens": 0, "deliverable": "", "expenses": [], "pnl": 0}, "J4": {"id": "J4", "title": "Edge-AI adoption in industrial robotics: 18-month outlook", "status": "completed", "price": 9900, "est_cost": 807, "margin_pct": 91.8, "reason": "", "invoice_url": "https://pay.stripe.test/plink_sim_3dd626bbf0ff", "tokens": 262, "deliverable": "/Users/ianalloway/Library/Mobile Documents/com~apple~CloudDocs/SOLVENT/data/reports/J4.md", "expenses": [{"vendor": "nvidia-nemotron", "amount": 8, "memo": "Nemotron inference (262 tokens)"}, {"vendor": "market-data-api", "amount": 360, "memo": "3 market-data pulls"}, {"vendor": "web-search-api", "amount": 72, "memo": "9 web searches"}, {"vendor": "pdf-render-saas", "amount": 40, "memo": "Render brief to PDF"}, {"vendor": "email-delivery-saas", "amount": 5, "memo": "Deliver to customer"}], "pnl": 9415}};
+
+    // Auto-scroll terminal log to the bottom
+    const consoleBody = document.getElementById("consoleBody");
+    if (consoleBody) {
+      consoleBody.scrollTop = consoleBody.scrollHeight;
+    }
+
+    function openDrawer(jobId) {
+      const job = jobsData[jobId];
+      if (!job) return;
+
+      document.getElementById("drawer-title").innerText = "Job Details: " + jobId;
+
+      let metaHTML = `
+        <div class="meta-row"><strong>Title:</strong> <span>${job.title || 'N/A'}</span></div>
+        <div class="meta-row"><strong>Status:</strong> <span class="badge badge-${job.status}">${job.status.toUpperCase()}</span></div>
+        <div class="meta-row"><strong>Client Budget:</strong> <span>${formatCents(job.price)}</span></div>
+        <div class="meta-row"><strong>Incurred COGS:</strong> <span>${formatCents(getExpensesTotal(job.expenses))}</span></div>
+        <div class="meta-row"><strong>Net P&L:</strong> <span class="${job.pnl >= 0 ? 'green' : 'red'}">${job.pnl >= 0 ? '+' : ''}${formatCents(job.pnl)}</span></div>
+        <div class="meta-row"><strong>Est. Margin:</strong> <span>${job.margin_pct}%</span></div>
+      `;
+
+      if (job.expenses.length > 0) {
+        metaHTML += `
+          <h4 style="margin-top: 16px; margin-bottom: 8px; font-size:12px; color:var(--color-text-muted)">ITEMIZED EXPENSES</h4>
+          <ul class="drawer-expenses-list">
+        `;
+        job.expenses.forEach(e => {
+          metaHTML += `<li><strong>${e.vendor}:</strong> -${formatCents(e.amount)} (${e.memo})</li>`;
+        });
+        metaHTML += '</ul>';
+      }
+
+      document.getElementById("drawer-metadata").innerHTML = metaHTML;
+
+      const reportText = briefs[jobId] || "_No report brief generated or found in data/reports._";
+      document.getElementById("drawer-brief").innerHTML = renderMarkdown(reportText);
+
+      document.getElementById("drawer").classList.add("open");
+      document.getElementById("overlay").classList.add("open");
+    }
+
+    function closeDrawer() {
+      document.getElementById("drawer").classList.remove("open");
+      document.getElementById("overlay").classList.remove("open");
+    }
+
+    function formatCents(cents) {
+      return "$" + (cents / 100).toFixed(2);
+    }
+
+    function getExpensesTotal(expenses) {
+      return expenses.reduce((sum, e) => sum + e.amount, 0);
+    }
+
+    function renderMarkdown(md) {
+      // Clean up html entities first
+      let html = md
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      // Headings
+      html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
+      html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
+
+      // Lists
+      html = html.replace(/^\- (.*?)$/gm, '<li>$1</li>');
+      html = html.replace(/(<li>.*?<\/li>)/gs, '<ul>$1<\/ul>');
+      html = html.replace(/<\/ul>\s*<ul>/g, '');
+
+      // Bold & Italics
+      html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+      // Double line breaks to paragraphs
+      const paragraphs = html.split(/\n\n+/);
+      html = paragraphs.map(p => {
+        p = p.trim();
+        if (!p) return '';
+        if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<li')) return p;
+        return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+      }).join('\n');
+
+      return html;
+    }
+  </script>
+</body>
+</html>

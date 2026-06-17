@@ -1,0 +1,26 @@
+# Caches and temporary files
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Local data & databases
+data/solvent.db
+data/ledger.lock
+data/ledger.json
+data/dashboard_status.json
+
+# Generated customer reports and deliverables
+data/reports/*.md
+data/reports/*.pdf
+
+# Keep the data/reports directory structures but ignore content
+!data/
+!data/reports/
+data/reports/*
+!data/reports/.gitkeep
