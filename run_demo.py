@@ -129,12 +129,12 @@ def print_results(snap: dict):
         print("   → The agent broke perfectly even.")
 
 
-def run_batch_demo():
+def run_batch_demo(seed_cents: int = 10_000, fresh: bool = True):
     """Run the standard batch demo of 4 predefined jobs."""
     print(f"\n🪙  {C_BOLD}SOLVENT — Standard Batch Run (4 Inbound Jobs){C_RESET}")
     print(BAR)
     
-    agent = Solvent(seed_cents=10_000, on_event=print_event)
+    agent = Solvent(seed_cents=seed_cents, fresh=fresh, on_event=print_event)
     print(f"   Seed capital: {C_YELLOW}{fmt(agent.t.capital_cents())}{C_RESET}\n")
     
     for job in SAMPLE_JOBS:
@@ -148,21 +148,51 @@ def run_batch_demo():
     print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
 
 
-def run_interactive_mode():
+def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
     """Run interactive CLI mode letting the user test custom briefs and pricing."""
     print(f"\n🪙  {C_BOLD}SOLVENT — Interactive Agent Terminal{C_RESET}")
     print(BAR)
     
-    agent = Solvent(seed_cents=10_000, on_event=print_event)
-    print(f"   Seed capital: {C_YELLOW}{fmt(agent.t.capital_cents())}{C_RESET}\n")
+    agent = Solvent(seed_cents=seed_cents, fresh=fresh, on_event=print_event)
+    print(f"   Current balance: {C_YELLOW}{fmt(agent.t.balance_cents())}{C_RESET}")
+    print(f"   {C_GREY}Tip: Type /fund <amount> (e.g. /fund 100) to add funds to the treasury.{C_RESET}\n")
     
     job_index = 1
     while True:
         print(f"{C_BOLD}--- Enter New Research Request ---{C_RESET}")
-        topic = input(f"{C_CYAN}Topic (e.g. Future of fusion energy):{C_RESET} ").strip()
+        topic = input(f"{C_CYAN}Topic (or /fund <amount>):{C_RESET} ").strip()
         if not topic:
             print(f"{C_RED}Request topic cannot be blank.{C_RESET}\n")
             continue
+            
+        if topic.startswith("/fund"):
+            parts = topic.split()
+            if len(parts) < 2:
+                print(f"{C_RED}Usage: /fund <amount_in_usd> (e.g., /fund 150.00){C_RESET}\n")
+                continue
+            try:
+                fund_amt = float(parts[1])
+                fund_cents = int(fund_amt * 100)
+                if fund_cents <= 0:
+                    print(f"{C_RED}Fund amount must be positive.{C_RESET}\n")
+                    continue
+                # Add capital to treasury
+                agent.t.seed(fund_cents, memo="User injected operating capital")
+                print(f"   💵  {C_GREEN}Deposit Confirmed:{C_RESET} Added {C_GREEN}+{fmt(fund_cents)}{C_RESET} of operating capital to treasury.")
+                # Emit booked event to trigger dashboard update
+                agent._emit(
+                    stage="booked",
+                    job_id="SYSTEM",
+                    job_pnl=0,
+                    balance=agent.t.balance_cents(),
+                    status="completed",
+                    title="User Capital Injection"
+                )
+                print(f"       Current Capital Balance: {C_YELLOW}{fmt(agent.t.balance_cents())}{C_RESET}\n")
+                continue
+            except ValueError:
+                print(f"{C_RED}Invalid amount. Usage: /fund <amount_in_usd>{C_RESET}\n")
+                continue
             
         budget_str = input(f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $").strip()
         try:
@@ -244,21 +274,35 @@ def main():
         action="store_true",
         help="skip onboarding wizard; use defaults if no config exists",
     )
+    parser.add_argument(
+        "--seed",
+        type=float,
+        default=100.0,
+        help="initial operating seed capital in USD (default: 100.0)",
+    )
+    parser.add_argument(
+        "--keep-balance",
+        action="store_true",
+        help="keep existing database balance (do not reset treasury)",
+    )
     args = parser.parse_args()
 
     cfg = resolve_config(args)
     apply_config(cfg)
 
+    seed_cents = int(args.seed * 100)
+    fresh = not args.keep_balance
+
     if args.interactive:
-        run_interactive_mode()
+        run_interactive_mode(seed_cents=seed_cents, fresh=fresh)
     elif cfg.interaction_mode == "programmatic":
         from solvent.onboarding import _print_programmatic_guidance
         _print_programmatic_guidance()
         sys.exit(0)
     elif cfg.interaction_mode == "interactive":
-        run_interactive_mode()
+        run_interactive_mode(seed_cents=seed_cents, fresh=fresh)
     else:
-        run_batch_demo()
+        run_batch_demo(seed_cents=seed_cents, fresh=fresh)
 
 
 if __name__ == "__main__":
