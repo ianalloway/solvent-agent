@@ -28,8 +28,8 @@ between a demo bot and a business.
  └─────┬───────┘ accept
        ▼
  ┌─────────────┐   EARN
- │   STRIPE    │ ── creates Payment Link, collects payment ──▶ + revenue
- └─────┬───────┘
+ │   STRIPE    │ ── Payment Link → poll/webhook until paid ──▶ + revenue
+ └─────┬───────┘    (records cs_... + pi_... on ledger)
        ▼
  ┌─────────────┐   FULFIL
  │  NEMOTRON   │ ── produces the research brief ──▶ itemized resource usage
@@ -37,7 +37,7 @@ between a demo bot and a business.
        ▼
  ┌─────────────┐   SPEND (each payment screened first)
  │ GUARDRAILS  │ ── NemoClaw policy: allowlist, caps, reserve, ROI
- │   → STRIPE  │ ── pays nvidia-nemotron, market-data, saas ──▶ − expense
+ │   → STRIPE  │ ── Issuing virtual card (test) or simulated spend ──▶ − expense
  └─────┬───────┘
        ▼
    BOOK P&L  ──▶ treasury updated, dashboard refreshed
@@ -52,7 +52,7 @@ can violate policy — the business is safe by construction and profitable by ru
 |---|---|---|
 | **Reasoning / the analyst** | **NVIDIA Nemotron** (Llama-3.1-Nemotron-Ultra) via the OpenAI-compatible endpoint | `solvent/nemotron.py` |
 | **Spend safety** | **NVIDIA NemoClaw**-style policy sandbox — every payment screened before it executes | `solvent/guardrails.py` |
-| **Earn + Spend** | **Stripe Skills** — Payment Links / invoices to charge customers; scoped agent payments to pay vendors and provision SaaS | `solvent/stripe_client.py` |
+| **Earn + Spend** | **Stripe Skills** — Payment Links with checkout polling/webhook verification; PaymentIntent audit trail; Issuing virtual cards for outbound spend (test mode) | `solvent/stripe_client.py` |
 | **Agent orchestration** | **Hermes / Nous** tool-calling agent loop | `solvent/agent.py` |
 | **Economic memory** | the treasury / ledger that makes it a business | `solvent/treasury.py`, `solvent/pricing.py` |
 
@@ -67,7 +67,10 @@ can violate policy — the business is safe by construction and profitable by ru
 - **Runs anywhere:** with no API keys it runs on deterministic offline stubs, so
   the demo always works. Add `NVIDIA_API_KEY` for live Nemotron and a Stripe
   **test** key (`sk_test_...`) for real Payment Links. The client refuses live
-  Stripe keys outright.
+  Stripe keys outright. In test mode, payment is verified via Checkout Session
+  polling (or optional webhooks) before fulfilment; refunds use the PaymentIntent
+  id (`pi_...`). Product/Price catalog is cached locally; Issuing provides
+  capped virtual cards when enabled on the test account.
 
 ## Files
 ```

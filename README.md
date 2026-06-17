@@ -196,8 +196,42 @@ python3 run_demo.py
 
 - With `NVIDIA_API_KEY` set, briefs are written by **Nemotron**.
 - With a Stripe **test** key, each job creates a real Payment Link you can pay
-  with test card `4242 4242 4242 4242`.
+  with test card `4242 4242 4242 4242`. SOLVENT **polls** Checkout Sessions
+  until `payment_status == paid` before fulfilling the job (no instant confirm).
+- Optional webhook path: set `STRIPE_WEBHOOK_SECRET` and forward
+  `checkout.session.completed` events via `StripeClient.process_webhook()`.
 - The Stripe client **refuses** live keys (`sk_live_...`).
+
+### Stripe test-mode env vars
+
+| Variable | Purpose |
+|---|---|
+| `STRIPE_API_KEY` | Test secret key (`sk_test_...`) |
+| `STRIPE_WEBHOOK_SECRET` | Optional; use webhook-verified payments instead of polling only |
+| `STRIPE_PAYMENT_POLL_TIMEOUT` | Seconds to wait for payment (default `120`) |
+| `STRIPE_PAYMENT_POLL_INTERVAL` | Poll interval in seconds (default `2`) |
+| `SOLVENT_FORCE_STRIPE_SIMULATE` | Force offline simulate mode even with a key |
+
+Product/Price objects are cached under `.solvent/stripe_catalog.json` so jobs
+reuse a single **SOLVENT Research Brief** product instead of cluttering the
+Stripe dashboard.
+
+### Stripe Issuing (outbound spend)
+
+When Issuing is enabled on your Stripe **test** account, SOLVENT provisions a
+single-use virtual debit card capped at each vendor payment amount. If Issuing is
+not available, outbound spend falls back to simulated ledger entries (same as
+offline demo).
+
+**Setup (test mode):**
+
+1. Open [Stripe Dashboard → Issuing](https://dashboard.stripe.com/test/issuing/overview).
+2. Complete Issuing onboarding for test mode (business profile + terms).
+3. Run with `STRIPE_API_KEY=sk_test_...` — cardholder and catalog IDs are cached
+   in `.solvent/stripe_catalog.json`.
+
+Cards are created per vendor payment with `all_time` and `per_authorization`
+spending limits equal to the approved amount.
 
 ---
 
@@ -211,7 +245,7 @@ python3 run_demo.py
 | `treasury_dashboard.html` | balance sheet (generated after each run) |
 | `ARCHITECTURE.md` | how it works + sponsor-tech mapping |
 | `solvent/` | the agent's source code |
-| `tests/` | unit tests for pricing and guardrails |
+| `tests/` | unit tests for pricing, guardrails, config, and Stripe client |
 
 ## How it maps to the sponsors
 

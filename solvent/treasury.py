@@ -33,7 +33,9 @@ class LedgerEntry:
     memo: str                  # human-readable description
     job_id: Optional[str] = None
     vendor: Optional[str] = None
-    stripe_ref: Optional[str] = None   # payment link / invoice / payment id
+    stripe_ref: Optional[str] = None           # PaymentIntent / issuing card / refund id
+    stripe_session_id: Optional[str] = None    # Checkout Session (cs_...)
+    stripe_link_id: Optional[str] = None       # Payment Link (plink_...)
     ts: float = field(default_factory=time.time)
     id: str = field(default_factory=lambda: "le_" + uuid.uuid4().hex[:12])
 
@@ -67,6 +69,12 @@ class Treasury:
         finally:
             conn.close()
 
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str) -> None:
+        cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
     def _init_db(self) -> None:
         """Create the ledger and job queue tables if they do not exist."""
         with self._conn() as conn:
@@ -80,9 +88,13 @@ class Treasury:
                         job_id TEXT,
                         vendor TEXT,
                         stripe_ref TEXT,
+                        stripe_session_id TEXT,
+                        stripe_link_id TEXT,
                         ts REAL NOT NULL
                     )
                 """)
+                self._ensure_column(conn, "ledger", "stripe_session_id", "TEXT")
+                self._ensure_column(conn, "ledger", "stripe_link_id", "TEXT")
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS jobs (
                         id TEXT PRIMARY KEY,
@@ -134,7 +146,8 @@ class Treasury:
     def _load_locked(self) -> list[LedgerEntry]:
         with self._conn() as conn:
             cursor = conn.execute(
-                "SELECT id, kind, amount_cents, memo, job_id, vendor, stripe_ref, ts "
+                "SELECT id, kind, amount_cents, memo, job_id, vendor, stripe_ref, "
+                "stripe_session_id, stripe_link_id, ts "
                 "FROM ledger ORDER BY ts ASC, id ASC"
             )
             rows = cursor.fetchall()
@@ -147,7 +160,9 @@ class Treasury:
                     job_id=row["job_id"],
                     vendor=row["vendor"],
                     stripe_ref=row["stripe_ref"],
-                    ts=row["ts"]
+                    stripe_session_id=row["stripe_session_id"],
+                    stripe_link_id=row["stripe_link_id"],
+                    ts=row["ts"],
                 )
                 for row in rows
             ]
@@ -175,8 +190,11 @@ class Treasury:
             with self._conn() as conn:
                 with conn:
                     conn.execute("""
-                        INSERT INTO ledger (id, kind, amount_cents, memo, job_id, vendor, stripe_ref, ts)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO ledger (
+                            id, kind, amount_cents, memo, job_id, vendor,
+                            stripe_ref, stripe_session_id, stripe_link_id, ts
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         entry.id,
                         entry.kind,
@@ -185,7 +203,9 @@ class Treasury:
                         entry.job_id,
                         entry.vendor,
                         entry.stripe_ref,
-                        entry.ts
+                        entry.stripe_session_id,
+                        entry.stripe_link_id,
+                        entry.ts,
                     ))
             return entry
 

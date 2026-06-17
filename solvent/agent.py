@@ -178,13 +178,36 @@ class Solvent:
         self._emit(stage="invoice", job_id=job["id"], url=link["url"],
                    amount=q.price_cents, simulated=link["simulated"])
         payment = self.stripe.confirm_payment(link)
-        self.t.earn(payment["amount_cents"], f"Payment for {job['id']}",
-                    job_id=job["id"], stripe_ref=payment["stripe_ref"])
-        self._emit(stage="paid", job_id=job["id"], amount=payment["amount_cents"])
+        if not payment.get("paid"):
+            reason = payment.get("reason", "payment not received")
+            self.t.upsert_job(job_id, "awaiting_payment", error_reason=reason)
+            return self._emit(
+                stage="payment_pending",
+                job_id=job["id"],
+                reason=reason,
+                url=link["url"],
+                payment_link_id=link["id"],
+            )
+        self.t.earn(
+            payment["amount_cents"],
+            f"Payment for {job['id']}",
+            job_id=job["id"],
+            stripe_ref=payment["stripe_ref"],
+            stripe_session_id=payment.get("checkout_session_id"),
+            stripe_link_id=payment.get("payment_link_id"),
+        )
+        self._emit(
+            stage="paid",
+            job_id=job["id"],
+            amount=payment["amount_cents"],
+            payment_intent=payment["stripe_ref"],
+            checkout_session=payment.get("checkout_session_id"),
+            payment_link=payment.get("payment_link_id"),
+        )
 
         # 3. FULFIL & 4. SPEND (inside try-except to trigger refund if blocked/failed)
         self.t.upsert_job(job_id, "in_progress")
-        stripe_ref = payment["stripe_ref"]
+        payment_intent_id = payment["stripe_ref"]
         paid_amount = payment["amount_cents"]
         
         try:
@@ -215,7 +238,7 @@ class Solvent:
 
         except Exception as e:
             reason = str(e)
-            refund = self.stripe.refund_payment(stripe_ref, paid_amount)
+            refund = self.stripe.refund_payment(payment_intent_id, paid_amount)
             self.t.spend(
                 amount_cents=paid_amount,
                 memo=f"Refund for job {job_id} due to block/failure: {reason}",
