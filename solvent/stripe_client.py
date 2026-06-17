@@ -31,6 +31,8 @@ class StripeClient:
     def __init__(self):
         self.key = os.environ.get("STRIPE_API_KEY", "")
         self.live = False
+        if os.environ.get("SOLVENT_FORCE_STRIPE_SIMULATE", "").strip() in ("1", "true", "yes"):
+            self.key = ""
         if self.key:
             if not self.key.startswith("sk_test_"):
                 raise RuntimeError(

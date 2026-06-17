@@ -6,6 +6,10 @@ Runs four inbound jobs through the agent or starts an interactive session.
 You'll see the agent quote jobs, decline unprofitable ones, collect Stripe payments,
 run Nemotron reasoning, screen payments through guardrails, and book the P&L.
 Outputs a premium, interactive treasury_dashboard.html at the end.
+
+First run: interactive onboarding wizard (see ONBOARDING.md).
+Skip wizard: --no-onboard or SOLVENT_SKIP_ONBOARD=1
+Reconfigure: --onboard
 """
 
 import sys
@@ -16,6 +20,13 @@ from solvent.agent import Solvent
 from solvent.jobs import SAMPLE_JOBS
 from solvent.treasury import fmt
 from solvent import dashboard
+from solvent.config import (
+    apply_config,
+    config_exists,
+    default_config,
+    load_config,
+)
+from solvent.onboarding import run_wizard, should_skip_onboarding, wants_reconfigure
 
 # ANSI terminal colors (zero dependencies)
 C_RESET = "\033[0m"
@@ -198,6 +209,22 @@ def run_interactive_mode():
     print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
 
 
+def resolve_config(args) -> "SolventConfig":
+    """Load, onboard, or default user preferences."""
+    from solvent.config import SolventConfig
+
+    if wants_reconfigure():
+        return run_wizard()
+
+    if not config_exists() and not should_skip_onboarding():
+        return run_wizard()
+
+    cfg = load_config()
+    if cfg is None:
+        cfg = default_config()
+    return cfg
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run SOLVENT — a self-funding analyst agent.",
@@ -205,11 +232,30 @@ def main():
     parser.add_argument(
         "-i", "--interactive",
         action="store_true",
-        help="submit custom research jobs from the terminal (default: run the 4-job batch demo)",
+        help="submit custom research jobs from the terminal (overrides saved mode)",
+    )
+    parser.add_argument(
+        "--onboard",
+        action="store_true",
+        help="run (or re-run) the first-run setup wizard",
+    )
+    parser.add_argument(
+        "--no-onboard",
+        action="store_true",
+        help="skip onboarding wizard; use defaults if no config exists",
     )
     args = parser.parse_args()
 
+    cfg = resolve_config(args)
+    apply_config(cfg)
+
     if args.interactive:
+        run_interactive_mode()
+    elif cfg.interaction_mode == "programmatic":
+        from solvent.onboarding import _print_programmatic_guidance
+        _print_programmatic_guidance()
+        sys.exit(0)
+    elif cfg.interaction_mode == "interactive":
         run_interactive_mode()
     else:
         run_batch_demo()

@@ -9,6 +9,9 @@ __pycache__/
 venv/
 ENV/
 
+# Local user preferences (onboarding wizard)
+.solvent/
+
 # Local data & databases
 data/solvent.db
 data/solvent.lock

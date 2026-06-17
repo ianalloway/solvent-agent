@@ -17,6 +17,16 @@ import urllib.request
 MODEL = os.environ.get("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
 
+_force_offline = False
+
+
+def configure(model: str = "offline", nemotron_model: str | None = None) -> None:
+    """Apply user config from onboarding (offline stub vs live Nemotron)."""
+    global _force_offline, MODEL
+    _force_offline = model == "offline"
+    if nemotron_model:
+        MODEL = nemotron_model
+
 
 def _live_complete(system: str, user: str) -> str:
     key = os.environ["NVIDIA_API_KEY"]
@@ -63,6 +73,10 @@ def _stub_complete(system: str, user: str) -> str:
 
 def complete(system: str, user: str) -> tuple[str, int]:
     """Return (text, tokens_used_estimate)."""
+    if _force_offline:
+        text = _stub_complete(system, user)
+        tokens = max(1, (len(system) + len(user) + len(text)) // 4)
+        return text, tokens
     if os.environ.get("NVIDIA_API_KEY"):
         try:
             text = _live_complete(system, user)

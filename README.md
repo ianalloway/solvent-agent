@@ -22,6 +22,51 @@ python3 run_demo.py
 
 No API keys, no `pip install`. The agent runs on built-in offline stubs.
 
+On **first run**, a terminal setup wizard asks you to choose a model, interaction
+mode, and optional Stripe test mode. Preferences are saved to `.solvent/config.json`
+(gitignored). See [ONBOARDING.md](ONBOARDING.md) for design notes (NemoClaw + Hermes patterns).
+
+---
+
+## First run / onboarding
+
+The wizard runs automatically when `.solvent/config.json` does not exist:
+
+```bash
+python3 run_demo.py          # guided setup, then your chosen mode
+python3 run_demo.py --onboard   # re-run setup anytime
+python3 run_demo.py --no-onboard   # skip wizard; offline batch defaults
+SOLVENT_SKIP_ONBOARD=1 python3 run_demo.py   # same as --no-onboard
+```
+
+**Step 1 — Model**
+
+| Choice | Needs |
+|--------|-------|
+| Offline stub (default) | Nothing |
+| NVIDIA Nemotron | `NVIDIA_API_KEY` in environment |
+| Custom endpoint | Documented for future; uses stub today |
+
+**Step 2 — Interaction**
+
+| Choice | What happens |
+|--------|----------------|
+| Batch demo | 4 canned jobs (~30s, best for judges) |
+| Interactive REPL | Type topics and budgets at a prompt |
+| Programmatic | Prints import examples; use `Solvent` in Python |
+
+**Step 3 — Stripe test mode** (optional)
+
+Enable for real Stripe **test** Payment Links when `STRIPE_API_KEY=sk_test_...` is set.
+Otherwise payments stay simulated.
+
+Equivalent entry points:
+
+```bash
+python3 run_demo.py
+python3 -m solvent
+```
+
 ---
 
 ## Starting the agent
@@ -128,8 +173,11 @@ python3 demo_guardrails.py
 
 | Command | What it does |
 |---|---|
-| `python3 run_demo.py` | **Start the agent** — batch mode, 4 sample jobs |
-| `python3 run_demo.py --interactive` | **Start the agent** — interactive mode, your jobs |
+| `python3 run_demo.py` | **Start the agent** — onboarding on first run, then saved mode |
+| `python3 run_demo.py --onboard` | Re-run the setup wizard |
+| `python3 run_demo.py --no-onboard` | Skip wizard; use defaults if no config |
+| `python3 run_demo.py --interactive` | **Start the agent** — interactive mode (overrides config) |
+| `python3 -m solvent` | Same as `run_demo.py` |
 | `python3 demo_guardrails.py` | Spend-policy demo only (no agent loop) |
 | `python3 -m pytest tests/ -q` | Unit tests (needs `pip install pytest`) |
 
@@ -157,7 +205,8 @@ python3 run_demo.py
 
 | File | What it is |
 |---|---|
-| `run_demo.py` | the full earn → spend → profit loop |
+| `run_demo.py` | CLI entry + onboarding wizard |
+| `ONBOARDING.md` | first-run design notes (NemoClaw / Hermes patterns) |
 | `demo_guardrails.py` | the spend-safety demo |
 | `treasury_dashboard.html` | balance sheet (generated after each run) |
 | `ARCHITECTURE.md` | how it works + sponsor-tech mapping |
