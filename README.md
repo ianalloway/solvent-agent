@@ -1,18 +1,40 @@
+<div align="center">
+
 # 🪙 SOLVENT
 
-**A self-funding analyst agent.** It sells research briefs, gets paid through
-Stripe, spends its own revenue to provision the compute/data/SaaS it needs, and
-refuses any job that doesn't clear a margin. A fully automated company with its
-own balance sheet.
+**An AI agent that runs as a profitable, self-funding business.**
 
-Built for the **Hermes Agent Accelerated Business Hackathon** (NVIDIA × Stripe ×
-Nous Research).
+It sells research briefs. It collects payment on Stripe. It spends its own revenue to provision the compute it needs. And it refuses any job that doesn't clear a margin.
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Hackathon](https://img.shields.io/badge/NVIDIA%20%C3%97%20Stripe%20Hackathon-2024-76b900?logo=nvidia&logoColor=white)](https://www.nvidia.com)
+[![Stars](https://img.shields.io/github/stars/ianalloway/solvent-agent?style=social)](https://github.com/ianalloway/solvent-agent/stargazers)
+
+[**Quick Start**](#-quick-start) · [**How It Works**](#-how-it-works) · [**Live Demo**](#-the-demo) · [**Make It Real**](#-make-it-real)
+
+</div>
 
 ---
 
-## Quick start
+## The Big Idea
 
-**Requirements:** Python 3.10+ (stdlib only — no install needed for the demo)
+Most agents can spend money. Almost none can **run as a business.**
+
+SOLVENT closes the full loop:
+
+```
+  Client pays Stripe → Agent earns revenue → Agent fulfils the work
+  → Agent pays its own vendor bills → P&L booked → balance sheet grows
+```
+
+Every job is **profit-gated before it starts**. Unprofitable work is declined without touching Stripe. Vendor payments are screened by a NemoClaw-style policy sandbox. The agent literally cannot spend more than it earns.
+
+---
+
+## 🚀 Quick Start
+
+**Zero dependencies. No API keys. Works right now.**
 
 ```bash
 git clone https://github.com/ianalloway/solvent-agent.git
@@ -20,122 +42,116 @@ cd solvent-agent
 python3 run_demo.py
 ```
 
-No API keys, no `pip install`. The agent runs on built-in offline stubs.
+The agent will run a full batch of 4 analyst jobs — complete with margin gating, Stripe payment simulation, NVIDIA Nemotron fulfillment, guardrail screening, and live P&L — in about 30 seconds.
 
-On **first run**, a terminal setup wizard asks you to choose a model, interaction
-mode, and optional Stripe test mode. Preferences are saved to `.solvent/config.json`
-(gitignored). See [ONBOARDING.md](ONBOARDING.md) for design notes (NemoClaw + Hermes patterns).
+> **First run**: A short onboarding wizard asks you to choose a model, interaction mode, and whether to enable Stripe test mode. Preferences are saved to `.solvent/config.json` and never committed.
 
 ---
 
-## First run / onboarding
+## 📊 The Demo
 
-The wizard runs automatically when `.solvent/config.json` does not exist:
-
-```bash
-python3 run_demo.py          # guided setup, then your chosen mode
-python3 run_demo.py --onboard   # re-run setup anytime
-python3 run_demo.py --no-onboard   # skip wizard; offline batch defaults
-SOLVENT_SKIP_ONBOARD=1 python3 run_demo.py   # same as --no-onboard
-```
-
-**Step 1 — Model**
-
-| Choice | Needs |
-|--------|-------|
-| Offline stub (default) | Nothing |
-| NVIDIA Nemotron | `NVIDIA_API_KEY` in environment |
-| Custom endpoint | Documented for future; uses stub today |
-
-**Step 2 — Interaction**
-
-| Choice | What happens |
-|--------|----------------|
-| Batch demo | 4 canned jobs (~30s, best for judges) |
-| Interactive REPL | Type topics and budgets at a prompt |
-| Programmatic | Prints import examples; use `Solvent` in Python |
-
-**Step 3 — Stripe test mode** (optional)
-
-Enable for real Stripe **test** Payment Links when `STRIPE_API_KEY=sk_test_...` is set.
-Otherwise payments stay simulated.
-
-Equivalent entry points:
+After a run, open the live treasury dashboard:
 
 ```bash
-python3 run_demo.py
-python3 -m solvent
+open treasury_dashboard.html   # macOS
 ```
+
+![SOLVENT Treasury Dashboard — live P&L, job cards, resource allocation, transaction log](docs/dashboard.png)
+
+A typical batch session:
+
+| Metric | Value |
+|---|---|
+| Revenue | **$223.00** |
+| Operating spend | $13.35 |
+| **Net profit** | **$209.65** |
+| Margin | **94%** |
+| Jobs declined | 1 (below margin floor) |
 
 ---
 
-## Starting the agent
+## ⚙️ How It Works
 
-**There is no separate server or daemon.** The agent is the `Solvent` class in
-`solvent/agent.py` — a job-processing orchestrator. You start it by creating a
-`Solvent` instance and feeding it work. `run_demo.py` is the CLI wrapper around
-that class.
+```
+ inbound job
+     │
+     ▼
+ ┌─────────────┐   margin < floor?  ┌───────────┐
+ │  MARGIN GATE│ ─────────────────▶ │  DECLINE  │
+ │  (pricing)  │                    └───────────┘
+ └─────┬───────┘ accept
+       ▼
+ ┌─────────────┐   EARN
+ │   STRIPE    │ ── Payment Link → poll/webhook until paid ──▶ + revenue
+ └─────┬───────┘    (records cs_... + pi_... on ledger)
+       ▼
+ ┌─────────────┐   FULFIL
+ │  NEMOTRON   │ ── Llama-3.1-Nemotron-Ultra produces the brief ──▶ resource usage
+ └─────┬───────┘
+       ▼
+ ┌─────────────┐   SPEND (every payment screened first)
+ │ GUARDRAILS  │ ── NemoClaw policy: allowlist · caps · reserve · ROI
+ │   → STRIPE  │ ── Issuing virtual card (test) or simulated spend ──▶ − expense
+ └─────┬───────┘
+       ▼
+   BOOK P&L  ──▶ treasury updated · dashboard refreshed
+```
 
-SOLVENT is **batch-oriented**, not a long-running web service: each run processes
-one or more jobs, updates the treasury, writes a dashboard, and exits.
+Revenue is **always collected before cost is incurred**, and no payment can violate policy. The business is safe by construction and profitable by rule.
 
-### What happens on startup
+---
 
-When you start the agent (via `run_demo.py` or Python), `Solvent.__init__`:
+## 🏗️ Architecture
 
-1. **Resets the treasury** — clears the SQLite ledger in `data/solvent.db`
-2. **Seeds capital** — books $100.00 of starting cash (`seed_cents=10_000`)
-3. **Wires dependencies** — spend guardrails, Stripe client (simulated unless
-   `STRIPE_API_KEY` is set), and pricing policy
-4. **Opens the event log** — every quote, payment, fulfillment, and spend is
-   recorded; `treasury_dashboard.html` updates live as jobs run
+| Layer | Technology | File |
+|---|---|---|
+| **Analyst / reasoning** | NVIDIA Nemotron (Llama-3.1-Nemotron-Ultra) | `solvent/nemotron.py` |
+| **Spend safety** | NVIDIA NemoClaw-style policy sandbox | `solvent/guardrails.py` |
+| **Earn** | Stripe Payment Links + Checkout Session polling | `solvent/stripe_client.py` |
+| **Spend** | Stripe Issuing virtual cards (test mode) | `solvent/stripe_client.py` |
+| **Orchestration** | Hermes / Nous tool-calling agent loop | `solvent/agent.py` |
+| **Memory** | SQLite treasury + pricing ledger | `solvent/treasury.py` · `solvent/pricing.py` |
 
-For each inbound job, the agent runs: **quote → earn → fulfil → spend → book P&L**.
-Unprofitable jobs are declined before any money moves.
+**Key design choices:**
 
-### Mode 1 — Batch demo (default)
+- **Structural profitability** — `pricing.py` computes unit cost before quoting. If margin < floor, the job never reaches Stripe.
+- **Spend policy** — `guardrails.py` enforces vendor allowlist, per-transaction cap, rolling 24h budget, minimum cash reserve, and no-negative-ROI rule.
+- **Offline-first** — without API keys the demo runs on deterministic stubs. Add `NVIDIA_API_KEY` + `STRIPE_API_KEY=sk_test_...` to unlock live inference and real Payment Links.
+- **Audit trail** — every `cs_...` checkout session ID and `pi_...` PaymentIntent ID is recorded on the ledger before fulfilment begins.
 
-Runs four pre-loaded sample jobs and exits. Best for judges: shows margin gating,
-Stripe earn/spend, Nemotron fulfillment, and guardrails in ~30 seconds.
+---
+
+## 🎮 Running Modes
+
+### Batch demo (default — best for judges)
 
 ```bash
 python3 run_demo.py
 ```
 
-- **Jobs J1, J2, J4** — quoted, paid, fulfilled, vendor costs paid
-- **Job J3** — declined (customer budget below cost)
+4 pre-loaded jobs. ~30 seconds. Shows margin gating, Stripe earn/spend, Nemotron fulfillment, and guardrails in action.
 
-Session summary example:
-
-```
-Revenue        $223.00
-Operating spend $ 13.35
-Net profit     $209.65  (94% margin)
-Cash balance   $310.00  (seed was $100.00)
-```
-
-### Mode 2 — Interactive agent (your own jobs)
-
-Same agent, but you type research topics and client budgets at a prompt. The
-session keeps running until you quit — this is how you **start the agent for
-custom work**, not just watch the canned demo.
+### Interactive — your own jobs
 
 ```bash
 python3 run_demo.py --interactive
-# or
-python3 run_demo.py -i
 ```
 
-You'll be prompted for a topic and budget per job. Type `y` to submit another
-request, or anything else to finish and print the balance sheet.
+Type a research topic and client budget at the prompt. The agent quotes, pays, fulfils, and books P&L for each one in real time. Keep going until you quit.
 
-### Mode 3 — Programmatic (import in Python)
+### Add funds mid-session
 
-Use the agent as a library — no CLI required:
+```bash
+python3 run_demo.py --seed 500        # start with $500 instead of $100
+python3 run_demo.py --keep-balance    # resume existing treasury balance
+```
+
+In interactive mode, type `/fund 200` at the prompt to deposit $200 into the live treasury without restarting.
+
+### Programmatic
 
 ```python
 from solvent.agent import Solvent
-from solvent.jobs import SAMPLE_JOBS
 
 agent = Solvent(seed_cents=10_000)          # reset treasury, seed $100
 agent.handle_job(SAMPLE_JOBS[0])            # process one job
@@ -144,112 +160,111 @@ snap = agent.run(SAMPLE_JOBS[1:])           # process a list; returns snapshot
 print(snap["balance_cents"], snap["margin_pct"])
 ```
 
-Pass `fresh=False` to keep an existing treasury across runs, and `on_event=fn`
-to hook into the same event stream `run_demo.py` prints to the terminal.
-
-### Open the dashboard
-
-After any run, open the generated balance sheet:
-
-```bash
-open treasury_dashboard.html        # macOS
-# xdg-open treasury_dashboard.html  # Linux
-# start treasury_dashboard.html     # Windows
-```
-
-### Guardrails demo (not the agent)
-
-`demo_guardrails.py` is a **standalone policy demo** — it does not start the
-agent or process jobs. It shows five spend attempts and which ones guardrails
-block:
+### Guardrails demo (standalone)
 
 ```bash
 python3 demo_guardrails.py
 ```
 
----
-
-## Command reference
-
-| Command | What it does |
-|---|---|
-| `python3 run_demo.py` | **Start the agent** — onboarding on first run, then saved mode |
-| `python3 run_demo.py --onboard` | Re-run the setup wizard |
-| `python3 run_demo.py --no-onboard` | Skip wizard; use defaults if no config |
-| `python3 run_demo.py --interactive` | **Start the agent** — interactive mode (overrides config) |
-| `python3 -m solvent` | Same as `run_demo.py` |
-| `python3 demo_guardrails.py` | Spend-policy demo only (no agent loop) |
-| `python3 -m pytest tests/ -q` | Unit tests (needs `pip install pytest`) |
+Shows five spend attempts and which ones the NemoClaw-style policy blocks — without starting the agent or touching Stripe.
 
 ---
 
-## Make it real (optional)
+## 🔑 Make It Real
 
 To use live Nemotron inference and real Stripe test-mode payment links:
 
 ```bash
 pip install -r requirements.txt
-export NVIDIA_API_KEY=nvapi-...       # from build.nvidia.com
-export STRIPE_API_KEY=sk_test_...     # Stripe test mode only
+
+export NVIDIA_API_KEY=nvapi-...        # from build.nvidia.com
+export STRIPE_API_KEY=sk_test_...      # Stripe test mode only (live keys refused)
+
 python3 run_demo.py
 ```
 
-- With `NVIDIA_API_KEY` set, briefs are written by **Nemotron**.
-- With a Stripe **test** key, each job creates a real Payment Link you can pay
-  with test card `4242 4242 4242 4242`. SOLVENT **polls** Checkout Sessions
-  until `payment_status == paid` before fulfilling the job (no instant confirm).
-- Optional webhook path: set `STRIPE_WEBHOOK_SECRET` and forward
-  `checkout.session.completed` events via `StripeClient.process_webhook()`.
-- The Stripe client **refuses** live keys (`sk_live_...`).
+With both keys set:
 
-### Stripe test-mode env vars
+- Briefs are written by **NVIDIA Nemotron** (Llama-3.1-Nemotron-Ultra).
+- Each job creates a real **Stripe Payment Link**. Pay with test card `4242 4242 4242 4242`.
+- SOLVENT **polls** the Checkout Session (`cs_...`) until `payment_status == paid` before fulfilling — no instant confirm.
+- Optional: set `STRIPE_WEBHOOK_SECRET` and forward `checkout.session.completed` events via `StripeClient.process_webhook()`.
+- Optional: enable **Stripe Issuing** on your test account to provision capped single-use virtual debit cards for each vendor payment.
+
+### Environment variables
 
 | Variable | Purpose |
 |---|---|
-| `STRIPE_API_KEY` | Test secret key (`sk_test_...`) |
-| `STRIPE_WEBHOOK_SECRET` | Optional; use webhook-verified payments instead of polling only |
+| `NVIDIA_API_KEY` | Live Nemotron inference (`nvapi-...`) |
+| `STRIPE_API_KEY` | Stripe test key (`sk_test_...`) |
+| `STRIPE_WEBHOOK_SECRET` | Optional webhook verification |
 | `STRIPE_PAYMENT_POLL_TIMEOUT` | Seconds to wait for payment (default `120`) |
 | `STRIPE_PAYMENT_POLL_INTERVAL` | Poll interval in seconds (default `2`) |
 | `SOLVENT_FORCE_STRIPE_SIMULATE` | Force offline simulate mode even with a key |
 
-Product/Price objects are cached under `.solvent/stripe_catalog.json` so jobs
-reuse a single **SOLVENT Research Brief** product instead of cluttering the
-Stripe dashboard.
-
-### Stripe Issuing (outbound spend)
-
-When Issuing is enabled on your Stripe **test** account, SOLVENT provisions a
-single-use virtual debit card capped at each vendor payment amount. If Issuing is
-not available, outbound spend falls back to simulated ledger entries (same as
-offline demo).
-
-**Setup (test mode):**
-
-1. Open [Stripe Dashboard → Issuing](https://dashboard.stripe.com/test/issuing/overview).
-2. Complete Issuing onboarding for test mode (business profile + terms).
-3. Run with `STRIPE_API_KEY=sk_test_...` — cardholder and catalog IDs are cached
-   in `.solvent/stripe_catalog.json`.
-
-Cards are created per vendor payment with `all_time` and `per_authorization`
-spending limits equal to the approved amount.
+Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated runs reuse a single **SOLVENT Research Brief** product instead of cluttering your Stripe dashboard.
 
 ---
 
-## What's in here
+## 🧪 Tests
 
-| File | What it is |
-|---|---|
-| `run_demo.py` | CLI entry + onboarding wizard |
-| `ONBOARDING.md` | first-run design notes (NemoClaw / Hermes patterns) |
-| `demo_guardrails.py` | the spend-safety demo |
-| `treasury_dashboard.html` | balance sheet (generated after each run) |
-| `ARCHITECTURE.md` | how it works + sponsor-tech mapping |
-| `solvent/` | the agent's source code |
-| `tests/` | unit tests for pricing, guardrails, config, and Stripe client |
+```bash
+pip install pytest
+python3 -m pytest tests/ -v
+```
 
-## How it maps to the sponsors
+Unit tests cover: pricing & margin gate · guardrail policy · treasury ledger · Stripe client (simulate + test mode) · config/onboarding.
 
-- **NVIDIA Nemotron** — the analyst's reasoning engine (`solvent/nemotron.py`)
-- **NVIDIA NemoClaw** — spend guardrails / policy sandbox (`solvent/guardrails.py`)
-- **Stripe Skills** — earn (Payment Links) + spend (vendor payments) (`solvent/stripe_client.py`)
-- **Nous / Hermes** — the agent orchestration loop (`solvent/agent.py`)
+---
+
+## 📁 Repository Layout
+
+```
+solvent/
+  agent.py         the orchestrator (earn → fulfil → spend → book)
+  treasury.py      SQLite ledger / balance sheet
+  pricing.py       the margin gate
+  guardrails.py    NemoClaw-style spend policy
+  stripe_client.py two-sided Stripe layer (earn + spend)
+  nemotron.py      NVIDIA Nemotron client (+ offline stub)
+  service.py       the product: an on-demand research brief
+  jobs.py          sample inbound work
+  dashboard.py     renders the treasury to HTML + JSON
+  config.py        onboarding wizard and config persistence
+run_demo.py        the full business loop (CLI entry point)
+demo_guardrails.py the safety story (standalone)
+tests/             pytest suite
+docs/              screenshots and supporting assets
+```
+
+---
+
+## 🏆 Built For
+
+**Hermes Agent Accelerated Business Hackathon** — NVIDIA × Stripe × Nous Research
+
+The agent was designed to demonstrate:
+
+- An agent that is **economically self-aware** — it has a treasury, prices against its own costs, and gates every action on projected profit
+- A **complete two-sided Stripe integration** — earns via Payment Links, spends via Issuing virtual cards
+- **Provable spend safety** — a NemoClaw-style policy sandbox that makes "give an agent a payment credential" a reasonable thing to do
+- **Live inference with NVIDIA Nemotron** — the offline stub means the demo always works, even without API keys
+
+---
+
+## 🤝 Contributing
+
+Issues, PRs, and ideas are very welcome. Some good starting points:
+
+- Add more sample research topics in `solvent/jobs.py`
+- Improve the Nemotron prompt template in `solvent/service.py`
+- Add a new guardrail policy to `solvent/guardrails.py`
+- Extend the dashboard with charts or new metrics in `solvent/dashboard.py`
+
+---
+
+<div align="center">
+
+**If SOLVENT gave you ideas, give it a ⭐**
+
+</div>
