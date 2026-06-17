@@ -10,6 +10,7 @@ Outputs a premium, interactive treasury_dashboard.html at the end.
 
 import sys
 import time
+import argparse
 from pathlib import Path
 from solvent.agent import Solvent
 from solvent.jobs import SAMPLE_JOBS
@@ -198,19 +199,17 @@ def run_interactive_mode():
 
 
 def main():
-    print(f"\n🪙  {C_BOLD}SOLVENT — self-funding analyst agent{C_RESET}")
-    print("   Select run option:")
-    print(f"     [{C_CYAN}1{C_RESET}] Run Standard Batch Demo (4 sample jobs)")
-    print(f"     [{C_CYAN}2{C_RESET}] Run Interactive Terminal (enter custom jobs)")
-    
-    choice = ""
-    try:
-        choice = input(f"\n{C_BOLD}Option (1 or 2):{C_RESET} ").strip()
-    except (KeyboardInterrupt, EOFError):
-        print("\nExiting.")
-        sys.exit(0)
-        
-    if choice == "2":
+    parser = argparse.ArgumentParser(
+        description="Run SOLVENT — a self-funding analyst agent.",
+    )
+    parser.add_argument(
+        "-i", "--interactive",
+        action="store_true",
+        help="submit custom research jobs from the terminal (default: run the 4-job batch demo)",
+    )
+    args = parser.parse_args()
+
+    if args.interactive:
         run_interactive_mode()
     else:
         run_batch_demo()
