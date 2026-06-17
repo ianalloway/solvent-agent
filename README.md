@@ -13,7 +13,8 @@ Nous Research).
 ## Run it in 30 seconds (no keys needed)
 
 ```bash
-cd solvent_project        # the folder this README is in
+git clone https://github.com/ianalloway/solvent-agent.git
+cd solvent-agent
 python3 run_demo.py
 ```
 
@@ -53,11 +54,10 @@ python3 run_demo.py
 |---|---|
 | `run_demo.py` | the full earn → spend → profit loop |
 | `demo_guardrails.py` | the spend-safety demo |
-| `treasury_dashboard.html` | the agent's balance sheet (generated) |
+| `treasury_dashboard.html` | the agent's balance sheet (generated on each run) |
 | `ARCHITECTURE.md` | how it works + sponsor-tech mapping |
-| `VIDEO_SCRIPT.md` | 3-minute demo storyboard + voiceover |
-| `SUBMISSION.md` | tweet copy, Typeform answers, checklist |
 | `solvent/` | the agent's source code |
+| `tests/` | unit tests for pricing and guardrails |
 
 ## How it maps to the sponsors
 - **NVIDIA Nemotron** — the analyst's reasoning engine (`solvent/nemotron.py`)

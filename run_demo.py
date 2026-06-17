@@ -118,7 +118,7 @@ def print_results(snap: dict):
 
 
 def run_batch_demo():
-    """Run standard hackathon loop of 4 predefined jobs."""
+    """Run the standard batch demo of 4 predefined jobs."""
     print(f"\n🪙  {C_BOLD}SOLVENT — Standard Batch Run (4 Inbound Jobs){C_RESET}")
     print(BAR)
     

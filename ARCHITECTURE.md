@@ -10,12 +10,11 @@ company with its own balance sheet that grows on its own.
 An agent you can hand a Stripe key and walk away from: it earns, it pays its own
 bills, it never works at a loss, and it can't spend a dollar outside policy.
 
-## Why it wins the brief
-The hackathon asks for "agents that can earn, spend, and run real operations."
-SOLVENT closes the entire loop and adds the missing piece almost no agent has:
-**economic self-awareness.** It maintains a treasury, prices against its own unit
-costs, and gates every action on projected profit. That's the difference between
-a demo bot and a business.
+## Why it matters
+Most agents can spend money; few can run as a business. SOLVENT closes the full
+loop with **economic self-awareness** — it maintains a treasury, prices against its
+own unit costs, and gates every action on projected profit. That's the difference
+between a demo bot and a business.
 
 ## The money loop (per job)
 
@@ -57,7 +56,7 @@ can violate policy — the business is safe by construction and profitable by ru
 | **Agent orchestration** | **Hermes / Nous** tool-calling agent loop | `solvent/agent.py` |
 | **Economic memory** | the treasury / ledger that makes it a business | `solvent/treasury.py`, `solvent/pricing.py` |
 
-## Design choices that matter to the judges
+## Key design choices
 
 - **Viability:** the margin gate (`pricing.py`) means SOLVENT is *structurally*
   incapable of unprofitable work. In the demo it earns $223, spends $13.35, and

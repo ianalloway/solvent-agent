@@ -11,9 +11,13 @@ ENV/
 
 # Local data & databases
 data/solvent.db
+data/solvent.lock
 data/ledger.lock
 data/ledger.json
 data/dashboard_status.json
+
+# Generated dashboard (created by run_demo.py)
+treasury_dashboard.html
 
 # Generated customer reports and deliverables
 data/reports/*.md
