@@ -534,6 +534,7 @@ def render(snapshot: dict, log: list[dict]) -> Path:
       gap: 8px;
       position: relative;
       overflow: hidden;
+      flex-shrink: 0;
     }}
 
     .job-card::before {{
