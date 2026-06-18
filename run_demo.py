@@ -15,7 +15,7 @@ Reconfigure: --onboard
 import sys
 import time
 import argparse
-import os
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from solvent.agent import Solvent
 from solvent.jobs import SAMPLE_JOBS
@@ -41,6 +41,38 @@ C_CYAN = "\033[36m"
 C_GREY = "\033[90m"
 
 BAR = f"{C_GREY}{'─' * 66}{C_RESET}"
+
+SQLITE_MAX_INT = 2**63 - 1
+
+
+def parse_usd_cents(amount: str) -> int:
+    """Parse a positive finite USD amount into SQLite-safe cents."""
+    try:
+        dollars = Decimal(str(amount))
+    except (InvalidOperation, ValueError):
+        raise ValueError("amount must be a finite positive number") from None
+
+    if not dollars.is_finite():
+        raise ValueError("amount must be finite")
+
+    try:
+        cents = int((dollars * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except InvalidOperation:
+        raise ValueError("amount exceeds the maximum supported value") from None
+
+    if cents <= 0:
+        raise ValueError("amount must be positive")
+    if cents > SQLITE_MAX_INT:
+        raise ValueError("amount exceeds the maximum supported value")
+    return cents
+
+
+def seed_usd_arg(value: str) -> int:
+    """Argparse type for --seed that returns validated cents."""
+    try:
+        return parse_usd_cents(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def show_spinner(duration: float, label: str):
@@ -172,11 +204,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
                 print(f"{C_RED}Usage: /fund <amount_in_usd> (e.g., /fund 150.00){C_RESET}\n")
                 continue
             try:
-                fund_amt = float(parts[1])
-                fund_cents = int(fund_amt * 100)
-                if fund_cents <= 0:
-                    print(f"{C_RED}Fund amount must be positive.{C_RESET}\n")
-                    continue
+                fund_cents = parse_usd_cents(parts[1])
                 # Add capital to treasury
                 agent.t.seed(fund_cents, memo="User injected operating capital")
                 print(f"   💵  {C_GREEN}Deposit Confirmed:{C_RESET} Added {C_GREEN}+{fmt(fund_cents)}{C_RESET} of operating capital to treasury.")
@@ -191,8 +219,8 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
                 )
                 print(f"       Current Capital Balance: {C_YELLOW}{fmt(agent.t.balance_cents())}{C_RESET}\n")
                 continue
-            except ValueError:
-                print(f"{C_RED}Invalid amount. Usage: /fund <amount_in_usd>{C_RESET}\n")
+            except ValueError as exc:
+                print(f"{C_RED}Invalid amount: {exc}. Usage: /fund <amount_in_usd>{C_RESET}\n")
                 continue
             
         budget_str = input(f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $").strip()
@@ -277,8 +305,8 @@ def main():
     )
     parser.add_argument(
         "--seed",
-        type=float,
-        default=100.0,
+        type=seed_usd_arg,
+        default=10_000,
         help="initial operating seed capital in USD (default: 100.0)",
     )
     parser.add_argument(
@@ -302,7 +330,7 @@ def main():
     cfg = resolve_config(args)
     apply_config(cfg)
 
-    seed_cents = int(args.seed * 100)
+    seed_cents = args.seed
     fresh = not args.keep_balance
 
     if args.serve:
