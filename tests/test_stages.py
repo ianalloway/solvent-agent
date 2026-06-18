@@ -1,7 +1,6 @@
 """Tests for idempotent job stages."""
 
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,13 +11,6 @@ from solvent.treasury import Treasury
 
 
 class TestStagesIdempotency(unittest.TestCase):
-    def setUp(self):
-        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
-        self._env.start()
-
-    def tearDown(self):
-        self._env.stop()
-
     def test_double_paid_stage_does_not_double_earn(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "t.db"
