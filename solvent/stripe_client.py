@@ -21,6 +21,16 @@ import time
 import uuid
 from pathlib import Path
 
+from .security import (
+    validate_stripe_key,
+    validate_catalog_schema,
+    verify_webhook_signature,
+    check_event_replay,
+    validate_email,
+    WebhookAuthError,
+    ReplayAttackError,
+)
+
 try:
     import stripe  # type: ignore
     _HAS_STRIPE = True
@@ -48,11 +58,11 @@ class StripeClient:
         self._webhook_payments: dict[str, dict] = {}
         self._issuing_available: bool | None = None
         if self.key:
-            if not self.key.startswith("sk_test_"):
-                raise RuntimeError(
-                    "Refusing to run: STRIPE_API_KEY must be a TEST key (sk_test_...). "
-                    "SOLVENT never touches a live account in this prototype."
-                )
+            # AUTH — validate key prefix; live keys refused unconditionally
+            try:
+                validate_stripe_key(self.key)
+            except Exception as exc:
+                raise RuntimeError(str(exc)) from exc
             if not _HAS_STRIPE:
                 raise RuntimeError(
                     "STRIPE_API_KEY set but the `stripe` package is not installed. "
@@ -68,7 +78,9 @@ class StripeClient:
             return self._catalog
         if CATALOG_PATH.is_file():
             try:
-                self._catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+                raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+                # DATA PROTECTION — strip unknown / malformed keys before trusting
+                self._catalog = validate_catalog_schema(raw)
             except (json.JSONDecodeError, OSError):
                 self._catalog = {}
         else:
@@ -130,10 +142,24 @@ class StripeClient:
         self._save_webhook_cache()
 
     def process_webhook(self, payload: bytes, sig_header: str) -> dict | None:
-        """Validate checkout.session.completed and cache verified payment."""
+        """Validate checkout.session.completed and cache verified payment.
+
+        AUTH: signature is verified with HMAC-SHA256 before any data is read.
+        ACCOUNT TAKEOVER: duplicate event IDs are rejected (replay protection).
+        """
         if not self.live or not self.webhook_secret:
             return None
+
+        # 1. Verify Stripe-Signature header (raises WebhookAuthError if invalid)
+        verify_webhook_signature(payload, sig_header, self.webhook_secret)
+
+        # 2. Parse event using the Stripe SDK for structural validation
         event = stripe.Webhook.construct_event(payload, sig_header, self.webhook_secret)
+
+        # 3. Replay protection — reject duplicate event IDs
+        event_id = event.get("id", "")
+        check_event_replay(event_id)  # raises ReplayAttackError if duplicate
+
         if event["type"] != "checkout.session.completed":
             return None
         session = event["data"]["object"]
@@ -149,6 +175,11 @@ class StripeClient:
     # ---- EARN -------------------------------------------------------
     def create_payment_link(self, name: str, amount_cents: int, customer_email: str) -> dict:
         """Create a real Stripe Payment Link (test mode) or simulate one."""
+        # ACCOUNT TAKEOVER — validate email before it reaches Stripe or the ledger
+        try:
+            customer_email = validate_email(customer_email)
+        except Exception:
+            customer_email = "client@example.com"  # safe fallback for demo
         if self.live:
             price_id = self._get_or_create_price(amount_cents)
             link = stripe.PaymentLink.create(

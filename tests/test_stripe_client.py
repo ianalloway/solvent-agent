@@ -169,6 +169,7 @@ class TestStripeClientLive(unittest.TestCase):
         )
 
     def test_webhook_caches_payment(self):
+        import hashlib, hmac as _hmac, time as _time
         session = {
             "id": "cs_wh",
             "payment_status": "paid",
@@ -177,13 +178,21 @@ class TestStripeClientLive(unittest.TestCase):
             "amount_total": 7500,
         }
         self._mock_stripe.Webhook.construct_event.return_value = {
+            "id": "evt_test_webhook_cache",
             "type": "checkout.session.completed",
             "data": {"object": session},
         }
 
-        with mock.patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": "whsec_test"}, clear=False):
+        payload = b"{}"
+        secret = "whsec_test"
+        ts = int(_time.time())
+        signed = f"{ts}.".encode() + payload
+        mac = _hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+        valid_sig = f"t={ts},v1={mac}"
+
+        with mock.patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": secret}, clear=False):
             client = StripeClient()
-            result = client.process_webhook(b"{}", "sig")
+            result = client.process_webhook(payload, valid_sig)
             self.assertTrue(result["paid"])
             self.assertEqual(result["stripe_ref"], "pi_wh")
 
@@ -192,6 +201,7 @@ class TestStripeClientLive(unittest.TestCase):
             self.assertTrue(payment["paid"])
             self.assertEqual(payment["stripe_ref"], "pi_wh")
             self._mock_stripe.checkout.Session.list.assert_not_called()
+
 
     def test_issuing_card_when_available(self):
         self._mock_stripe.issuing.Cardholder.list.return_value = mock.Mock(data=[])

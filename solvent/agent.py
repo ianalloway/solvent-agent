@@ -20,6 +20,7 @@ from .treasury import Treasury, fmt
 from .guardrails import Guardrails, GuardrailError
 from .pricing import quote, PricingPolicy
 from .stripe_client import StripeClient
+from .security import sanitise_job, SOLVENTSecurityError
 from . import service
 
 
@@ -59,6 +60,17 @@ class Solvent:
         job_id = job.get("id")
         if not job_id or not isinstance(job_id, str):
             return self._emit(stage="declined", job_id="unknown", reason="missing or invalid job ID")
+
+        # SECURITY — sanitise all LLM-facing and external fields before
+        # any downstream system sees them (prompt injection, email injection,
+        # path traversal via job ID handled inside sanitise_job / service.fulfill)
+        try:
+            job = dict(job)  # work on a shallow copy; never mutate caller's dict
+            sanitise_job(job)
+        except SOLVENTSecurityError as exc:
+            reason = f"security violation: {exc}"
+            self.t.upsert_job(job_id, "failed", error_reason=reason)
+            return self._emit(stage="declined", job_id=job_id, reason=reason)
 
         # Initial insert in jobs queue
         topic = job.get("topic")
