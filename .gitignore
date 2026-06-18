@@ -35,3 +35,9 @@ data/outbox/
 !data/reports/
 data/reports/*
 !data/reports/.gitkeep
+
+# Runtime artifacts
+data/outbox/
+data/solvent.log
+solvent/dashboard_live.py
+solvent/events.py
