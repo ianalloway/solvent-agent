@@ -224,8 +224,33 @@ With both keys set:
 | `STRIPE_PAYMENT_POLL_TIMEOUT` | Seconds to wait for payment (default `120`) |
 | `STRIPE_PAYMENT_POLL_INTERVAL` | Poll interval in seconds (default `2`) |
 | `SOLVENT_FORCE_STRIPE_SIMULATE` | Force offline simulate mode even with a key |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
+| `SOLVENT_TELEGRAM_DM_POLICY` | `pairing` · `allowlist` · `open` (default `pairing`) |
+| `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |
 
 Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated runs reuse a single **SOLVENT Research Brief** product instead of cluttering your Stripe dashboard.
+
+---
+
+## 💬 Telegram (conversational channel)
+
+Full chat on Telegram with OpenClaw-style pairing and Hermes-style tool/memory patterns. See **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
+
+```bash
+pip install -r requirements-telegram.txt
+export TELEGRAM_BOT_TOKEN=...
+
+python -m solvent serve &    # Stripe webhooks + checkout
+python -m solvent worker &   # fulfill jobs
+python -m solvent telegram     # long-poll bot
+
+python -m solvent doctor       # diagnostics
+python -m solvent pairing list # pending DM codes
+```
+
+Users pair via `/start`, commission briefs in natural language, receive checkout links, and get push updates when jobs are paid and delivered.
+
+Personality and operating rules come from the **agent workspace** (`SOUL.md`, `BRAIN.md`, `AGENTS.md`) — see **[docs/WORKSPACE.md](docs/WORKSPACE.md)**.
 
 ---
 
@@ -254,6 +279,13 @@ solvent/
   jobs.py          sample inbound work
   dashboard.py     renders the treasury to HTML + JSON
   config.py        onboarding wizard and config persistence
+  gateway.py       channel router (Telegram → chat sessions)
+  chat.py          conversational loop + business tools
+  memory.py        Hermes-style session memory
+  hermes_tools.py  progressive tool disclosure bridge
+  doctor.py        stack diagnostics
+  workspace.py     SOUL/BRAIN/AGENTS prompt assembly
+  channels/        Telegram long-poll adapter
 run_demo.py        the full business loop (CLI entry point)
 demo_guardrails.py the safety story (standalone)
 tests/             pytest suite

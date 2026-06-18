@@ -13,6 +13,56 @@ MAX_TOOL_CALLS = 20
 
 ALLOWED_TOOLS = frozenset({"web_search", "market_data", "summarize"})
 
+TOOL_REGISTRY: dict[str, dict] = {
+    "web_search": {
+        "description": "Search the web for research snippets",
+        "category": "research",
+        "parameters": {"query": "string"},
+    },
+    "market_data": {
+        "description": "Fetch market data for a symbol",
+        "category": "research",
+        "parameters": {"symbol": "string"},
+    },
+    "summarize": {
+        "description": "Summarize text notes",
+        "category": "research",
+        "parameters": {"text": "string"},
+    },
+}
+
+BUSINESS_TOOL_REGISTRY: dict[str, dict] = {
+    "treasury_status": {
+        "description": "Current treasury balance, revenue, expenses, margin",
+        "category": "business",
+        "parameters": {},
+    },
+    "list_jobs": {
+        "description": "List recent jobs and statuses",
+        "category": "business",
+        "parameters": {},
+    },
+    "job_status": {
+        "description": "Status and metrics for one job",
+        "category": "business",
+        "parameters": {"job_id": "string"},
+    },
+    "quote_brief": {
+        "description": "Margin-gate quote preview without creating payment",
+        "category": "business",
+        "parameters": {"topic": "string", "budget_cents": "integer"},
+    },
+    "submit_brief": {
+        "description": "Create job and return Stripe checkout URL",
+        "category": "business",
+        "parameters": {
+            "topic": "string",
+            "budget_cents": "integer",
+            "customer_email": "string",
+        },
+    },
+}
+
 
 @dataclass
 class ToolContext:
