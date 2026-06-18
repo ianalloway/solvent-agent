@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from .agent import Solvent
-from .delivery import verify_delivery_token, markdown_to_html
+from .delivery import verify_delivery_token, markdown_to_html, is_safe_job_id
 from .stripe_client import StripeClient
 
 
@@ -61,13 +61,26 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     @app.get("/briefs/{job_id}")
     def get_brief(job_id: str, token: str = ""):
+        if not is_safe_job_id(job_id):
+            raise HTTPException(404, "brief not found")
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
-        path = Path(__file__).resolve().parent.parent / "data" / "reports" / f"{job_id}.md"
+
+        reports_dir = (Path(__file__).resolve().parent.parent / "data" / "reports").resolve()
+        path = (reports_dir / f"{job_id}.md").resolve()
+        try:
+            path.relative_to(reports_dir)
+        except ValueError:
+            raise HTTPException(404, "brief not found")
+
         if not path.is_file():
-            for p in (Path(__file__).resolve().parent.parent / "data" / "reports").glob("*.md"):
-                if job_id in p.stem:
-                    path = p
+            for candidate in reports_dir.glob("*.md"):
+                if job_id in candidate.stem:
+                    path = candidate.resolve()
+                    try:
+                        path.relative_to(reports_dir)
+                    except ValueError:
+                        continue
                     break
         if not path.is_file():
             raise HTTPException(404, "brief not found")

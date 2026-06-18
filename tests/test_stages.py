@@ -1,6 +1,7 @@
 """Tests for idempotent job stages."""
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,16 @@ from solvent.treasury import Treasury
 
 
 class TestStagesIdempotency(unittest.TestCase):
+    def setUp(self):
+        self._old_secret = os.environ.get("SOLVENT_DELIVERY_SECRET")
+        os.environ["SOLVENT_DELIVERY_SECRET"] = "test-delivery-secret-with-more-than-32-bytes"
+
+    def tearDown(self):
+        if self._old_secret is None:
+            os.environ.pop("SOLVENT_DELIVERY_SECRET", None)
+        else:
+            os.environ["SOLVENT_DELIVERY_SECRET"] = self._old_secret
+
     def test_double_paid_stage_does_not_double_earn(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "t.db"
