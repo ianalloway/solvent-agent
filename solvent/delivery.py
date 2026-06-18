@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
 import smtplib
 import time
 from email.mime.multipart import MIMEMultipart
@@ -12,13 +13,28 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 OUTBOX_DIR = Path(__file__).resolve().parent.parent / "data" / "outbox"
+MIN_DELIVERY_SECRET_BYTES = 32
+INSECURE_DELIVERY_SECRETS = {"solvent-dev-secret-change-me", "change-me-in-production"}
+SAFE_JOB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def _delivery_secret() -> str:
-    return os.environ.get("SOLVENT_DELIVERY_SECRET", "solvent-dev-secret-change-me")
+    secret = os.environ.get("SOLVENT_DELIVERY_SECRET", "").strip()
+    if secret in INSECURE_DELIVERY_SECRETS or len(secret.encode()) < MIN_DELIVERY_SECRET_BYTES:
+        raise RuntimeError(
+            "SOLVENT_DELIVERY_SECRET must be configured to a high-entropy "
+            "secret of at least 32 bytes before hosted brief delivery is used"
+        )
+    return secret
+
+
+def is_safe_job_id(job_id: str) -> bool:
+    return bool(SAFE_JOB_ID_RE.fullmatch(job_id))
 
 
 def make_delivery_token(job_id: str, ts: float | None = None) -> str:
+    if not is_safe_job_id(job_id):
+        raise ValueError("invalid job_id")
     ts = ts or time.time()
     payload = f"{job_id}:{int(ts)}"
     sig = hmac.new(_delivery_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()
@@ -26,7 +42,7 @@ def make_delivery_token(job_id: str, ts: float | None = None) -> str:
 
 
 def verify_delivery_token(job_id: str, token: str, max_age_seconds: int = 7 * 86400) -> bool:
-    if not token or "." not in token:
+    if not is_safe_job_id(job_id) or not token or "." not in token:
         return False
     ts_str, sig = token.split(".", 1)
     try:
@@ -36,7 +52,10 @@ def verify_delivery_token(job_id: str, token: str, max_age_seconds: int = 7 * 86
     if abs(time.time() - ts) > max_age_seconds:
         return False
     payload = f"{job_id}:{ts}"
-    expected = hmac.new(_delivery_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()
+    try:
+        expected = hmac.new(_delivery_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()
+    except RuntimeError:
+        return False
     return hmac.compare_digest(expected, sig)
 
 
