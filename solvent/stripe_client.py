@@ -141,7 +141,7 @@ class StripeClient:
         self._webhook_payments[plink_id] = payment
         self._save_webhook_cache()
 
-    def process_webhook(self, payload: bytes, sig_header: str) -> dict | None:
+    def process_webhook(self, payload: bytes, sig_header: str, treasury=None) -> dict | None:
         """Validate checkout.session.completed and cache verified payment.
 
         AUTH: signature is verified with HMAC-SHA256 before any data is read.
@@ -150,29 +150,100 @@ class StripeClient:
         if not self.live or not self.webhook_secret:
             return None
 
-        # 1. Verify Stripe-Signature header (raises WebhookAuthError if invalid)
         verify_webhook_signature(payload, sig_header, self.webhook_secret)
-
-        # 2. Parse event using the Stripe SDK for structural validation
         event = stripe.Webhook.construct_event(payload, sig_header, self.webhook_secret)
-
-        # 3. Replay protection — reject duplicate event IDs
         event_id = event.get("id", "")
-        check_event_replay(event_id)  # raises ReplayAttackError if duplicate
+        check_event_replay(event_id)
 
         if event["type"] != "checkout.session.completed":
             return None
         session = event["data"]["object"]
         if session.get("payment_status") != "paid":
             return None
-        plink_id = session.get("payment_link")
-        if not plink_id:
-            return None
         payment = self._session_to_payment(session)
-        self._cache_webhook_payment(plink_id, payment)
+        job_id = None
+        metadata = session.get("metadata") or {}
+        if isinstance(metadata, dict):
+            job_id = metadata.get("job_id")
+        if not job_id:
+            job_id = session.get("client_reference_id")
+        payment["job_id"] = job_id
+
+        plink_id = session.get("payment_link")
+        if plink_id:
+            self._cache_webhook_payment(plink_id, payment)
+        if job_id:
+            self._cache_webhook_payment(f"job:{job_id}", payment)
+            if treasury is not None:
+                try:
+                    treasury.upsert_checkout(
+                        job_id,
+                        payment.get("checkout_session_id", ""),
+                        "",
+                        "paid",
+                    )
+                except Exception:
+                    pass
         return payment
 
+    def get_cached_payment(self, job_id: str) -> dict | None:
+        cached = self._webhook_payments.get(f"job:{job_id}")
+        if cached and cached.get("paid"):
+            return cached
+        return None
+
     # ---- EARN -------------------------------------------------------
+    def create_checkout_session(
+        self,
+        job_id: str,
+        amount_cents: int,
+        customer_email: str,
+        name: str,
+        success_url: str,
+        cancel_url: str,
+    ) -> dict:
+        """Create a Stripe Checkout Session (primary) or simulate one."""
+        try:
+            customer_email = validate_email(customer_email)
+        except Exception:
+            customer_email = "client@example.com"
+        if self.live:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=[{
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": amount_cents,
+                        "product_data": {"name": name[:500]},
+                    },
+                    "quantity": 1,
+                }],
+                metadata={
+                    "job_id": job_id,
+                    "customer_email": customer_email,
+                    "agent": "SOLVENT",
+                },
+                client_reference_id=job_id,
+                success_url=success_url,
+                cancel_url=cancel_url,
+                idempotency_key=f"checkout-{job_id}",
+            )
+            return {
+                "id": session.id,
+                "url": session.url,
+                "amount_cents": amount_cents,
+                "simulated": False,
+                "job_id": job_id,
+            }
+        ref = "cs_sim_" + uuid.uuid4().hex[:12]
+        return {
+            "id": ref,
+            "url": f"https://checkout.stripe.test/{ref}",
+            "amount_cents": amount_cents,
+            "simulated": True,
+            "job_id": job_id,
+        }
+
     def create_payment_link(self, name: str, amount_cents: int, customer_email: str) -> dict:
         """Create a real Stripe Payment Link (test mode) or simulate one."""
         # ACCOUNT TAKEOVER — validate email before it reaches Stripe or the ledger
@@ -205,12 +276,46 @@ class StripeClient:
         if hasattr(pi_id, "id"):
             pi_id = pi_id.id
         amount = session.get("amount_total") if isinstance(session, dict) else session.amount_total
+        metadata = session.get("metadata") if isinstance(session, dict) else getattr(session, "metadata", {}) or {}
+        job_id = metadata.get("job_id") if isinstance(metadata, dict) else None
+        if not job_id:
+            job_id = session.get("client_reference_id") if isinstance(session, dict) else getattr(session, "client_reference_id", None)
         return {
             "paid": True,
             "stripe_ref": pi_id,
             "checkout_session_id": session.get("id") if isinstance(session, dict) else session.id,
             "payment_link_id": session.get("payment_link") if isinstance(session, dict) else session.payment_link,
             "amount_cents": amount,
+            "job_id": job_id,
+            "ts": time.time(),
+        }
+
+    def _poll_checkout_session_by_id(self, session_id: str, link: dict) -> dict:
+        deadline = time.time() + self.poll_timeout
+        job_id = link.get("job_id")
+        while time.time() < deadline:
+            if job_id and f"job:{job_id}" in self._webhook_payments:
+                cached = self._webhook_payments[f"job:{job_id}"]
+                if cached.get("paid"):
+                    return cached
+            if self.webhook_secret and session_id in self._webhook_payments:
+                cached = self._webhook_payments[session_id]
+                if cached.get("paid"):
+                    return cached
+            try:
+                session = stripe.checkout.Session.retrieve(session_id)
+                if session.payment_status == "paid":
+                    payment = self._session_to_payment(session)
+                    if not payment.get("amount_cents"):
+                        payment["amount_cents"] = link["amount_cents"]
+                    return payment
+            except Exception:
+                pass
+            time.sleep(self.poll_interval)
+        return {
+            "paid": False,
+            "reason": f"payment not received within {int(self.poll_timeout)}s",
+            "amount_cents": link["amount_cents"],
             "ts": time.time(),
         }
 
@@ -238,29 +343,45 @@ class StripeClient:
             "ts": time.time(),
         }
 
-    def confirm_payment(self, link: dict) -> dict:
+    def confirm_payment(self, link: dict, job_id: str | None = None) -> dict:
         """Verify payment before fulfilment.
 
         Simulate mode: instant confirm (demo / offline).
-        Live mode: poll Checkout Sessions until paid, or use webhook cache when
-        STRIPE_WEBHOOK_SECRET is set.
+        Live mode: webhook cache first, then optional poll if SOLVENT_ALLOW_POLL=1.
         """
         if not self.live or link.get("simulated"):
             sim_suffix = uuid.uuid4().hex[:12]
             return {
                 "paid": True,
                 "stripe_ref": f"pi_sim_{sim_suffix}",
-                "checkout_session_id": f"cs_sim_{sim_suffix}",
-                "payment_link_id": link["id"],
+            "checkout_session_id": link.get("id", f"cs_sim_{sim_suffix}"),
+            "payment_link_id": link.get("payment_link_id") or (link["id"] if str(link.get("id", "")).startswith("plink_") else None),
                 "amount_cents": link["amount_cents"],
                 "simulated": True,
+                "job_id": job_id or link.get("job_id"),
                 "ts": time.time(),
             }
-        if self.webhook_secret and link["id"] in self._webhook_payments:
-            cached = self._webhook_payments[link["id"]]
-            if cached.get("paid"):
+        jid = job_id or link.get("job_id")
+        if jid:
+            cached = self.get_cached_payment(jid)
+            if cached and cached.get("paid"):
                 return cached
-        return self._poll_checkout_session(link["id"], link)
+        sid = link.get("id", "")
+        if sid.startswith("cs_") and os.environ.get("SOLVENT_ALLOW_POLL", "").strip() in ("1", "true", "yes"):
+            return self._poll_checkout_session_by_id(sid, link)
+        if sid.startswith("plink_"):
+            if self.webhook_secret and sid in self._webhook_payments:
+                cached = self._webhook_payments[sid]
+                if cached.get("paid"):
+                    return cached
+            if os.environ.get("SOLVENT_ALLOW_POLL", "").strip() in ("1", "true", "yes"):
+                return self._poll_checkout_session(sid, link)
+        return {
+            "paid": False,
+            "reason": "awaiting webhook confirmation",
+            "amount_cents": link["amount_cents"],
+            "ts": time.time(),
+        }
 
     # ---- SPEND (Issuing) --------------------------------------------
     def _issuing_enabled(self) -> bool:
@@ -339,17 +460,21 @@ class StripeClient:
         }
 
     # ---- REFUND -----------------------------------------------------
-    def refund_payment(self, payment_intent_id: str, amount_cents: int) -> dict:
+    def refund_payment(self, payment_intent_id: str, amount_cents: int, job_id: str | None = None) -> dict:
         """Refund a verified PaymentIntent (test mode or simulated)."""
         if self.live:
             if not payment_intent_id or not str(payment_intent_id).startswith("pi_"):
                 raise ValueError(
                     f"refund requires a PaymentIntent id (pi_...), got: {payment_intent_id!r}"
                 )
-            refund = stripe.Refund.create(
-                payment_intent=payment_intent_id,
-                amount=amount_cents,
-            )
+            kwargs = {
+                "payment_intent": payment_intent_id,
+                "amount": amount_cents,
+            }
+            if job_id:
+                refund = stripe.Refund.create(idempotency_key=f"refund-{job_id}", **kwargs)
+            else:
+                refund = stripe.Refund.create(**kwargs)
             return {
                 "id": refund.id,
                 "stripe_ref": payment_intent_id,

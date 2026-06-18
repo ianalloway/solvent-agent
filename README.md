@@ -168,6 +168,28 @@ python3 demo_guardrails.py
 
 Shows five spend attempts and which ones the NemoClaw-style policy blocks — without starting the agent or touching Stripe.
 
+### Production mode (webhooks + async worker)
+
+```bash
+pip install -r requirements.txt -r requirements-serve.txt
+
+python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
+python3 -m solvent worker              # resume incomplete jobs, process queue
+
+# Or dev convenience:
+python3 run_demo.py --serve --no-onboard
+```
+
+See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, reconciliation, and auto-tuning.
+
+### Operations
+
+```bash
+python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
+python3 -m solvent tune                   # propose pricing improvements (dry-run)
+python3 -m solvent tune --apply             # apply after 5+ completed jobs
+```
+
 ---
 
 ## 🔑 Make It Real

@@ -15,6 +15,7 @@ Reconfigure: --onboard
 import sys
 import time
 import argparse
+import os
 from pathlib import Path
 from solvent.agent import Solvent
 from solvent.jobs import SAMPLE_JOBS
@@ -285,6 +286,17 @@ def main():
         action="store_true",
         help="keep existing database balance (do not reset treasury)",
     )
+    parser.add_argument(
+        "--async",
+        action="store_true",
+        dest="async_mode",
+        help="enqueue jobs and run background worker (non-blocking payment)",
+    )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="start HTTP server + worker (requires requirements-serve.txt)",
+    )
     args = parser.parse_args()
 
     cfg = resolve_config(args)
@@ -292,6 +304,22 @@ def main():
 
     seed_cents = int(args.seed * 100)
     fresh = not args.keep_balance
+
+    if args.serve:
+        import threading
+        from solvent.worker import run_worker
+        from solvent.server import main as serve_main
+        t = threading.Thread(
+            target=run_worker,
+            kwargs={"poll_interval": 2.0, "seed_cents": seed_cents, "fresh": fresh},
+            daemon=True,
+        )
+        t.start()
+        serve_main()
+        return
+
+    if args.async_mode:
+        os.environ["SOLVENT_ASYNC"] = "1"
 
     if args.interactive:
         run_interactive_mode(seed_cents=seed_cents, fresh=fresh)

@@ -130,6 +130,35 @@ def render(snapshot: dict, log: list[dict]) -> Path:
     if not expense_breakdown_html:
         expense_breakdown_html = "<p class='no-data-msg'>No vendor expenses logged yet.</p>"
 
+    # 3b. Ops: stuck jobs and margin drift from treasury metrics
+    ops_html = ""
+    try:
+        from .treasury import Treasury
+        t = Treasury()
+        stuck = [j for j in t.list_jobs() if j.get("status") in ("awaiting_payment", "in_progress", "paid_pending_fulfill")]
+        metrics = t.list_metrics()
+        drift_rows = [
+            m for m in metrics
+            if m.get("margin_drift_cents") is not None and abs(m.get("margin_drift_cents", 0)) > 0
+        ]
+        if stuck:
+            ops_html += "<h3>Stuck jobs</h3><ul>"
+            for j in stuck[:10]:
+                ops_html += f"<li>{j['id']}: {j.get('status')} — {j.get('topic', '')[:40]}</li>"
+            ops_html += "</ul>"
+        if drift_rows:
+            ops_html += "<h3>Margin drift</h3><ul>"
+            for m in drift_rows[-10:]:
+                ops_html += (
+                    f"<li>{m['job_id']}: est {m.get('est_margin_pct')}% → "
+                    f"actual {m.get('actual_margin_pct')}% (drift {m.get('margin_drift_cents')}c)</li>"
+                )
+            ops_html += "</ul>"
+        if not ops_html:
+            ops_html = "<p class='no-data-msg'>No stuck jobs or margin drift.</p>"
+    except Exception:
+        ops_html = ""
+
     # 4. Group details by job for card listing
     from collections import defaultdict
     jobs_data = defaultdict(lambda: {
@@ -948,6 +977,10 @@ def render(snapshot: dict, log: list[dict]) -> Path:
       <div class="vendor-breakdown-list" id="expense-breakdown">
         {expense_breakdown_html}
       </div>
+      <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Operations</h2>
+      <div class="vendor-breakdown-list" id="ops-panel">
+        {ops_html}
+      </div>
     </div>
 
     <div class="panel">
@@ -1179,6 +1212,7 @@ def render(snapshot: dict, log: list[dict]) -> Path:
         "margin_pct": s["margin_pct"],
         "chart_svg": chart_svg,
         "expense_breakdown_html": expense_breakdown_html,
+        "ops_html": ops_html,
         "job_cards_html": job_cards_html,
         "console_log_html": console_log_html,
         "jobs_data": dict(jobs_data),

@@ -36,8 +36,11 @@ class TestStripeClientSimulate(unittest.TestCase):
         payment = client.confirm_payment(link)
         self.assertTrue(payment["paid"])
         self.assertTrue(payment["stripe_ref"].startswith("pi_sim_"))
-        self.assertTrue(payment["checkout_session_id"].startswith("cs_sim_"))
-        self.assertEqual(payment["payment_link_id"], link["id"])
+        self.assertTrue(
+            payment["checkout_session_id"].startswith("cs_sim_")
+            or payment["checkout_session_id"].startswith("plink_sim_")
+        )
+        self.assertIn(payment.get("payment_link_id"), (link["id"], None))
 
     def test_simulate_refund(self):
         client = StripeClient()
@@ -127,9 +130,10 @@ class TestStripeClientLive(unittest.TestCase):
             mock.Mock(data=[paid]),
         ]
 
-        client = StripeClient()
-        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
-        payment = client.confirm_payment(link)
+        with mock.patch.dict(os.environ, {"SOLVENT_ALLOW_POLL": "1"}, clear=False):
+            client = StripeClient()
+            link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link)
 
         self.assertTrue(payment["paid"])
         self.assertEqual(payment["stripe_ref"], "pi_paid123")
@@ -140,12 +144,20 @@ class TestStripeClientLive(unittest.TestCase):
         unpaid = mock.Mock(payment_status="unpaid")
         self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[unpaid])
 
-        client = StripeClient()
-        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
-        payment = client.confirm_payment(link)
+        with mock.patch.dict(os.environ, {"SOLVENT_ALLOW_POLL": "1"}, clear=False):
+            client = StripeClient()
+            link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link)
 
         self.assertFalse(payment["paid"])
         self.assertIn("not received", payment["reason"])
+
+    def test_confirm_payment_awaits_webhook_by_default(self):
+        client = StripeClient()
+        link = {"id": "cs_test123", "amount_cents": 4900, "simulated": False, "job_id": "J1"}
+        payment = client.confirm_payment(link, job_id="J1")
+        self.assertFalse(payment["paid"])
+        self.assertIn("webhook", payment["reason"])
 
     def test_refund_requires_payment_intent(self):
         client = StripeClient()
@@ -176,6 +188,8 @@ class TestStripeClientLive(unittest.TestCase):
             "payment_intent": "pi_wh",
             "payment_link": "plink_wh",
             "amount_total": 7500,
+            "metadata": {"job_id": "J-wh"},
+            "client_reference_id": "J-wh",
         }
         self._mock_stripe.Webhook.construct_event.return_value = {
             "id": "evt_test_webhook_cache",
@@ -195,12 +209,32 @@ class TestStripeClientLive(unittest.TestCase):
             result = client.process_webhook(payload, valid_sig)
             self.assertTrue(result["paid"])
             self.assertEqual(result["stripe_ref"], "pi_wh")
+            self.assertEqual(result["job_id"], "J-wh")
 
-            link = {"id": "plink_wh", "amount_cents": 7500, "simulated": False}
-            payment = client.confirm_payment(link)
+            link = {"id": "plink_wh", "amount_cents": 7500, "simulated": False, "job_id": "J-wh"}
+            payment = client.confirm_payment(link, job_id="J-wh")
             self.assertTrue(payment["paid"])
             self.assertEqual(payment["stripe_ref"], "pi_wh")
             self._mock_stripe.checkout.Session.list.assert_not_called()
+
+    def test_create_checkout_session_live(self):
+        self._mock_stripe.checkout.Session.create.return_value = mock.Mock(
+            id="cs_new", url="https://checkout.stripe.test/cs_new"
+        )
+        client = StripeClient()
+        session = client.create_checkout_session(
+            job_id="J1",
+            amount_cents=4900,
+            customer_email="a@b.com",
+            name="Brief",
+            success_url="http://localhost/success",
+            cancel_url="http://localhost/cancel",
+        )
+        self.assertEqual(session["id"], "cs_new")
+        self._mock_stripe.checkout.Session.create.assert_called_once()
+        call_kwargs = self._mock_stripe.checkout.Session.create.call_args.kwargs
+        self.assertEqual(call_kwargs["client_reference_id"], "J1")
+        self.assertEqual(call_kwargs["idempotency_key"], "checkout-J1")
 
 
     def test_issuing_card_when_available(self):
@@ -239,14 +273,15 @@ class TestAgentPaymentFlow(unittest.TestCase):
             agent.t._init_db()
 
             link = {
-                "id": "plink_test",
-                "url": "https://pay.test/link",
+                "id": "cs_test",
+                "url": "https://pay.test/checkout",
                 "amount_cents": 4900,
                 "simulated": True,
+                "job_id": "J-test",
             }
             pending = {"paid": False, "reason": "payment not received within 120s"}
 
-            with mock.patch.object(agent.stripe, "create_payment_link", return_value=link):
+            with mock.patch.object(agent.stripe, "create_checkout_session", return_value=link):
                 with mock.patch.object(agent.stripe, "confirm_payment", return_value=pending):
                     with mock.patch("solvent.service.fulfill") as mock_fulfill:
                         result = agent.handle_job(
@@ -273,42 +308,47 @@ class TestAgentPaymentFlow(unittest.TestCase):
             agent.t._init_db()
 
             link = {
-                "id": "plink_test",
-                "url": "https://pay.test/link",
+                "id": "cs_test",
+                "url": "https://pay.test/checkout",
                 "amount_cents": 4900,
                 "simulated": True,
+                "job_id": "J-test",
             }
             payment = {
                 "paid": True,
                 "stripe_ref": "pi_test123",
                 "checkout_session_id": "cs_test123",
-                "payment_link_id": "plink_test",
+                "payment_link_id": None,
                 "amount_cents": 4900,
             }
 
-            with mock.patch.object(agent.stripe, "create_payment_link", return_value=link):
+            with mock.patch.object(agent.stripe, "create_checkout_session", return_value=link):
                 with mock.patch.object(agent.stripe, "confirm_payment", return_value=payment):
                     with mock.patch("solvent.service.fulfill") as mock_fulfill:
                         mock_fulfill.return_value = {
-                            "deliverable_path": "/tmp/x.md",
+                            "deliverable_path": str(Path(tmp) / "x.md"),
                             "tokens": 100,
                             "resources_used": [],
+                            "actual_cost_cents": 0,
+                            "fulfillment_seconds": 1.0,
+                            "tool_ctx": type("C", (), {"total_calls": 0, "market_data_calls": 0, "web_search_calls": 0})(),
+                            "usage": {"total_tokens": 100},
                         }
-                        agent.handle_job(
-                            {
-                                "id": "J-test",
-                                "topic": "Test topic",
-                                "budget_cents": 5000,
-                                "est_tokens": 1000,
-                                "market_data_calls": 1,
-                                "web_search_calls": 1,
-                            }
-                        )
+                        with mock.patch("solvent.delivery.send_brief_email", return_value={"simulated": True}):
+                            agent.handle_job(
+                                {
+                                    "id": "J-test",
+                                    "topic": "Test topic",
+                                    "budget_cents": 5000,
+                                    "est_tokens": 1000,
+                                    "market_data_calls": 1,
+                                    "web_search_calls": 1,
+                                }
+                            )
             rev = [e for e in agent.t.entries if e.kind == "revenue" and e.job_id == "J-test"]
             self.assertEqual(len(rev), 1)
             self.assertEqual(rev[0].stripe_ref, "pi_test123")
             self.assertEqual(rev[0].stripe_session_id, "cs_test123")
-            self.assertEqual(rev[0].stripe_link_id, "plink_test")
 
 
 if __name__ == "__main__":

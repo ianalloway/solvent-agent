@@ -278,6 +278,13 @@ class TestValidateCatalogSchema:
         clean = validate_catalog_schema(raw)
         assert clean["product_id"] == "prod_abc123"
         assert clean["price_ids"]["4900"] == "price_xyz789"
+        assert clean["prices"]["4900"] == "price_xyz789"
+
+    def test_prices_key_accepted(self):
+        raw = {"prices": {"4900": "price_abc123"}, "product_id": "prod_abc123"}
+        clean = validate_catalog_schema(raw)
+        assert clean["prices"]["4900"] == "price_abc123"
+        assert clean["price_ids"]["4900"] == "price_abc123"
 
     def test_unknown_keys_stripped(self):
         raw = {

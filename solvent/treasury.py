@@ -11,6 +11,7 @@ Storage is a SQLite database so it is thread-safe, concurrent, and survives rest
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 import uuid
@@ -110,6 +111,61 @@ class Treasury:
                         error_reason TEXT
                     )
                 """)
+                for col, ctype in (
+                    ("checkout_session_id", "TEXT"),
+                    ("checkout_url", "TEXT"),
+                    ("deliverable_url", "TEXT"),
+                    ("current_stage", "TEXT"),
+                    ("quote_json", "TEXT"),
+                    ("locked_until", "REAL"),
+                    ("job_payload_json", "TEXT"),
+                ):
+                    self._ensure_column(conn, "jobs", col, ctype)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS job_stages (
+                        id TEXT PRIMARY KEY,
+                        job_id TEXT NOT NULL,
+                        stage TEXT NOT NULL,
+                        idempotency_key TEXT NOT NULL UNIQUE,
+                        status TEXT NOT NULL,
+                        payload_json TEXT,
+                        result_json TEXT,
+                        ts REAL NOT NULL
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS job_metrics (
+                        job_id TEXT PRIMARY KEY,
+                        est_cost_cents INTEGER,
+                        actual_cost_cents INTEGER,
+                        est_margin_pct REAL,
+                        actual_margin_pct REAL,
+                        margin_drift_cents INTEGER,
+                        fulfillment_seconds REAL,
+                        refunded INTEGER DEFAULT 0,
+                        tool_calls INTEGER DEFAULT 0,
+                        decline_reason TEXT,
+                        ts REAL NOT NULL
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS stripe_checkout (
+                        job_id TEXT PRIMARY KEY,
+                        session_id TEXT,
+                        checkout_url TEXT,
+                        status TEXT,
+                        ts REAL NOT NULL
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS events (
+                        id TEXT PRIMARY KEY,
+                        job_id TEXT,
+                        stage TEXT,
+                        payload_json TEXT,
+                        ts REAL NOT NULL
+                    )
+                """)
 
     @contextmanager
     def lock(self):
@@ -182,6 +238,10 @@ class Treasury:
                 with conn:
                     conn.execute("DELETE FROM ledger")
                     conn.execute("DELETE FROM jobs")
+                    conn.execute("DELETE FROM job_stages")
+                    conn.execute("DELETE FROM job_metrics")
+                    conn.execute("DELETE FROM stripe_checkout")
+                    conn.execute("DELETE FROM events")
 
     # ---- writes ------------------------------------------------------
     def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
@@ -285,6 +345,12 @@ class Treasury:
             }
 
     # ---- job queue ----------------------------------------------------
+    _JOB_COLS = (
+        "topic", "budget_cents", "customer_email", "est_tokens", "market_data_calls",
+        "web_search_calls", "error_reason", "checkout_session_id", "checkout_url",
+        "deliverable_url", "current_stage", "quote_json", "locked_until", "job_payload_json",
+    )
+
     def upsert_job(self, job_id: str, status: str, **kwargs) -> None:
         """Upsert a job's status and other fields in the persistent job queue table."""
         with self.lock():
@@ -295,18 +361,24 @@ class Treasury:
                     if existing:
                         fields = ["status = ?", "updated_at = ?"]
                         params = [status, ts]
-                        for col in ("topic", "budget_cents", "customer_email", "est_tokens", "market_data_calls", "web_search_calls", "error_reason"):
+                        for col in self._JOB_COLS:
                             if col in kwargs:
+                                val = kwargs[col]
+                                if col == "job_payload_json" and isinstance(val, dict):
+                                    val = json.dumps(val)
                                 fields.append(f"{col} = ?")
-                                params.append(kwargs[col])
+                                params.append(val)
                         params.append(job_id)
                         conn.execute(f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params)
                     else:
                         cols = ["id", "status", "created_at", "updated_at"]
                         vals = [job_id, status, ts, ts]
-                        for col in ("topic", "budget_cents", "customer_email", "est_tokens", "market_data_calls", "web_search_calls", "error_reason"):
+                        for col in self._JOB_COLS:
                             cols.append(col)
-                            vals.append(kwargs.get(col))
+                            val = kwargs.get(col)
+                            if col == "job_payload_json" and isinstance(val, dict):
+                                val = json.dumps(val)
+                            vals.append(val)
                         placeholders = ", ".join(["?"] * len(cols))
                         conn.execute(f"INSERT INTO jobs ({', '.join(cols)}) VALUES ({placeholders})", vals)
 
@@ -321,6 +393,202 @@ class Treasury:
             with self._conn() as conn:
                 rows = conn.execute("SELECT * FROM jobs ORDER BY created_at ASC").fetchall()
                 return [dict(row) for row in rows]
+
+    def list_jobs_by_status(self, statuses: list[str]) -> list[dict]:
+        if not statuses:
+            return []
+        placeholders = ", ".join("?" * len(statuses))
+        with self.lock():
+            with self._conn() as conn:
+                rows = conn.execute(
+                    f"SELECT * FROM jobs WHERE status IN ({placeholders}) ORDER BY created_at ASC",
+                    statuses,
+                ).fetchall()
+                return [dict(row) for row in rows]
+
+    def claim_job(self, job_id: str, lease_seconds: float = 60.0) -> bool:
+        """Acquire a short lease on a job for worker processing."""
+        now = time.time()
+        until = now + lease_seconds
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    row = conn.execute(
+                        "SELECT locked_until FROM jobs WHERE id = ?", (job_id,)
+                    ).fetchone()
+                    if not row:
+                        return False
+                    locked = row["locked_until"]
+                    if locked and locked > now:
+                        return False
+                    conn.execute(
+                        "UPDATE jobs SET locked_until = ?, updated_at = ? WHERE id = ?",
+                        (until, now, job_id),
+                    )
+                    return True
+
+    def release_job(self, job_id: str) -> None:
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    conn.execute(
+                        "UPDATE jobs SET locked_until = NULL, updated_at = ? WHERE id = ?",
+                        (time.time(), job_id),
+                    )
+
+    def get_stage(self, idempotency_key: str) -> Optional[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM job_stages WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                ).fetchone()
+                return dict(row) if row else None
+
+    def complete_stage(
+        self,
+        job_id: str,
+        stage: str,
+        idempotency_key: str,
+        result: dict | None = None,
+        payload: dict | None = None,
+    ) -> dict:
+        with self.lock():
+            existing = self.get_stage(idempotency_key)
+            if existing and existing["status"] == "completed":
+                return json.loads(existing["result_json"] or "{}")
+            stage_id = "st_" + uuid.uuid4().hex[:12]
+            ts = time.time()
+            with self._conn() as conn:
+                with conn:
+                    conn.execute("""
+                        INSERT OR REPLACE INTO job_stages
+                        (id, job_id, stage, idempotency_key, status, payload_json, result_json, ts)
+                        VALUES (?, ?, ?, ?, 'completed', ?, ?, ?)
+                    """, (
+                        stage_id,
+                        job_id,
+                        stage,
+                        idempotency_key,
+                        json.dumps(payload or {}),
+                        json.dumps(result or {}),
+                        ts,
+                    ))
+            return result or {}
+
+    def record_event(self, job_id: str, stage: str, payload: dict) -> None:
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    conn.execute(
+                        "INSERT INTO events (id, job_id, stage, payload_json, ts) VALUES (?, ?, ?, ?, ?)",
+                        ("ev_" + uuid.uuid4().hex[:12], job_id, stage, json.dumps(payload), time.time()),
+                    )
+
+    def list_events(self, job_id: str | None = None, limit: int = 500) -> list[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                if job_id:
+                    rows = conn.execute(
+                        "SELECT * FROM events WHERE job_id = ? ORDER BY ts DESC LIMIT ?",
+                        (job_id, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
+                    ).fetchall()
+                return [dict(r) for r in rows]
+
+    def upsert_metrics(self, job_id: str, **kwargs) -> None:
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    existing = conn.execute(
+                        "SELECT job_id FROM job_metrics WHERE job_id = ?", (job_id,)
+                    ).fetchone()
+                    ts = time.time()
+                    if existing:
+                        fields = ["ts = ?"]
+                        params: list = [ts]
+                        for col in (
+                            "est_cost_cents", "actual_cost_cents", "est_margin_pct",
+                            "actual_margin_pct", "margin_drift_cents", "fulfillment_seconds",
+                            "refunded", "tool_calls", "decline_reason",
+                        ):
+                            if col in kwargs:
+                                fields.append(f"{col} = ?")
+                                params.append(kwargs[col])
+                        params.append(job_id)
+                        conn.execute(
+                            f"UPDATE job_metrics SET {', '.join(fields)} WHERE job_id = ?",
+                            params,
+                        )
+                    else:
+                        cols = ["job_id", "ts"]
+                        vals: list = [job_id, ts]
+                        for col in (
+                            "est_cost_cents", "actual_cost_cents", "est_margin_pct",
+                            "actual_margin_pct", "margin_drift_cents", "fulfillment_seconds",
+                            "refunded", "tool_calls", "decline_reason",
+                        ):
+                            if col in kwargs:
+                                cols.append(col)
+                                vals.append(kwargs[col])
+                        placeholders = ", ".join(["?"] * len(cols))
+                        conn.execute(
+                            f"INSERT INTO job_metrics ({', '.join(cols)}) VALUES ({placeholders})",
+                            vals,
+                        )
+
+    def get_metrics(self, job_id: str) -> Optional[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM job_metrics WHERE job_id = ?", (job_id,)
+                ).fetchone()
+                return dict(row) if row else None
+
+    def list_metrics(self) -> list[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                rows = conn.execute("SELECT * FROM job_metrics ORDER BY ts ASC").fetchall()
+                return [dict(r) for r in rows]
+
+    def upsert_checkout(self, job_id: str, session_id: str, checkout_url: str, status: str) -> None:
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    conn.execute("""
+                        INSERT OR REPLACE INTO stripe_checkout
+                        (job_id, session_id, checkout_url, status, ts)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (job_id, session_id, checkout_url, status, time.time()))
+
+    def get_checkout(self, job_id: str) -> Optional[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM stripe_checkout WHERE job_id = ?", (job_id,)
+                ).fetchone()
+                return dict(row) if row else None
+
+    def job_has_revenue(self, job_id: str) -> bool:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) as c FROM ledger WHERE job_id = ? AND kind = 'revenue'",
+                    (job_id,),
+                ).fetchone()
+                return (row["c"] or 0) > 0
+
+    def stage_completed(self, job_id: str, stage: str) -> bool:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) as c FROM job_stages WHERE job_id = ? AND stage = ? AND status = 'completed'",
+                    (job_id, stage),
+                ).fetchone()
+                return (row["c"] or 0) > 0
 
 
 def fmt(cents: int) -> str:

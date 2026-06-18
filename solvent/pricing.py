@@ -60,18 +60,27 @@ class PricingPolicy:
     min_price_cents: int = 1_500       # never sell a report under $15
 
 
+def get_resource_costs() -> Dict[str, int]:
+    """Return effective resource costs, applying improver overrides if present."""
+    from pathlib import Path
+    import json
+    costs = dict(RESOURCE_COSTS_CENTS)
+    override_path = Path(".solvent/pricing_overrides.json")
+    if override_path.is_file():
+        try:
+            overrides = json.loads(override_path.read_text(encoding="utf-8"))
+            if isinstance(overrides, dict):
+                for k, v in overrides.items():
+                    if k in costs and isinstance(v, (int, float)):
+                        costs[k] = int(v)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return costs
+
+
 def estimate_cost(job: Dict[str, Any]) -> Tuple[int, Dict[str, int]]:
-    """Estimate fulfilment cost from the job's declared complexity.
-
-    Args:
-        job: A dictionary defining job specifications (e.g. est_tokens, market_data_calls).
-
-    Returns:
-        A tuple containing:
-            - The total estimated cost in cents.
-            - A dictionary breaking down costs by resource type.
-    """
-    costs = RESOURCE_COSTS_CENTS
+    """Estimate fulfilment cost from the job's declared complexity."""
+    costs = get_resource_costs()
     tokens_k = job.get("est_tokens", 8_000) / 1_000
     breakdown = {
         "nemotron_inference": round(tokens_k * costs["nemotron_tokens_per_1k"]),

@@ -9,10 +9,12 @@ with zero credentials. Either way the rest of the system is identical.
 
 from __future__ import annotations
 
-import os
 import json
+import os
+import re
 import urllib.request
 
+from . import tools
 
 MODEL = os.environ.get("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -28,7 +30,17 @@ def configure(model: str = "offline", nemotron_model: str | None = None) -> None
         MODEL = nemotron_model
 
 
-def _live_complete(system: str, user: str) -> str:
+def _estimate_tokens(system: str, user: str, text: str) -> dict:
+    total = max(1, (len(system) + len(user) + len(text)) // 4)
+    return {
+        "prompt_tokens": max(1, (len(system) + len(user)) // 4),
+        "completion_tokens": max(1, len(text) // 4),
+        "total_tokens": total,
+        "estimated": True,
+    }
+
+
+def _live_complete(system: str, user: str) -> tuple[str, dict]:
     key = os.environ["NVIDIA_API_KEY"]
     body = json.dumps({
         "model": MODEL,
@@ -45,7 +57,16 @@ def _live_complete(system: str, user: str) -> str:
     )
     with urllib.request.urlopen(req, timeout=60) as r:
         data = json.loads(r.read())
-    return data["choices"][0]["message"]["content"]
+    text = data["choices"][0]["message"]["content"]
+    usage = data.get("usage") or {}
+    if usage:
+        return text, {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+            "estimated": False,
+        }
+    return text, _estimate_tokens(system, user, text)
 
 
 def _stub_complete(system: str, user: str) -> str:
@@ -71,18 +92,72 @@ def _stub_complete(system: str, user: str) -> str:
     )
 
 
-def complete(system: str, user: str) -> tuple[str, int]:
-    """Return (text, tokens_used_estimate)."""
+def complete(system: str, user: str) -> tuple[str, dict]:
+    """Return (text, usage_dict). usage_dict has prompt/completion/total tokens."""
     if _force_offline:
         text = _stub_complete(system, user)
-        tokens = max(1, (len(system) + len(user) + len(text)) // 4)
-        return text, tokens
+        return text, _estimate_tokens(system, user, text)
     if os.environ.get("NVIDIA_API_KEY"):
         try:
-            text = _live_complete(system, user)
-        except Exception as e:  # network/key issues -> never break the demo
+            return _live_complete(system, user)
+        except Exception as e:
             text = _stub_complete(system, user) + f"\n\n<!-- live call failed: {e} -->"
-    else:
-        text = _stub_complete(system, user)
-    tokens = max(1, (len(system) + len(user) + len(text)) // 4)
-    return text, tokens
+            return text, _estimate_tokens(system, user, text)
+    text = _stub_complete(system, user)
+    return text, _estimate_tokens(system, user, text)
+
+
+_TOOL_CALL_RE = re.compile(
+    r"TOOL_CALL:\s*(\w+)\s*(\{.*?\})",
+    re.DOTALL,
+)
+
+
+def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.ToolContext]:
+    """Bounded tool-calling loop: plan → tools → final brief."""
+    ctx = tools.ToolContext()
+    live_search = bool(os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes"))
+    notes: list[str] = []
+    system = (
+        "You are SOLVENT, a disciplined sell-side research analyst. "
+        "You may request tools using TOOL_CALL: tool_name {\"arg\": \"value\"}. "
+        "Allowed tools: web_search, market_data, summarize. "
+        "Do not request payment or treasury actions. "
+        "After gathering evidence, write the final brief with markdown headings."
+    )
+    user = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
+
+    for _round in range(tools.MAX_TOOL_ROUNDS):
+        text, usage = complete(system, user)
+        matches = list(_TOOL_CALL_RE.finditer(text))
+        if not matches:
+            if "# " in text or "## " in text:
+                return text, usage, ctx
+            user = text + "\n\nWrite the final research brief now with markdown headings."
+            continue
+        for m in matches:
+            name = m.group(1)
+            try:
+                args = json.loads(m.group(2))
+            except json.JSONDecodeError:
+                continue
+            if ctx.total_calls >= tools.MAX_TOOL_CALLS:
+                break
+            try:
+                result = tools.dispatch(
+                    name, args, ctx, lambda s, u: complete(s, u)[0], live_search=live_search
+                )
+                notes.append(f"### {name}\n{result}")
+            except (ValueError, RuntimeError):
+                continue
+        user = (
+            f"Research notes so far:\n" + "\n\n".join(notes) +
+            "\n\nWrite the final decision-ready research brief for: " + topic
+        )
+
+    final_user = (
+        f"Research notes:\n" + "\n\n".join(notes) +
+        f"\n\nProduce the final brief for: {topic}"
+    )
+    text, usage = complete(system, final_user)
+    return text, usage, ctx
