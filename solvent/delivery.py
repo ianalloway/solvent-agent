@@ -14,6 +14,11 @@ from pathlib import Path
 OUTBOX_DIR = Path(__file__).resolve().parent.parent / "data" / "outbox"
 
 
+def is_safe_job_id(job_id: str) -> bool:
+    """Reject path traversal in brief URLs."""
+    return bool(job_id) and "/" not in job_id and ".." not in job_id and "\\" not in job_id
+
+
 def _delivery_secret() -> str:
     return os.environ.get("SOLVENT_DELIVERY_SECRET", "solvent-dev-secret-change-me")
 

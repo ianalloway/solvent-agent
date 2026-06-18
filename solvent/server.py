@@ -1,21 +1,55 @@
-"""HTTP server: Stripe webhooks, job API, hosted briefs."""
+"""HTTP server: Stripe webhooks, job API, interactive dashboard + chat."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import threading
+import time
 from pathlib import Path
 
 from .agent import Solvent
-from .delivery import verify_delivery_token, markdown_to_html
+from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
+from .gateway import Gateway, register_outbound
+from .delivery import verify_delivery_token, markdown_to_html, is_safe_job_id
+from .event_hub import EventHub
 from .stripe_client import StripeClient
+
+try:
+    from starlette.requests import Request
+except ImportError:
+    Request = object  # type: ignore[misc,assignment]
+
+try:
+    from pydantic import BaseModel
+except ImportError:
+    BaseModel = object  # type: ignore[misc,assignment]
+
+
+class ChatBody(BaseModel):
+    message: str
+    session_id: str | None = None
+
+
+class JobBody(BaseModel):
+    id: str | None = None
+    topic: str | None = None
+    budget_cents: int | None = None
+    customer_email: str | None = None
+    est_tokens: int | None = None
+    market_data_calls: int | None = None
+    web_search_calls: int | None = None
+    context: str | None = None
+
+    model_config = {"extra": "allow"}
 
 
 def _require_fastapi():
     try:
-        from fastapi import FastAPI, Request, HTTPException
-        from fastapi.responses import HTMLResponse, JSONResponse
-        return FastAPI, Request, HTTPException, HTMLResponse, JSONResponse
+        from fastapi import FastAPI, HTTPException
+        from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+        return FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse
     except ImportError as exc:
         raise RuntimeError(
             "FastAPI is required for `solvent serve`. "
@@ -24,22 +58,126 @@ def _require_fastapi():
 
 
 def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
-    FastAPI, Request, HTTPException, HTMLResponse, JSONResponse = _require_fastapi()
+    FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse = _require_fastapi()
+    hub = EventHub()
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, sync_payment=False)
+    gateway = Gateway(agent=agent)
     stripe = StripeClient()
-    app = FastAPI(title="SOLVENT", version="2.0")
+    status_lock = threading.Lock()
+    last_status_json = ""
+
+    def _refresh_status() -> dict:
+        from . import dashboard
+        return dashboard.build_status_data(agent.t.snapshot(), agent.log)
+
+    def _publish_status() -> None:
+        nonlocal last_status_json
+        data = _refresh_status()
+        payload = json.dumps(data, sort_keys=True)
+        with status_lock:
+            if payload == last_status_json:
+                return
+            last_status_json = payload
+        hub.publish("status", {"data": data})
+
+    def _on_agent_event(event: dict) -> None:
+        agent._capture_event(event)
+        data = _refresh_status()
+        hub.publish("agent_event", {"event": event, "data": data})
+
+    agent._runner.on_event = _on_agent_event
+    agent.on_event = _on_agent_event
+
+    def _dashboard_outbound(external_id: str, text: str) -> None:
+        hub.publish("chat", {"role": "assistant", "text": text, "session_id": external_id})
+
+    register_outbound("dashboard", _dashboard_outbound)
+
+    app = FastAPI(title="SOLVENT", version="2.1")
+
+    @app.on_event("startup")
+    async def _startup():
+        hub.bind_loop(asyncio.get_running_loop())
+        from . import dashboard
+        dashboard.render(agent.t.snapshot(), agent.log, live=True)
+
+        async def _poll_external_status():
+            status_path = Path(__file__).resolve().parent.parent / "data" / "dashboard_status.json"
+            last_mtime = 0.0
+            while True:
+                try:
+                    if status_path.is_file():
+                        mtime = status_path.stat().st_mtime
+                        if mtime > last_mtime:
+                            last_mtime = mtime
+                            data = json.loads(status_path.read_text(encoding="utf-8"))
+                            hub.publish("status", {"data": data})
+                except Exception:
+                    pass
+                await asyncio.sleep(2.0)
+
+        asyncio.create_task(_poll_external_status())
 
     @app.get("/health")
     def health():
         return {"status": "ok", "balance_cents": agent.t.balance_cents()}
 
-    @app.post("/jobs")
-    async def create_job(request: Request):
-        body = await request.json()
-        if not body.get("id"):
+    @app.get("/")
+    def dashboard_page():
+        from . import dashboard
+        path = dashboard.render(agent.t.snapshot(), agent.log, live=True)
+        return HTMLResponse(path.read_text(encoding="utf-8"))
+
+    @app.get("/api/status")
+    def api_status():
+        return JSONResponse(_refresh_status())
+
+    @app.get("/api/events")
+    async def api_events():
+        q = hub.subscribe()
+
+        async def stream():
+            try:
+                yield EventHub.sse_format({"type": "hello", "ts": time.time()})
+                while True:
+                    try:
+                        msg = await asyncio.wait_for(q.get(), timeout=15.0)
+                        yield EventHub.sse_format(msg)
+                    except asyncio.TimeoutError:
+                        yield EventHub.sse_format({"type": "ping", "ts": time.time()})
+            finally:
+                hub.unsubscribe(q)
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    @app.post("/api/chat")
+    async def api_chat(body: ChatBody):
+        message = body.message.strip()
+        if not message:
+            raise HTTPException(400, "message required")
+        session_id = body.session_id or "dashboard-default"
+        reply = gateway.handle_inbound("dashboard", session_id, message, user_label="dashboard")
+        _publish_status()
+        return {"reply": reply, "session_id": session_id}
+
+    @app.post("/api/job")
+    async def api_job(body: JobBody):
+        payload = body.model_dump(exclude_none=True)
+        if not payload.get("id"):
             import uuid
-            body["id"] = "J" + uuid.uuid4().hex[:8]
-        result = agent.enqueue_job(body)
+            payload["id"] = "J" + uuid.uuid4().hex[:8]
+        result = agent.enqueue_job(payload)
+        _publish_status()
+        return JSONResponse(result)
+
+    @app.post("/jobs")
+    async def create_job(body: JobBody):
+        payload = body.model_dump(exclude_none=True)
+        if not payload.get("id"):
+            import uuid
+            payload["id"] = "J" + uuid.uuid4().hex[:8]
+        result = agent.enqueue_job(payload)
+        _publish_status()
         return JSONResponse(result)
 
     @app.get("/jobs/{job_id}")
@@ -51,24 +189,27 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return {"job": dict(row), "metrics": metrics}
 
     @app.post("/webhooks/stripe")
-    async def stripe_webhook(request: Request):
-        payload = await request.body()
-        sig = request.headers.get("Stripe-Signature", "")
+    async def stripe_webhook(req: Request):
+        payload = await req.body()
+        sig = req.headers.get("Stripe-Signature", "")
         payment = stripe.process_webhook(payload, sig, treasury=agent.t)
         if payment and payment.get("job_id"):
             agent._runner.handle_webhook_payment(payment)
+            _publish_status()
         return {"received": True}
 
     @app.get("/briefs/{job_id}")
     def get_brief(job_id: str, token: str = ""):
+        if not is_safe_job_id(job_id):
+            raise HTTPException(404, "brief not found")
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
-        path = Path(__file__).resolve().parent.parent / "data" / "reports" / f"{job_id}.md"
-        if not path.is_file():
-            for p in (Path(__file__).resolve().parent.parent / "data" / "reports").glob("*.md"):
-                if job_id in p.stem:
-                    path = p
-                    break
+        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
+        path = (reports_dir / f"{job_id}.md").resolve()
+        try:
+            path.relative_to(reports_dir.resolve())
+        except ValueError:
+            raise HTTPException(404, "brief not found")
         if not path.is_file():
             raise HTTPException(404, "brief not found")
         return HTMLResponse(markdown_to_html(path.read_text(encoding="utf-8")))

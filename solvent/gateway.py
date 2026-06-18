@@ -122,6 +122,9 @@ class Gateway:
         for sess in self.agent.t.list_chat_sessions_by_channel("telegram"):
             if sess.get("notify_job_id") == jid:
                 notify("telegram", sess["external_id"], msg)
+        for sess in self.agent.t.list_chat_sessions_by_channel("dashboard"):
+            if sess.get("notify_job_id") == jid:
+                notify("dashboard", sess["external_id"], msg)
 
 
 _default_gateway: Gateway | None = None
