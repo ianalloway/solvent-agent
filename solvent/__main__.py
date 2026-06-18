@@ -24,6 +24,8 @@ def main():
         from run_demo import main as demo_main
         demo_main()
 
+from .cli import main
+
 
 if __name__ == "__main__":
     main()
