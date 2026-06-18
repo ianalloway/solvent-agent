@@ -14,6 +14,8 @@ first-run terminal wizard.
 | Credentials in local store (not repo) | `~/.nemoclaw/credentials.json` | `.solvent/config.json` (gitignored); API keys stay in env |
 | Runtime model switch without full reinstall | `openshell inference set` | Config `model` field; re-run `--onboard` to change |
 | Status banner after setup | `nemoclaw <name> status` | Post-wizard summary: model, mode, Stripe sim/live |
+| DM pairing for chat channels | OpenClaw `dmPolicy: pairing` | Telegram `/start` → `python -m solvent pairing approve` |
+| Agent workspace files | OpenClaw `~/.openclaw/workspace` | `.solvent/workspace/` seeded on onboard · `python -m solvent workspace setup` |
 
 ## Hermes / Nous patterns
 
@@ -24,7 +26,11 @@ first-run terminal wizard.
 | Provider + model selection | `hermes model` | Model step with offline default for zero-credential demos |
 | Interaction surface choice | `hermes` CLI vs `hermes --tui` vs `hermes gateway` | Batch demo / interactive REPL / programmatic-only guidance |
 | Config in `~/.hermes/` | Hermes docs | `.solvent/config.json` |
-| `hermes doctor` for diagnostics | Hermes CLI | Post-onboard hints for missing keys |
+| `hermes doctor` for diagnostics | Hermes CLI | `python -m solvent doctor` |
+| Channel gateway + pairing | OpenClaw `dmPolicy: pairing` | `solvent/gateway.py`, `solvent/channels/telegram.py`, `python -m solvent pairing` |
+| Progressive tool disclosure | Hermes `tool_search` / `tool_call` | `solvent/hermes_tools.py` when catalog > 10 tools |
+| Session memory | Hermes chat history | `solvent/memory.py` · `chat_messages` table |
+| Agent workspace (brain) | OpenClaw workspace + Hermes SOUL | `.solvent/workspace/` · `SOUL.md`, `BRAIN.md`, `AGENTS.md` · [docs/WORKSPACE.md](docs/WORKSPACE.md) |
 | Welcome banner with active model | Hermes TUI | Colored banner in `onboarding.py` matching `run_demo.py` |
 
 ## SOLVENT-specific choices

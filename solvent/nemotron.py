@@ -111,6 +111,27 @@ _TOOL_CALL_RE = re.compile(
     r"TOOL_CALL:\s*(\w+)\s*(\{.*?\})",
     re.DOTALL,
 )
+_HERMES_TOOL_RE = re.compile(
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
+    re.DOTALL,
+)
+
+
+def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
+    """Parse Hermes <tool_call> JSON and legacy TOOL_CALL: lines."""
+    calls: list[tuple[str, dict]] = []
+    for m in _HERMES_TOOL_RE.finditer(text):
+        try:
+            payload = json.loads(m.group(1))
+            calls.append((payload.get("name", ""), payload.get("arguments") or {}))
+        except json.JSONDecodeError:
+            continue
+    for m in _TOOL_CALL_RE.finditer(text):
+        try:
+            calls.append((m.group(1), json.loads(m.group(2))))
+        except json.JSONDecodeError:
+            continue
+    return calls
 
 
 def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.ToolContext]:
@@ -129,18 +150,13 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
 
     for _round in range(tools.MAX_TOOL_ROUNDS):
         text, usage = complete(system, user)
-        matches = list(_TOOL_CALL_RE.finditer(text))
+        matches = parse_tool_calls(text)
         if not matches:
             if "# " in text or "## " in text:
                 return text, usage, ctx
             user = text + "\n\nWrite the final research brief now with markdown headings."
             continue
-        for m in matches:
-            name = m.group(1)
-            try:
-                args = json.loads(m.group(2))
-            except json.JSONDecodeError:
-                continue
+        for name, args in matches:
             if ctx.total_calls >= tools.MAX_TOOL_CALLS:
                 break
             try:

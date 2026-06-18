@@ -30,11 +30,17 @@ class SolventConfig:
     worker_enabled: bool = False
     async_mode: bool = False
 
+    telegram_enabled: bool = False
+    telegram_dm_policy: str = "pairing"
+    telegram_allow_from: list[str] | None = None
+
     def validate(self) -> None:
         if self.model not in VALID_MODELS:
             raise ValueError(f"invalid model: {self.model}")
         if self.interaction_mode not in VALID_MODES:
             raise ValueError(f"invalid interaction_mode: {self.interaction_mode}")
+        if self.telegram_dm_policy not in ("pairing", "allowlist", "open", "disabled"):
+            raise ValueError(f"invalid telegram_dm_policy: {self.telegram_dm_policy}")
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -96,3 +102,8 @@ def apply_config(config: SolventConfig) -> None:
         os.environ["SOLVENT_ASYNC"] = "1"
     else:
         os.environ.pop("SOLVENT_ASYNC", None)
+
+    if config.telegram_dm_policy:
+        os.environ["SOLVENT_TELEGRAM_DM_POLICY"] = config.telegram_dm_policy
+    if config.telegram_allow_from:
+        os.environ["SOLVENT_TELEGRAM_ALLOW_FROM"] = ",".join(config.telegram_allow_from)

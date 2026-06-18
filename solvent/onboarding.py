@@ -12,6 +12,7 @@ import os
 import sys
 
 from .config import SolventConfig, save_config
+from .workspace import seed_workspace
 
 # Match run_demo.py terminal palette
 C_RESET = "\033[0m"
@@ -92,6 +93,10 @@ def _doctor_notes(cfg: SolventConfig) -> list[str]:
         notes.append(
             f"{C_RED}STRIPE_API_KEY is a live key — SOLVENT refuses sk_live_* keys.{C_RESET}"
         )
+    if cfg.telegram_enabled and not os.environ.get("TELEGRAM_BOT_TOKEN"):
+        notes.append(
+            f"{C_YELLOW}TELEGRAM_BOT_TOKEN not set — run `python -m solvent telegram` after exporting token.{C_RESET}"
+        )
     return notes
 
 
@@ -109,6 +114,8 @@ def _print_summary(cfg: SolventConfig, path):
     print(f"  Model      {model_label}")
     print(f"  Mode       {mode_labels.get(cfg.interaction_mode, cfg.interaction_mode)}")
     print(f"  Stripe     {stripe_label}")
+    if cfg.telegram_enabled:
+        print(f"  Telegram   enabled · dm_policy={cfg.telegram_dm_policy}")
     for note in _doctor_notes(cfg):
         print(f"  ⚠️  {note}")
     print(BAR)
@@ -174,14 +181,37 @@ def run_wizard() -> SolventConfig:
     print(f"  {C_GREY}Real test Payment Links need STRIPE_API_KEY=sk_test_...{C_RESET}")
     stripe_test_mode = _yes_no("Enable Stripe test mode?", default=False)
 
+    # --- Telegram (optional channel) ---------------------------------------
+    print(f"\n{C_BOLD}Step 4 — Telegram bot (optional){C_RESET}")
+    print(f"  {C_GREY}Requires TELEGRAM_BOT_TOKEN in env · see docs/TELEGRAM.md{C_RESET}")
+    telegram_enabled = _yes_no("Enable Telegram in config?", default=False)
+    telegram_dm_policy = "pairing"
+    telegram_allow_from = None
+    if telegram_enabled:
+        pol = _prompt_choice(
+            "DM policy for unknown users",
+            [
+                ("Pairing", "6-digit code + operator approve (recommended)"),
+                ("Allowlist", "Only IDs in telegram_allow_from / allowlist file"),
+                ("Open", "Accept all DMs (not recommended)"),
+            ],
+            default=1,
+        )
+        telegram_dm_policy = {1: "pairing", 2: "allowlist", 3: "open"}[pol]
+
     cfg = SolventConfig(
         onboarded=True,
         model=model,
         nemotron_model=nemotron_model,
         interaction_mode=interaction_mode,
         stripe_test_mode=stripe_test_mode,
+        telegram_enabled=telegram_enabled,
+        telegram_dm_policy=telegram_dm_policy,
+        telegram_allow_from=telegram_allow_from,
     )
     path = save_config(cfg)
+    ws = seed_workspace()
+    print(f"  {C_GREY}Agent workspace seeded at {ws}{C_RESET}")
     _print_summary(cfg, path)
     return cfg
 

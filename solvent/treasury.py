@@ -166,6 +166,41 @@ class Treasury:
                         ts REAL NOT NULL
                     )
                 """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS chat_sessions (
+                        id TEXT PRIMARY KEY,
+                        channel TEXT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        user_label TEXT,
+                        paired INTEGER DEFAULT 0,
+                        pending_job_json TEXT,
+                        notify_job_id TEXT,
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        UNIQUE(channel, external_id)
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS chat_messages (
+                        id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        ts REAL NOT NULL
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS telegram_pairing (
+                        code TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        username TEXT,
+                        expires_at REAL NOT NULL,
+                        approved INTEGER DEFAULT 0,
+                        created_at REAL NOT NULL
+                    )
+                """)
+                self._ensure_column(conn, "chat_sessions", "pending_job_json", "TEXT")
+                self._ensure_column(conn, "chat_sessions", "notify_job_id", "TEXT")
 
     @contextmanager
     def lock(self):
@@ -242,6 +277,9 @@ class Treasury:
                     conn.execute("DELETE FROM job_metrics")
                     conn.execute("DELETE FROM stripe_checkout")
                     conn.execute("DELETE FROM events")
+                    conn.execute("DELETE FROM chat_messages")
+                    conn.execute("DELETE FROM chat_sessions")
+                    conn.execute("DELETE FROM telegram_pairing")
 
     # ---- writes ------------------------------------------------------
     def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
@@ -589,6 +627,150 @@ class Treasury:
                     (job_id, stage),
                 ).fetchone()
                 return (row["c"] or 0) > 0
+
+    # ---- chat sessions (gateway / Hermes memory) -----------------------
+    def get_or_create_chat_session(
+        self, channel: str, external_id: str, user_label: str | None = None
+    ) -> dict:
+        sid = f"{channel}:{external_id}"
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    row = conn.execute(
+                        "SELECT * FROM chat_sessions WHERE channel = ? AND external_id = ?",
+                        (channel, external_id),
+                    ).fetchone()
+                    ts = time.time()
+                    if row:
+                        return dict(row)
+                    conn.execute("""
+                        INSERT INTO chat_sessions
+                        (id, channel, external_id, user_label, paired, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, 0, ?, ?)
+                    """, (sid, channel, external_id, user_label, ts, ts))
+                    return {
+                        "id": sid,
+                        "channel": channel,
+                        "external_id": external_id,
+                        "user_label": user_label,
+                        "paired": 0,
+                        "created_at": ts,
+                        "updated_at": ts,
+                    }
+
+    def update_chat_session(self, session_id: str, **kwargs) -> None:
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    fields = ["updated_at = ?"]
+                    params: list = [time.time()]
+                    for col in ("user_label", "paired", "pending_job_json", "notify_job_id"):
+                        if col in kwargs:
+                            val = kwargs[col]
+                            if col == "pending_job_json" and isinstance(val, dict):
+                                val = json.dumps(val)
+                            fields.append(f"{col} = ?")
+                            params.append(val)
+                    params.append(session_id)
+                    conn.execute(
+                        f"UPDATE chat_sessions SET {', '.join(fields)} WHERE id = ?",
+                        params,
+                    )
+
+    def get_chat_session(self, session_id: str) -> Optional[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM chat_sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+                return dict(row) if row else None
+
+    def list_chat_sessions_by_channel(self, channel: str) -> list[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM chat_sessions WHERE channel = ? ORDER BY updated_at DESC",
+                    (channel,),
+                ).fetchall()
+                return [dict(r) for r in rows]
+
+    def add_chat_message(self, session_id: str, role: str, content: str) -> None:
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    conn.execute(
+                        "INSERT INTO chat_messages (id, session_id, role, content, ts) VALUES (?, ?, ?, ?, ?)",
+                        ("cm_" + uuid.uuid4().hex[:12], session_id, role, content, time.time()),
+                    )
+
+    def get_chat_messages(self, session_id: str, limit: int = 20) -> list[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT role, content, ts FROM chat_messages WHERE session_id = ? "
+                    "ORDER BY ts DESC LIMIT ?",
+                    (session_id, limit),
+                ).fetchall()
+                return [dict(r) for r in reversed(rows)]
+
+    def create_pairing_code(self, user_id: str, username: str | None = None, ttl: float = 3600) -> str:
+        code = "TG-" + uuid.uuid4().hex[:6].upper()
+        now = time.time()
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    conn.execute("""
+                        INSERT INTO telegram_pairing (code, user_id, username, expires_at, approved, created_at)
+                        VALUES (?, ?, ?, ?, 0, ?)
+                    """, (code, user_id, username, now + ttl, now))
+        return code
+
+    def approve_pairing(self, code: str) -> Optional[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    row = conn.execute(
+                        "SELECT * FROM telegram_pairing WHERE code = ?", (code.upper(),)
+                    ).fetchone()
+                    if not row:
+                        return None
+                    if row["expires_at"] < time.time():
+                        return None
+                    conn.execute(
+                        "UPDATE telegram_pairing SET approved = 1 WHERE code = ?",
+                        (code.upper(),),
+                    )
+                    conn.execute(
+                        "UPDATE chat_sessions SET paired = 1, updated_at = ? "
+                        "WHERE channel = 'telegram' AND external_id = ?",
+                        (time.time(), row["user_id"]),
+                    )
+                    return dict(row)
+
+    def list_pending_pairings(self) -> list[dict]:
+        now = time.time()
+        with self.lock():
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM telegram_pairing WHERE approved = 0 AND expires_at > ? ORDER BY created_at",
+                    (now,),
+                ).fetchall()
+                return [dict(r) for r in rows]
+
+    def is_user_paired(self, user_id: str) -> bool:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT paired FROM chat_sessions WHERE channel = 'telegram' AND external_id = ?",
+                    (user_id,),
+                ).fetchone()
+                if row and row["paired"]:
+                    return True
+                prow = conn.execute(
+                    "SELECT approved FROM telegram_pairing WHERE user_id = ? AND approved = 1",
+                    (user_id,),
+                ).fetchone()
+                return bool(prow)
 
 
 def fmt(cents: int) -> str:
