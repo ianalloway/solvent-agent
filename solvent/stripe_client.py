@@ -271,53 +271,59 @@ class StripeClient:
             "simulated": True,
         }
 
+    def _session_value(self, session, key: str, default=None):
+        if isinstance(session, dict):
+            return session.get(key, default)
+        return getattr(session, key, default)
+
     def _session_to_payment(self, session) -> dict:
-        pi_id = session.get("payment_intent") if isinstance(session, dict) else session.payment_intent
+        pi_id = self._session_value(session, "payment_intent")
         if hasattr(pi_id, "id"):
             pi_id = pi_id.id
-        amount = session.get("amount_total") if isinstance(session, dict) else session.amount_total
-        metadata = session.get("metadata") if isinstance(session, dict) else getattr(session, "metadata", {}) or {}
-        job_id = metadata.get("job_id") if isinstance(metadata, dict) else None
-        if not job_id:
-            job_id = session.get("client_reference_id") if isinstance(session, dict) else getattr(session, "client_reference_id", None)
+        amount = self._session_value(session, "amount_total")
+        currency = self._session_value(session, "currency", "usd")
+        if not isinstance(currency, str):
+            currency = "usd"
         return {
             "paid": True,
             "stripe_ref": pi_id,
-            "checkout_session_id": session.get("id") if isinstance(session, dict) else session.id,
-            "payment_link_id": session.get("payment_link") if isinstance(session, dict) else session.payment_link,
+            "checkout_session_id": self._session_value(session, "id"),
+            "payment_link_id": self._session_value(session, "payment_link"),
             "amount_cents": amount,
-            "job_id": job_id,
+            "currency": currency,
             "ts": time.time(),
         }
 
-    def _poll_checkout_session_by_id(self, session_id: str, link: dict) -> dict:
-        deadline = time.time() + self.poll_timeout
-        job_id = link.get("job_id")
-        while time.time() < deadline:
-            if job_id and f"job:{job_id}" in self._webhook_payments:
-                cached = self._webhook_payments[f"job:{job_id}"]
-                if cached.get("paid"):
-                    return cached
-            if self.webhook_secret and session_id in self._webhook_payments:
-                cached = self._webhook_payments[session_id]
-                if cached.get("paid"):
-                    return cached
-            try:
-                session = stripe.checkout.Session.retrieve(session_id)
-                if session.payment_status == "paid":
-                    payment = self._session_to_payment(session)
-                    if not payment.get("amount_cents"):
-                        payment["amount_cents"] = link["amount_cents"]
-                    return payment
-            except Exception:
-                pass
-            time.sleep(self.poll_interval)
+    def _invalid_payment(self, link: dict, reason: str) -> dict:
         return {
             "paid": False,
-            "reason": f"payment not received within {int(self.poll_timeout)}s",
+            "reason": reason,
+            "payment_link_id": link["id"],
             "amount_cents": link["amount_cents"],
             "ts": time.time(),
         }
+
+    def _validate_confirmed_payment(self, payment: dict, link: dict) -> str | None:
+        if payment.get("payment_link_id") != link["id"]:
+            return "payment link mismatch"
+        if payment.get("currency", "usd") != "usd":
+            return "payment currency mismatch"
+        amount = payment.get("amount_cents")
+        if not isinstance(amount, int) or amount < link["amount_cents"]:
+            return "payment amount below expected quote"
+        stripe_ref = payment.get("stripe_ref")
+        if not isinstance(stripe_ref, str) or not stripe_ref.startswith("pi_"):
+            return "invalid payment intent identifier"
+        session_id = payment.get("checkout_session_id")
+        if not isinstance(session_id, str) or not session_id.startswith("cs_"):
+            return "invalid checkout session identifier"
+        return None
+
+    def _accept_payment(self, payment: dict, link: dict) -> dict:
+        reason = self._validate_confirmed_payment(payment, link)
+        if reason:
+            return self._invalid_payment(link, reason)
+        return payment
 
     def _poll_checkout_session(self, plink_id: str, link: dict) -> dict:
         deadline = time.time() + self.poll_timeout
@@ -325,15 +331,14 @@ class StripeClient:
             if self.webhook_secret and plink_id in self._webhook_payments:
                 cached = self._webhook_payments[plink_id]
                 if cached.get("paid"):
-                    return cached
+                    return self._accept_payment(cached, link)
             sessions = stripe.checkout.Session.list(payment_link=plink_id, limit=5)
             for session in sessions.data:
                 if session.payment_status == "paid":
                     payment = self._session_to_payment(session)
-                    payment["payment_link_id"] = plink_id
                     if not payment.get("amount_cents"):
                         payment["amount_cents"] = link["amount_cents"]
-                    return payment
+                    return self._accept_payment(payment, link)
             time.sleep(self.poll_interval)
         return {
             "paid": False,
@@ -361,27 +366,11 @@ class StripeClient:
                 "job_id": job_id or link.get("job_id"),
                 "ts": time.time(),
             }
-        jid = job_id or link.get("job_id")
-        if jid:
-            cached = self.get_cached_payment(jid)
-            if cached and cached.get("paid"):
-                return cached
-        sid = link.get("id", "")
-        if sid.startswith("cs_") and os.environ.get("SOLVENT_ALLOW_POLL", "").strip() in ("1", "true", "yes"):
-            return self._poll_checkout_session_by_id(sid, link)
-        if sid.startswith("plink_"):
-            if self.webhook_secret and sid in self._webhook_payments:
-                cached = self._webhook_payments[sid]
-                if cached.get("paid"):
-                    return cached
-            if os.environ.get("SOLVENT_ALLOW_POLL", "").strip() in ("1", "true", "yes"):
-                return self._poll_checkout_session(sid, link)
-        return {
-            "paid": False,
-            "reason": "awaiting webhook confirmation",
-            "amount_cents": link["amount_cents"],
-            "ts": time.time(),
-        }
+        if self.webhook_secret and link["id"] in self._webhook_payments:
+            cached = self._webhook_payments[link["id"]]
+            if cached.get("paid"):
+                return self._accept_payment(cached, link)
+        return self._poll_checkout_session(link["id"], link)
 
     # ---- SPEND (Issuing) --------------------------------------------
     def _issuing_enabled(self) -> bool:

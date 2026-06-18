@@ -140,6 +140,63 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertEqual(payment["checkout_session_id"], "cs_paid")
         self.assertGreaterEqual(self._mock_stripe.checkout.Session.list.call_count, 2)
 
+
+    def test_confirm_payment_rejects_underpaid_session(self):
+        paid = mock.Mock(
+            payment_status="paid",
+            payment_intent="pi_underpaid",
+            id="cs_underpaid",
+            payment_link="plink_x",
+            amount_total=100,
+            currency="usd",
+        )
+        self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[paid])
+
+        client = StripeClient()
+        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+        payment = client.confirm_payment(link)
+
+        self.assertFalse(payment["paid"])
+        self.assertEqual(payment["reason"], "payment amount below expected quote")
+
+    def test_confirm_payment_rejects_webhook_cache_mismatch(self):
+        cached = {
+            "paid": True,
+            "stripe_ref": "pi_wh",
+            "checkout_session_id": "cs_wh",
+            "payment_link_id": "plink_wh",
+            "amount_cents": 100,
+            "currency": "usd",
+        }
+
+        with mock.patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": "whsec_test"}, clear=False):
+            client = StripeClient()
+            client._webhook_payments["plink_wh"] = cached
+            link = {"id": "plink_wh", "amount_cents": 7500, "simulated": False}
+            payment = client.confirm_payment(link)
+
+        self.assertFalse(payment["paid"])
+        self.assertEqual(payment["reason"], "payment amount below expected quote")
+        self._mock_stripe.checkout.Session.list.assert_not_called()
+
+    def test_confirm_payment_rejects_wrong_link_currency_or_ids(self):
+        bad = mock.Mock(
+            payment_status="paid",
+            payment_intent="bad_pi",
+            id="bad_cs",
+            payment_link="plink_other",
+            amount_total=4900,
+            currency="eur",
+        )
+        self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[bad])
+
+        client = StripeClient()
+        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+        payment = client.confirm_payment(link)
+
+        self.assertFalse(payment["paid"])
+        self.assertEqual(payment["reason"], "payment link mismatch")
+
     def test_confirm_payment_timeout(self):
         unpaid = mock.Mock(payment_status="unpaid")
         self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[unpaid])
