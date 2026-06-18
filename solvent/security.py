@@ -347,7 +347,7 @@ def validate_catalog_schema(catalog: dict) -> dict:
     Returns:
         A clean dict with only permitted keys.
     """
-    allowed = {"product_id", "price_ids", "cardholder_id"}
+    allowed = {"product_id", "price_ids", "prices", "cardholder_id"}
     clean: dict = {}
 
     if "product_id" in catalog:
@@ -355,12 +355,22 @@ def validate_catalog_schema(catalog: dict) -> dict:
         if re.match(r"^prod_[A-Za-z0-9]{1,50}$", pid):
             clean["product_id"] = pid
 
-    if "price_ids" in catalog and isinstance(catalog["price_ids"], dict):
+    def _clean_prices(raw_prices: dict) -> dict:
         clean_prices = {}
-        for k, v in catalog["price_ids"].items():
+        for k, v in raw_prices.items():
             if re.match(r"^\d{1,10}$", str(k)) and re.match(r"^price_[A-Za-z0-9]{1,50}$", str(v)):
                 clean_prices[str(k)] = str(v)
-        clean["price_ids"] = clean_prices
+        return clean_prices
+
+    if "price_ids" in catalog and isinstance(catalog["price_ids"], dict):
+        clean["price_ids"] = _clean_prices(catalog["price_ids"])
+    if "prices" in catalog and isinstance(catalog["prices"], dict):
+        clean["prices"] = _clean_prices(catalog["prices"])
+    # Normalise: stripe_client uses "prices"; legacy tests use "price_ids"
+    if "prices" not in clean and "price_ids" in clean:
+        clean["prices"] = clean["price_ids"]
+    elif "price_ids" not in clean and "prices" in clean:
+        clean["price_ids"] = clean["prices"]
 
     if "cardholder_id" in catalog:
         cid = str(catalog["cardholder_id"])

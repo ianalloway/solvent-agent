@@ -26,6 +26,9 @@ class SolventConfig:
     nemotron_model: str = "nvidia/llama-3.1-nemotron-ultra-253b-v1"
     interaction_mode: str = "batch"
     stripe_test_mode: bool = False
+    base_url: str = "http://127.0.0.1:8787"
+    worker_enabled: bool = False
+    async_mode: bool = False
 
     def validate(self) -> None:
         if self.model not in VALID_MODELS:
@@ -86,3 +89,10 @@ def apply_config(config: SolventConfig) -> None:
         os.environ.pop("SOLVENT_FORCE_STRIPE_SIMULATE", None)
     else:
         os.environ["SOLVENT_FORCE_STRIPE_SIMULATE"] = "1"
+
+    if config.base_url:
+        os.environ["SOLVENT_BASE_URL"] = config.base_url
+    if config.async_mode:
+        os.environ["SOLVENT_ASYNC"] = "1"
+    else:
+        os.environ.pop("SOLVENT_ASYNC", None)

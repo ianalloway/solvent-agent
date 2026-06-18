@@ -26,6 +26,10 @@ treasury_dashboard.html
 data/reports/*.md
 data/reports/*.pdf
 
+# Runtime logs and email outbox (delivery + observability)
+data/solvent.log
+data/outbox/
+
 # Keep the data/reports directory structures but ignore content
 !data/
 !data/reports/

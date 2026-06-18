@@ -28,11 +28,15 @@ between a demo bot and a business.
  └─────┬───────┘ accept
        ▼
  ┌─────────────┐   EARN
- │   STRIPE    │ ── Payment Link → poll/webhook until paid ──▶ + revenue
- └─────┬───────┘    (records cs_... + pi_... on ledger)
+ │   STRIPE    │ ── Checkout Session → webhook (primary) ──▶ + revenue
+ └─────┬───────┘    idempotent stages in SQLite
        ▼
  ┌─────────────┐   FULFIL
- │  NEMOTRON   │ ── produces the research brief ──▶ itemized resource usage
+ │  NEMOTRON   │ ── bounded tool-calling research loop ──▶ actual COGS
+ └─────┬───────┘
+       ▼
+ ┌─────────────┐   DELIVER
+ │  HOSTED+SMTP│ ── signed brief URL + optional email
  └─────┬───────┘
        ▼
  ┌─────────────┐   SPEND (each payment screened first)
@@ -52,8 +56,12 @@ can violate policy — the business is safe by construction and profitable by ru
 |---|---|---|
 | **Reasoning / the analyst** | **NVIDIA Nemotron** (Llama-3.1-Nemotron-Ultra) via the OpenAI-compatible endpoint | `solvent/nemotron.py` |
 | **Spend safety** | **NVIDIA NemoClaw**-style policy sandbox — every payment screened before it executes | `solvent/guardrails.py` |
-| **Earn + Spend** | **Stripe Skills** — Payment Links with checkout polling/webhook verification; PaymentIntent audit trail; Issuing virtual cards for outbound spend (test mode) | `solvent/stripe_client.py` |
-| **Agent orchestration** | **Hermes / Nous** tool-calling agent loop | `solvent/agent.py` |
+| **Earn + Spend** | **Stripe** — Checkout Sessions, webhooks, idempotency keys; Issuing for outbound spend (test mode) | `solvent/stripe_client.py` |
+| **Agent orchestration** | Idempotent **stage machine** + bounded Nemotron tool loop | `solvent/stages.py`, `solvent/tools.py`, `solvent/agent.py` |
+| **Async processing** | SQLite queue + worker resume | `solvent/worker.py`, `solvent/queue.py` |
+| **Delivery** | Hosted briefs + SMTP/outbox | `solvent/delivery.py`, `solvent/server.py` |
+| **Auto-improvement** | Metrics-driven tuning | `solvent/improver.py` |
+| **Observability** | JSON logs + Stripe reconciliation | `solvent/observability.py`, `solvent/reconcile.py` |
 | **Economic memory** | the treasury / ledger that makes it a business | `solvent/treasury.py`, `solvent/pricing.py` |
 
 ## Key design choices
@@ -75,15 +83,23 @@ can violate policy — the business is safe by construction and profitable by ru
 ## Files
 ```
 solvent/
-  agent.py         the orchestrator (earn → fulfil → spend → book)
-  treasury.py      the ledger / balance sheet
-  pricing.py       the margin gate
+  agent.py         thin orchestrator delegating to stages
+  stages.py        idempotent stage machine (quote→paid→fulfill→deliver→spend)
+  worker.py        async job processor + resume incomplete jobs
+  server.py        FastAPI: webhooks, /jobs, /briefs (optional deps)
+  tools.py         allowlisted research tools
+  delivery.py      hosted briefs + SMTP/outbox email
+  observability.py structured JSON logging
+  improver.py      auto-tune pricing from job metrics
+  reconcile.py     Stripe ↔ ledger reconciliation
+  treasury.py      ledger, jobs, stages, metrics (SQLite)
+  pricing.py       margin gate + COGS overrides
   guardrails.py    NemoClaw-style spend policy
-  stripe_client.py two-sided Stripe layer (earn + spend)
-  nemotron.py      NVIDIA Nemotron client (+ offline stub)
-  service.py       the product: an on-demand research brief
+  stripe_client.py Checkout Sessions + webhooks
+  nemotron.py      Nemotron client + bounded tool loop
+  service.py       research brief fulfillment
   jobs.py          sample inbound work
-  dashboard.py     renders the treasury to HTML
-run_demo.py        the full business loop
-demo_guardrails.py the safety story
+  dashboard.py     treasury HTML dashboard
+run_demo.py        CLI demo (--async, --serve)
+docs/PRODUCTION.md production deployment guide
 ```
