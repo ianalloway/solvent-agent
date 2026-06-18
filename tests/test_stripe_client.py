@@ -262,6 +262,13 @@ class TestStripeClientLive(unittest.TestCase):
 
 
 class TestAgentPaymentFlow(unittest.TestCase):
+    def setUp(self):
+        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
+        self._env.start()
+
+    def tearDown(self):
+        self._env.stop()
+
     def test_agent_waits_for_payment_before_fulfil(self):
         from solvent.agent import Solvent
 
