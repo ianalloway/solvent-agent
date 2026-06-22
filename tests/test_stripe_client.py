@@ -212,9 +212,14 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertIn("not received", payment["reason"])
 
     def test_confirm_payment_awaits_webhook_by_default(self):
-        client = StripeClient()
-        link = {"id": "cs_test123", "amount_cents": 4900, "simulated": False, "job_id": "J1"}
-        payment = client.confirm_payment(link, job_id="J1")
+        with mock.patch.dict(
+            os.environ,
+            {"SOLVENT_ALLOW_POLL": "", "STRIPE_WEBHOOK_SECRET": ""},
+            clear=False,
+        ):
+            client = StripeClient()
+            link = {"id": "cs_test123", "amount_cents": 4900, "simulated": False, "job_id": "J1"}
+            payment = client.confirm_payment(link, job_id="J1")
         self.assertFalse(payment["paid"])
         self.assertIn("webhook", payment["reason"])
 
