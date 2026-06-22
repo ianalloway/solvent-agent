@@ -12,9 +12,49 @@ import hashlib
 import hmac
 import json
 import time
-import pytest
-import sys, os
+import sys
+import os
+import unittest
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+try:
+    import pytest
+except ImportError:
+    class _PytestCompat:
+        @staticmethod
+        @contextmanager
+        def raises(exc, match=None):
+            try:
+                yield
+            except exc as e:
+                if match and match not in str(e):
+                    raise AssertionError(f"expected match {match!r} in {e!r}") from e
+            else:
+                name = exc if isinstance(exc, str) else getattr(exc, "__name__", str(exc))
+                raise AssertionError(f"expected {name}")
+
+        class mark:
+            @staticmethod
+            def parametrize(*args, **kwargs):
+                def decorator(func):
+                    if len(args) == 2 and isinstance(args[1], list):
+                        _name, values = args
+
+                        def wrapper(self):
+                            for val in values:
+                                with self.subTest(**{_name: val[:40] if isinstance(val, str) else val}):
+                                    func(self, val)
+
+                        return wrapper
+                    return func
+
+                return decorator
+
+    pytest = _PytestCompat()  # type: ignore[misc,assignment]
 
 from solvent.security import (
     # Auth
@@ -240,32 +280,37 @@ class TestSanitiseJob:
 # 4. DATA PROTECTION
 # ============================================================
 
-class TestSafeReportPath:
-    def test_valid_job_id_passes(self, tmp_path):
-        path = safe_report_path(tmp_path, "J1")
-        assert path == (tmp_path / "J1.md").resolve()
+class TestSafeReportPath(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmpdir.name)
 
-    def test_path_traversal_blocked(self, tmp_path):
-        # Slashes in job_id are caught by the regex check (InputValidationError)
-        # before the path escape check — both are security errors
+    def tearDown(self):
+        self._tmpdir.cleanup()
+
+    def test_valid_job_id_passes(self):
+        path = safe_report_path(self.tmp_path, "J1")
+        self.assertEqual(path, (self.tmp_path / "J1.md").resolve())
+
+    def test_path_traversal_blocked(self):
         with pytest.raises((PathTraversalError, InputValidationError)):
-            safe_report_path(tmp_path, "../../../etc/passwd")
+            safe_report_path(self.tmp_path, "../../../etc/passwd")
 
-    def test_dotdot_in_id_blocked(self, tmp_path):
+    def test_dotdot_in_id_blocked(self):
         with pytest.raises(InputValidationError):
-            safe_report_path(tmp_path, "../../evil")
+            safe_report_path(self.tmp_path, "../../evil")
 
-    def test_slash_in_id_blocked(self, tmp_path):
+    def test_slash_in_id_blocked(self):
         with pytest.raises(InputValidationError):
-            safe_report_path(tmp_path, "subdir/evil")
+            safe_report_path(self.tmp_path, "subdir/evil")
 
-    def test_empty_id_blocked(self, tmp_path):
+    def test_empty_id_blocked(self):
         with pytest.raises(InputValidationError):
-            safe_report_path(tmp_path, "")
+            safe_report_path(self.tmp_path, "")
 
-    def test_alphanumeric_with_dash_passes(self, tmp_path):
-        path = safe_report_path(tmp_path, "job-abc_123")
-        assert "job-abc_123.md" in str(path)
+    def test_alphanumeric_with_dash_passes(self):
+        path = safe_report_path(self.tmp_path, "job-abc_123")
+        self.assertIn("job-abc_123.md", str(path))
 
 
 class TestValidateCatalogSchema:
