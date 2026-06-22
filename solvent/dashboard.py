@@ -248,7 +248,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         
         btn_html = ""
         if job["status"] == "completed":
-            btn_html = f"""<button class="btn btn-primary btn-sm" onclick="openDrawer({jid_js_arg})">View Brief</button>"""
+            btn_html = f"""<button class="btn btn-primary btn-sm" onclick="openBriefModal({jid_js_arg})">View Brief</button>"""
         elif job["status"] == "declined":
             btn_html = f"""<span class="decline-label">Declined: {h(job['reason'])}</span>"""
         elif job["status"] == "awaiting_payment":
@@ -411,6 +411,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
         jobsData = data.jobs_data;
         briefs = data.briefs;
         if (currentOpenJobId) updateDrawerContent(currentOpenJobId);
+        if (typeof updateBriefsList === 'function') updateBriefsList();
       } catch (err) {
         const indicator = document.getElementById("status-indicator");
         if (indicator) indicator.innerHTML = '<span class="status-dot offline"></span> Reconnecting...';
@@ -1038,6 +1039,68 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       100% {{ opacity: 0.3; }}
     }}
     {live_css}
+    /* Modal styles */
+    .modal {{
+      display: none;
+      position: fixed;
+      z-index: 2000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }}
+    .modal.open {{
+      display: flex;
+      opacity: 1;
+    }}
+    .modal-content {{
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 20px;
+      width: 90%;
+      max-width: 850px;
+      height: 80%;
+      max-height: 700px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      transform: scale(0.95);
+      transition: transform 0.3s ease;
+    }}
+    .modal.open .modal-content {{
+      transform: scale(1);
+    }}
+    .modal-header {{
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }}
+    .modal-header h3 {{
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }}
+    .modal-body {{
+      flex: 1;
+      padding: 0;
+      background: #070a13;
+      position: relative;
+    }}
+    .modal-body iframe {{
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: transparent;
+    }}
   </style>
 </head>
 <body>
@@ -1093,6 +1156,11 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       <div class="vendor-breakdown-list" id="ops-panel">
         {ops_html}
       </div>
+      
+      <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Delivered Research Briefs</h2>
+      <div id="briefs-list-container" style="display:flex; flex-direction:column; gap:10px; max-height: 250px; overflow-y: auto;">
+        <p class='no-data-msg'>No research briefs delivered yet.</p>
+      </div>
     </div>
 
     <div class="panel">
@@ -1121,10 +1189,62 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     </div>
   </div>
 
+  <!-- Modal for Brief Live Preview -->
+  <div id="brief-modal" class="modal" onclick="closeBriefModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modal-title">Research Brief Preview</h3>
+        <button class="btn-close" onclick="closeBriefModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <iframe id="brief-iframe" src="about:blank"></iframe>
+      </div>
+    </div>
+  </div>
+
   <script>
     let briefs = {json.dumps(briefs)};
     let jobsData = {json.dumps(jobs_data)};
     let currentOpenJobId = null;
+
+    function openBriefModal(jobId) {{
+      document.getElementById("modal-title").innerText = "Research Brief Preview: " + jobId;
+      const iframe = document.getElementById("brief-iframe");
+      iframe.src = `http://localhost:8787/api/briefs/${{jobId}}`;
+      document.getElementById("brief-modal").classList.add("open");
+    }}
+
+    function closeBriefModal() {{
+      document.getElementById("brief-modal").classList.remove("open");
+      document.getElementById("brief-iframe").src = "about:blank";
+    }}
+
+    function updateBriefsList() {{
+      const container = document.getElementById("briefs-list-container");
+      if (!container) return;
+      
+      const jobIds = Object.keys(briefs || {{}});
+      if (jobIds.length === 0) {{
+        container.innerHTML = "<p class='no-data-msg'>No research briefs delivered yet.</p>";
+        return;
+      }}
+      
+      let html = "";
+      jobIds.forEach(jobId => {{
+        const job = jobsData[jobId] || {{}};
+        const title = job.title || `Research Brief (${{jobId}})`;
+        html += `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--color-border); padding:10px 14px; border-radius:10px; margin-bottom: 8px;">
+            <div style="display:flex; flex-direction:column; gap:2px; max-width:70%;">
+              <span style="font-size:11px; font-family:var(--font-mono); color:var(--color-text-muted);">${{jobId}}</span>
+              <span style="font-size:13px; font-weight:600; color:var(--color-text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${{title}}</span>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="openBriefModal('${{jobId}}')" style="padding:4px 8px; font-size:11px;">Preview</button>
+          </div>
+        `;
+      }});
+      container.innerHTML = html;
+    }}
 
     // Auto-scroll terminal log to the bottom
     function scrollConsole() {{
@@ -1134,6 +1254,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       }}
     }}
     scrollConsole();
+    updateBriefsList();
 
     function updateDrawerContent(jobId) {{
       const job = jobsData[jobId];

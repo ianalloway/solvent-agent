@@ -216,14 +216,83 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
         reports_dir = (Path(__file__).resolve().parent.parent / "data" / "reports").resolve()
-        path = (reports_dir / f"{job_id}.md").resolve()
+        
+        path_html = (reports_dir / f"{job_id}.html").resolve()
         try:
-            path.relative_to(reports_dir)
+            path_html.relative_to(reports_dir)
+            if path_html.is_file():
+                return HTMLResponse(path_html.read_text(encoding="utf-8"))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
-        if not path.is_file():
-            raise HTTPException(404, "brief not found")
-        return HTMLResponse(markdown_to_html(path.read_text(encoding="utf-8")))
+            
+        path_md = (reports_dir / f"{job_id}.md").resolve()
+        try:
+            path_md.relative_to(reports_dir)
+            if path_md.is_file():
+                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
+        except ValueError:
+            raise HTTPException(404, "brief not found") from None
+            
+        if reports_dir.is_dir():
+            for p in reports_dir.glob("*"):
+                if job_id in p.stem and p.suffix in (".html", ".md"):
+                    try:
+                        resolved_p = p.resolve()
+                        resolved_p.relative_to(reports_dir)
+                        if resolved_p.suffix == ".html":
+                            return HTMLResponse(resolved_p.read_text(encoding="utf-8"))
+                        else:
+                            return HTMLResponse(markdown_to_html(resolved_p.read_text(encoding="utf-8")))
+                    except ValueError:
+                        pass
+                        
+        raise HTTPException(404, "brief not found")
+
+    @app.get("/api/briefs")
+    def list_briefs():
+        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
+        if not reports_dir.is_dir():
+            return []
+        stems = set()
+        for p in reports_dir.glob("*"):
+            if p.suffix in (".md", ".html") and p.stem != ".gitkeep":
+                stems.add(p.stem)
+        return sorted(list(stems))
+
+    @app.get("/api/briefs/{job_id}")
+    def get_brief_api(job_id: str):
+        reports_dir = (Path(__file__).resolve().parent.parent / "data" / "reports").resolve()
+        
+        path_html = (reports_dir / f"{job_id}.html").resolve()
+        try:
+            path_html.relative_to(reports_dir)
+            if path_html.is_file():
+                return HTMLResponse(path_html.read_text(encoding="utf-8"))
+        except ValueError:
+            raise HTTPException(404, "brief not found") from None
+            
+        path_md = (reports_dir / f"{job_id}.md").resolve()
+        try:
+            path_md.relative_to(reports_dir)
+            if path_md.is_file():
+                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
+        except ValueError:
+            raise HTTPException(404, "brief not found") from None
+            
+        if reports_dir.is_dir():
+            for p in reports_dir.glob("*"):
+                if job_id in p.stem and p.suffix in (".html", ".md"):
+                    try:
+                        resolved_p = p.resolve()
+                        resolved_p.relative_to(reports_dir)
+                        if resolved_p.suffix == ".html":
+                            return HTMLResponse(resolved_p.read_text(encoding="utf-8"))
+                        else:
+                            return HTMLResponse(markdown_to_html(resolved_p.read_text(encoding="utf-8")))
+                    except ValueError:
+                        pass
+                        
+        raise HTTPException(404, "brief not found")
 
     return app
 

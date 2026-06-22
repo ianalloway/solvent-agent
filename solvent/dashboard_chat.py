@@ -267,6 +267,7 @@ LIVE_CLIENT_JS = """
       jobsData = data.jobs_data;
       briefs = data.briefs;
       if (currentOpenJobId) updateDrawerContent(currentOpenJobId);
+      if (typeof updateBriefsList === 'function') updateBriefsList();
       const indicator = document.getElementById("status-indicator");
       if (indicator) indicator.innerHTML = '<span class="status-dot live"></span> Live';
     }
