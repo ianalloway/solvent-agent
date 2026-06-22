@@ -15,7 +15,7 @@ pip install -r requirements.txt
 pip install -r requirements-serve.txt
 
 export SOLVENT_BASE_URL=http://127.0.0.1:8787
-export SOLVENT_DELIVERY_SECRET=change-me-in-production
+export SOLVENT_DELIVERY_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
 
 # Terminal 1 — API + webhooks + interactive dashboard
 python3 -m solvent serve --port 8787
@@ -92,7 +92,7 @@ python3 -m solvent tune --apply
 | `STRIPE_API_KEY` | Test/restricted Stripe key |
 | `STRIPE_WEBHOOK_SECRET` | Webhook signature verification |
 | `SOLVENT_BASE_URL` | Checkout success URLs + hosted briefs |
-| `SOLVENT_DELIVERY_SECRET` | HMAC token for `/briefs/{id}` |
+| `SOLVENT_DELIVERY_SECRET` | HMAC token for `/briefs/{id}`; required, at least 32 characters, high entropy, and not a placeholder |
 | `SOLVENT_ASYNC` | Non-blocking payment (worker resumes jobs) |
 | `SOLVENT_ALLOW_POLL` | Legacy payment polling |
 | `SOLVENT_LOG_JSON` | JSON lines to stderr + `data/solvent.log` |

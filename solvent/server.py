@@ -112,6 +112,17 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                             last_mtime = mtime
                             data = json.loads(status_path.read_text(encoding="utf-8"))
                             hub.publish("status", {"data": data})
+                    from .notifications import drain_chat_outbox
+                    for row in drain_chat_outbox():
+                        hub.publish(
+                            "chat",
+                            {
+                                "role": "assistant",
+                                "text": row.get("text", ""),
+                                "session_id": row.get("external_id", ""),
+                                "channel": row.get("channel", ""),
+                            },
+                        )
                 except Exception:
                     pass
                 await asyncio.sleep(2.0)
@@ -204,12 +215,12 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             raise HTTPException(404, "brief not found")
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
-        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
+        reports_dir = (Path(__file__).resolve().parent.parent / "data" / "reports").resolve()
         path = (reports_dir / f"{job_id}.md").resolve()
         try:
-            path.relative_to(reports_dir.resolve())
+            path.relative_to(reports_dir)
         except ValueError:
-            raise HTTPException(404, "brief not found")
+            raise HTTPException(404, "brief not found") from None
         if not path.is_file():
             raise HTTPException(404, "brief not found")
         return HTMLResponse(markdown_to_html(path.read_text(encoding="utf-8")))
