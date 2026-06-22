@@ -370,6 +370,19 @@ class StripeClient:
             cached = self._webhook_payments[link["id"]]
             if cached.get("paid"):
                 return self._accept_payment(cached, link)
+        if job_id:
+            cached = self.get_cached_payment(job_id)
+            if cached:
+                return self._accept_payment(cached, link)
+        if os.environ.get("SOLVENT_ALLOW_POLL", "").strip() != "1":
+            return {
+                "paid": False,
+                "reason": "awaiting webhook confirmation (set SOLVENT_ALLOW_POLL=1 to poll)",
+                "payment_link_id": link["id"],
+                "amount_cents": link["amount_cents"],
+                "job_id": job_id or link.get("job_id"),
+                "ts": time.time(),
+            }
         return self._poll_checkout_session(link["id"], link)
 
     # ---- SPEND (Issuing) --------------------------------------------

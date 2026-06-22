@@ -152,9 +152,10 @@ class TestStripeClientLive(unittest.TestCase):
         )
         self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[paid])
 
-        client = StripeClient()
-        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
-        payment = client.confirm_payment(link)
+        with mock.patch.dict(os.environ, {"SOLVENT_ALLOW_POLL": "1"}, clear=False):
+            client = StripeClient()
+            link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link)
 
         self.assertFalse(payment["paid"])
         self.assertEqual(payment["reason"], "payment amount below expected quote")
@@ -190,9 +191,10 @@ class TestStripeClientLive(unittest.TestCase):
         )
         self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[bad])
 
-        client = StripeClient()
-        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
-        payment = client.confirm_payment(link)
+        with mock.patch.dict(os.environ, {"SOLVENT_ALLOW_POLL": "1"}, clear=False):
+            client = StripeClient()
+            link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link)
 
         self.assertFalse(payment["paid"])
         self.assertEqual(payment["reason"], "payment link mismatch")

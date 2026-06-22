@@ -24,6 +24,11 @@ def is_safe_job_id(job_id: str) -> bool:
     return bool(_SAFE_JOB_ID.fullmatch(job_id))
 
 
+def is_safe_job_id(job_id: str) -> bool:
+    """Reject path traversal in brief URLs."""
+    return bool(job_id) and "/" not in job_id and ".." not in job_id and "\\" not in job_id
+
+
 def _delivery_secret() -> str:
     secret = os.environ.get("SOLVENT_DELIVERY_SECRET", "").strip()
     if len(secret) < 32 or secret in _PLACEHOLDER_DELIVERY_SECRETS:

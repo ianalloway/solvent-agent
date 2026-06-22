@@ -177,9 +177,14 @@ pip install -r requirements.txt -r requirements-serve.txt
 python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
 python3 -m solvent worker              # resume incomplete jobs, process queue
 
+# Interactive voice dashboard (chat + live SSE updates):
+open http://127.0.0.1:8787/
+
 # Or dev convenience:
 python3 run_demo.py --serve --no-onboard
 ```
+
+The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Chat hits `/api/chat`, which routes through the Nemotron agent loop.
 
 See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, reconciliation, and auto-tuning.
 

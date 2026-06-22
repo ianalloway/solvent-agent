@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 from .treasury import fmt
+from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
 
 OUT = Path(__file__).resolve().parent.parent / "treasury_dashboard.html"
 
@@ -91,7 +92,7 @@ def generate_svg_chart(points: list[int]) -> str:
     return svg
 
 
-def render(snapshot: dict, log: list[dict]) -> Path:
+def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     s = snapshot
     
     # 1. Read generated briefs from reports folder
@@ -326,6 +327,96 @@ def render(snapshot: dict, log: list[dict]) -> Path:
           <span class="console-msg">{msg}</span>
         </div>
         """
+
+    return {
+        "balance_cents": s["balance_cents"],
+        "capital_cents": s["capital_cents"],
+        "revenue_cents": s["revenue_cents"],
+        "expense_cents": s["expense_cents"],
+        "net_profit_cents": s["net_profit_cents"],
+        "margin_pct": s["margin_pct"],
+        "chart_svg": chart_svg,
+        "expense_breakdown_html": expense_breakdown_html,
+        "ops_html": ops_html,
+        "job_cards_html": job_cards_html,
+        "console_log_html": console_log_html,
+        "jobs_data": dict(jobs_data),
+        "briefs": briefs,
+    }
+
+
+def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
+    s = snapshot
+    status_data = build_status_data(s, log)
+    chart_svg = status_data["chart_svg"]
+    expense_breakdown_html = status_data["expense_breakdown_html"]
+    ops_html = status_data["ops_html"]
+    job_cards_html = status_data["job_cards_html"]
+    console_log_html = status_data["console_log_html"]
+    jobs_data = status_data["jobs_data"]
+    briefs = status_data["briefs"]
+
+    live_css = CHAT_PANEL_CSS if live else ""
+    if live:
+        feed_section = CHAT_PANEL_HTML.format(console_log_html=console_log_html)
+        client_updates_js = LIVE_CLIENT_JS
+    else:
+        feed_section = f"""
+  <div class="console-panel">
+    <div class="console-header">
+      <span class="console-title"><span class="console-dot"></span> AGENT TRANSACTION & LOG FEED</span>
+      <span>SYSTEM: ACTIVE</span>
+    </div>
+    <div class="console-body" id="consoleBody">
+      <div id="console-lines">{console_log_html}</div>
+    </div>
+  </div>"""
+        client_updates_js = """
+    async function pollStatus() {
+      try {
+        const res = await fetch('data/dashboard_status.json');
+        if (!res.ok) throw new Error('Status fetch failed');
+        const data = await res.json();
+        const indicator = document.getElementById("status-indicator");
+        if (indicator) indicator.innerHTML = '<span class="status-dot live"></span> Live';
+        document.getElementById("header-seed-capital").innerText = "Seed Capital: " + formatCents(data.capital_cents);
+        const growth = data.balance_cents - data.capital_cents;
+        document.getElementById("header-net-growth-val").innerHTML = `${growth >= 0 ? '+' : ''}${formatCents(growth)}`;
+        document.getElementById("header-net-growth-val").className = growth >= 0 ? 'green' : 'red';
+        document.getElementById("metric-cash-balance").innerText = formatCents(data.balance_cents);
+        document.getElementById("metric-revenue").innerText = formatCents(data.revenue_cents);
+        document.getElementById("metric-operating-spend").innerText = formatCents(data.expense_cents);
+        const netProfit = data.net_profit_cents;
+        const profitElem = document.getElementById("metric-net-profit");
+        profitElem.innerText = (netProfit >= 0 ? '+' : '') + formatCents(netProfit);
+        profitElem.className = 'val ' + (netProfit >= 0 ? 'green' : 'red');
+        document.getElementById("metric-margin").innerText = data.margin_pct + '%';
+        if (lastChartSVG !== data.chart_svg) {
+          document.getElementById("chart-container").innerHTML = data.chart_svg;
+          lastChartSVG = data.chart_svg;
+        }
+        if (lastExpenseHTML !== data.expense_breakdown_html) {
+          document.getElementById("expense-breakdown").innerHTML = data.expense_breakdown_html;
+          lastExpenseHTML = data.expense_breakdown_html;
+        }
+        if (lastJobsHTML !== data.job_cards_html) {
+          document.getElementById("jobs-grid").innerHTML = data.job_cards_html;
+          lastJobsHTML = data.job_cards_html;
+        }
+        if (lastConsoleHTML !== data.console_log_html) {
+          document.getElementById("console-lines").innerHTML = data.console_log_html;
+          lastConsoleHTML = data.console_log_html;
+          scrollConsole();
+        }
+        jobsData = data.jobs_data;
+        briefs = data.briefs;
+        if (currentOpenJobId) updateDrawerContent(currentOpenJobId);
+      } catch (err) {
+        const indicator = document.getElementById("status-indicator");
+        if (indicator) indicator.innerHTML = '<span class="status-dot offline"></span> Reconnecting...';
+      }
+    }
+    setInterval(pollStatus, 2000);"""
 
     html = f"""<!doctype html>
 <html lang="en">
@@ -946,6 +1037,7 @@ def render(snapshot: dict, log: list[dict]) -> Path:
       50% {{ opacity: 1; }}
       100% {{ opacity: 0.3; }}
     }}
+    {live_css}
   </style>
 </head>
 <body>
@@ -1012,15 +1104,7 @@ def render(snapshot: dict, log: list[dict]) -> Path:
 
   </div>
 
-  <div class="console-panel">
-    <div class="console-header">
-      <span class="console-title"><span class="console-dot"></span> AGENT TRANSACTION & LOG FEED</span>
-      <span>SYSTEM: ACTIVE</span>
-    </div>
-    <div class="console-body" id="consoleBody">
-      <div id="console-lines">{console_log_html}</div>
-    </div>
-  </div>
+  {feed_section}
 
   <!-- Drawer Overlay & Container -->
   <div id="overlay" class="overlay" onclick="closeDrawer()"></div>
@@ -1142,102 +1226,14 @@ def render(snapshot: dict, log: list[dict]) -> Path:
     let lastJobsHTML = '';
     let lastConsoleHTML = '';
 
-    async function pollStatus() {{
-      try {{
-        const res = await fetch('data/dashboard_status.json');
-        if (!res.ok) throw new Error('Status fetch failed');
-        const data = await res.json();
-        
-        // Update connection indicator
-        const indicator = document.getElementById("status-indicator");
-        if (indicator) {{
-          indicator.innerHTML = '<span class="status-dot live"></span> Live';
-        }}
-        
-        // Update metrics
-        document.getElementById("header-seed-capital").innerText = "Seed Capital: " + formatCents(data.capital_cents);
-        const growth = data.balance_cents - data.capital_cents;
-        const growthSign = growth >= 0 ? '+' : '';
-        const growthClass = growth >= 0 ? 'green' : 'red';
-        document.getElementById("header-net-growth-val").innerHTML = `${{growthSign}}${{formatCents(growth)}}`;
-        document.getElementById("header-net-growth-val").className = growthClass;
-        
-        document.getElementById("metric-cash-balance").innerText = formatCents(data.balance_cents);
-        document.getElementById("metric-revenue").innerText = formatCents(data.revenue_cents);
-        document.getElementById("metric-operating-spend").innerText = formatCents(data.expense_cents);
-        
-        const netProfit = data.net_profit_cents;
-        const profitClass = netProfit >= 0 ? 'green' : 'red';
-        const profitSign = netProfit >= 0 ? '+' : '';
-        const profitElem = document.getElementById("metric-net-profit");
-        profitElem.innerText = profitSign + formatCents(netProfit);
-        profitElem.className = 'val ' + profitClass;
-        
-        document.getElementById("metric-margin").innerText = data.margin_pct + '%';
-        
-        // Update containers only if content changed to avoid layout recalculation / flicker
-        if (lastChartSVG !== data.chart_svg) {{
-          document.getElementById("chart-container").innerHTML = data.chart_svg;
-          lastChartSVG = data.chart_svg;
-        }}
-        if (lastExpenseHTML !== data.expense_breakdown_html) {{
-          document.getElementById("expense-breakdown").innerHTML = data.expense_breakdown_html;
-          lastExpenseHTML = data.expense_breakdown_html;
-        }}
-        if (lastJobsHTML !== data.job_cards_html) {{
-          document.getElementById("jobs-grid").innerHTML = data.job_cards_html;
-          lastJobsHTML = data.job_cards_html;
-        }}
-        if (lastConsoleHTML !== data.console_log_html) {{
-          const consoleLines = document.getElementById("console-lines");
-          consoleLines.innerHTML = data.console_log_html;
-          lastConsoleHTML = data.console_log_html;
-          scrollConsole();
-        }}
-        
-        // Sync raw variables for details drawer
-        jobsData = data.jobs_data;
-        briefs = data.briefs;
-        
-        // Update open drawer if active
-        if (currentOpenJobId) {{
-          updateDrawerContent(currentOpenJobId);
-        }}
-      }} catch (err) {{
-        console.error(err);
-        const indicator = document.getElementById("status-indicator");
-        if (indicator) {{
-          indicator.innerHTML = '<span class="status-dot offline"></span> Reconnecting...';
-        }}
-      }}
-    }}
-    
-    // Poll every 2 seconds
-    setInterval(pollStatus, 2000);
+    {client_updates_js}
   </script>
 </body>
 </html>"""
 
-    # Write the dashboard status JSON
     status_dir = Path(__file__).resolve().parent.parent / "data"
     status_dir.mkdir(exist_ok=True)
     status_json_path = status_dir / "dashboard_status.json"
-    
-    status_data = {
-        "balance_cents": s["balance_cents"],
-        "capital_cents": s["capital_cents"],
-        "revenue_cents": s["revenue_cents"],
-        "expense_cents": s["expense_cents"],
-        "net_profit_cents": s["net_profit_cents"],
-        "margin_pct": s["margin_pct"],
-        "chart_svg": chart_svg,
-        "expense_breakdown_html": expense_breakdown_html,
-        "ops_html": ops_html,
-        "job_cards_html": job_cards_html,
-        "console_log_html": console_log_html,
-        "jobs_data": dict(jobs_data),
-        "briefs": briefs
-    }
     status_json_path.write_text(json.dumps(status_data, indent=2))
 
     OUT.write_text(html)
