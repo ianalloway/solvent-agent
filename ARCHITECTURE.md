@@ -60,6 +60,11 @@ can violate policy — the business is safe by construction and profitable by ru
 | **Agent orchestration** | Idempotent **stage machine** + bounded Nemotron tool loop | `solvent/stages.py`, `solvent/tools.py`, `solvent/agent.py` |
 | **Async processing** | SQLite queue + worker resume | `solvent/worker.py`, `solvent/queue.py` |
 | **Delivery** | Hosted briefs + SMTP/outbox | `solvent/delivery.py`, `solvent/server.py` |
+| **Conversational surface** | OpenClaw gateway + Hermes tools/memory | `solvent/gateway.py`, `solvent/chat.py`, `solvent/memory.py`, `solvent/hermes_tools.py` |
+| **Agent identity** | SOUL/BRAIN/AGENTS workspace (Hermes + OpenClaw) | `solvent/workspace.py`, `.solvent/workspace/` |
+| **Telegram** | Long-poll bot + DM pairing | `solvent/channels/telegram.py`, `solvent/pairing.py` |
+| **Live dashboard** | SSE chat + treasury | `solvent/server.py`, `solvent/event_hub.py`, `solvent/dashboard_chat.py` |
+| **Cross-process notify** | Worker → serve chat outbox | `solvent/notifications.py` |
 | **Auto-improvement** | Metrics-driven tuning | `solvent/improver.py` |
 | **Observability** | JSON logs + Stripe reconciliation | `solvent/observability.py`, `solvent/reconcile.py` |
 | **Economic memory** | the treasury / ledger that makes it a business | `solvent/treasury.py`, `solvent/pricing.py` |
@@ -92,6 +97,11 @@ solvent/
   observability.py structured JSON logging
   improver.py      auto-tune pricing from job metrics
   reconcile.py     Stripe ↔ ledger reconciliation
+  gateway.py       channel router (Telegram, dashboard)
+  chat.py          Nemotron conversational loop + business tools
+  workspace.py     SOUL/BRAIN/AGENTS prompt assembly
+  channels/        Telegram adapter
+  notifications.py worker→serve chat outbox
   treasury.py      ledger, jobs, stages, metrics (SQLite)
   pricing.py       margin gate + COGS overrides
   guardrails.py    NemoClaw-style spend policy
