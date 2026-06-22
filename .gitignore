@@ -29,6 +29,7 @@ data/reports/*.pdf
 # Runtime logs and email outbox (delivery + observability)
 data/solvent.log
 data/outbox/
+data/chat_outbox.jsonl
 
 # Keep the data/reports directory structures but ignore content
 !data/
