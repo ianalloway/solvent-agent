@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .pricing import RESOURCE_COSTS_CENTS
 from .treasury import Treasury
+from .workspace import promote_skill
 
 IMPROVEMENT_LOG = Path("data/improvement_log.jsonl")
 OVERRIDES_PATH = Path(".solvent/pricing_overrides.json")
@@ -78,6 +79,12 @@ def apply_changes(proposals: list[dict]) -> list[dict]:
     for p in proposals:
         if p["type"] == "pricing":
             overrides[p["key"]] = p["to"]
+            applied.append(p)
+        elif p["type"] == "agent":
+            promote_skill(
+                p.get("key", "agent-tuning"),
+                f"# Auto-tune proposal\n\nReason: {p.get('reason', '')}\nAction: {p.get('action', '')}\n",
+            )
             applied.append(p)
     if overrides:
         OVERRIDES_PATH.write_text(json.dumps(overrides, indent=2) + "\n", encoding="utf-8")

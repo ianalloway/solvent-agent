@@ -12,12 +12,29 @@ Includes:
 
 from __future__ import annotations
 
+import html
 import json
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 from .treasury import fmt
+from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
 
 OUT = Path(__file__).resolve().parent.parent / "treasury_dashboard.html"
+
+
+def h(value: object) -> str:
+    """HTML-escape dashboard values before interpolating into fragments."""
+    return html.escape(str(value), quote=True)
+
+
+def safe_href(value: object) -> str:
+    """Return an escaped HTTP(S) URL or a harmless placeholder."""
+    url = str(value)
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return "#"
+    return h(url)
 
 
 def generate_svg_chart(points: list[int]) -> str:
@@ -75,7 +92,7 @@ def generate_svg_chart(points: list[int]) -> str:
     return svg
 
 
-def render(snapshot: dict, log: list[dict]) -> Path:
+def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     s = snapshot
     
     # 1. Read generated briefs from reports folder
@@ -119,7 +136,7 @@ def render(snapshot: dict, log: list[dict]) -> Path:
         expense_breakdown_html += f"""
         <div class="vendor-metric">
           <div class="vendor-info">
-            <span class="vendor-name">{vendor}</span>
+            <span class="vendor-name">{h(vendor)}</span>
             <span class="vendor-amount">{fmt(amt)} ({pct:.1f}%)</span>
           </div>
           <div class="progress-bar-bg">
@@ -219,8 +236,11 @@ def render(snapshot: dict, log: list[dict]) -> Path:
         if not job["id"]:
             continue
         
-        status_class = job["status"]
-        status_label = job["status"].replace("_", " ").upper()
+        status_class = h(job["status"])
+        status_label = h(job["status"].replace("_", " ").upper())
+        jid_text = h(jid)
+        jid_js_arg = h(json.dumps(str(jid)))
+        job_title = h(job["title"] or "No Topic Provided")
         
         expense_total = sum(x["amount"] for x in job["expenses"])
         fin_pnl = job["price"] - expense_total if job["status"] == "completed" else 0
@@ -228,19 +248,19 @@ def render(snapshot: dict, log: list[dict]) -> Path:
         
         btn_html = ""
         if job["status"] == "completed":
-            btn_html = f"""<button class="btn btn-primary btn-sm" onclick="openBriefModal('{jid}')">View Brief</button>"""
+            btn_html = f"""<button class="btn btn-primary btn-sm" onclick="openBriefModal({jid_js_arg})">View Brief</button>"""
         elif job["status"] == "declined":
-            btn_html = f"""<span class="decline-label">Declined: {job['reason']}</span>"""
+            btn_html = f"""<span class="decline-label">Declined: {h(job['reason'])}</span>"""
         elif job["status"] == "awaiting_payment":
-            btn_html = f"""<a href="{job['invoice_url']}" target="_blank" class="btn btn-outline btn-sm">Pay Invoice</a>"""
+            btn_html = f"""<a href="{safe_href(job['invoice_url'])}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Pay Invoice</a>"""
             
         job_cards_html += f"""
         <div class="job-card status-{status_class}">
           <div class="job-card-header">
-            <span class="job-id">{jid}</span>
+            <span class="job-id">{jid_text}</span>
             <span class="badge badge-{status_class}">{status_label}</span>
           </div>
-          <h3 class="job-title">{job['title'] or 'No Topic Provided'}</h3>
+          <h3 class="job-title">{job_title}</h3>
           
           <div class="job-metrics">
             <div class="job-metric-item">
@@ -272,32 +292,33 @@ def render(snapshot: dict, log: list[dict]) -> Path:
     for e in log:
         ts_str = time.strftime("%H:%M:%S", time.localtime(e.get("ts", time.time())))
         st = e["stage"]
-        job_ref = f"<span class='console-job-id'>[{e.get('job_id')}]</span>" if e.get("job_id") else ""
+        job_ref = f"<span class='console-job-id'>[{h(e.get('job_id'))}]</span>" if e.get("job_id") else ""
         
         if st == "quote":
             verdict = "<span class='green-txt'>ACCEPT</span>" if e["accept"] else "<span class='red-txt'>DECLINE</span>"
-            msg = f"Quoting topic: \"{e['title']}\" | Price: {fmt(e['price'])} | Est. Cost: {fmt(e['est_cost'])} | Margin: {e['margin_pct']}% → {verdict}"
+            msg = f"Quoting topic: \"{h(e['title'])}\" | Price: {fmt(e['price'])} | Est. Cost: {fmt(e['est_cost'])} | Margin: {h(e['margin_pct'])}% → {verdict}"
         elif st == "declined":
-            msg = f"✋ Declined job. Reason: <span class='grey-txt'>{e['reason']}</span>"
+            msg = f"✋ Declined job. Reason: <span class='grey-txt'>{h(e['reason'])}</span>"
         elif st == "invoice":
             tag = "simulated" if e["simulated"] else "live"
-            msg = f"📄 Issued Stripe Payment Link for {fmt(e['amount'])} ({tag}) → <a href='{e['url']}' target='_blank' class='console-link'>{e['url']}</a>"
+            url = safe_href(e["url"])
+            msg = f"📄 Issued Stripe Payment Link for {fmt(e['amount'])} ({tag}) → <a href='{url}' target='_blank' rel='noopener noreferrer' class='console-link'>{url}</a>"
         elif st == "paid":
             msg = f"💵 Stripe payment confirmed: <span class='green-txt'>+{fmt(e['amount'])}</span> received from client"
         elif st == "fulfilled":
-            msg = f"📝 Job fulfilled. Deliverable written to <span class='filepath-txt'>{Path(e['deliverable']).name}</span> ({e['tokens']} tokens)"
+            msg = f"📝 Job fulfilled. Deliverable written to <span class='filepath-txt'>{h(Path(e['deliverable']).name)}</span> ({h(e['tokens'])} tokens)"
         elif st == "spend":
-            msg = f"↳ Paid vendor <span class='vendor-badge'>{e['vendor']}</span>: <span class='red-txt'>−{fmt(e['amount'])}</span> ({e['memo']})"
+            msg = f"↳ Paid vendor <span class='vendor-badge'>{h(e['vendor'])}</span>: <span class='red-txt'>−{fmt(e['amount'])}</span> ({h(e['memo'])})"
         elif st == "spend_blocked":
-            msg = f"🛑 Spend BLOCKED by guardrail: {fmt(e['amount'])} to {e['vendor']} ({e['memo']})"
+            msg = f"🛑 Spend BLOCKED by guardrail: {fmt(e['amount'])} to {h(e['vendor'])} ({h(e['memo'])})"
         elif st == "refunded":
-            msg = f"↩️ Escrow Refunded: Returned <span class='red-txt'>{fmt(e['amount'])}</span> to customer ({e['reason']})"
+            msg = f"↩️ Escrow Refunded: Returned <span class='red-txt'>{fmt(e['amount'])}</span> to customer ({h(e['reason'])})"
         elif st == "booked":
             pnl_color = "green-txt" if e["job_pnl"] >= 0 else "red-txt"
             pnl_sign = "+" if e["job_pnl"] >= 0 else ""
             msg = f"✓ Booked P&L. Job net: <span class='{pnl_color}'>{pnl_sign}{fmt(e['job_pnl'])}</span> | Current Capital Balance: <span class='gold-txt'>{fmt(e['balance'])}</span>"
         else:
-            msg = str(e)
+            msg = h(e)
             
         console_log_html += f"""
         <div class="console-line">
@@ -306,6 +327,97 @@ def render(snapshot: dict, log: list[dict]) -> Path:
           <span class="console-msg">{msg}</span>
         </div>
         """
+
+    return {
+        "balance_cents": s["balance_cents"],
+        "capital_cents": s["capital_cents"],
+        "revenue_cents": s["revenue_cents"],
+        "expense_cents": s["expense_cents"],
+        "net_profit_cents": s["net_profit_cents"],
+        "margin_pct": s["margin_pct"],
+        "chart_svg": chart_svg,
+        "expense_breakdown_html": expense_breakdown_html,
+        "ops_html": ops_html,
+        "job_cards_html": job_cards_html,
+        "console_log_html": console_log_html,
+        "jobs_data": dict(jobs_data),
+        "briefs": briefs,
+    }
+
+
+def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
+    s = snapshot
+    status_data = build_status_data(s, log)
+    chart_svg = status_data["chart_svg"]
+    expense_breakdown_html = status_data["expense_breakdown_html"]
+    ops_html = status_data["ops_html"]
+    job_cards_html = status_data["job_cards_html"]
+    console_log_html = status_data["console_log_html"]
+    jobs_data = status_data["jobs_data"]
+    briefs = status_data["briefs"]
+
+    live_css = CHAT_PANEL_CSS if live else ""
+    if live:
+        feed_section = CHAT_PANEL_HTML.format(console_log_html=console_log_html)
+        client_updates_js = LIVE_CLIENT_JS
+    else:
+        feed_section = f"""
+  <div class="console-panel">
+    <div class="console-header">
+      <span class="console-title"><span class="console-dot"></span> AGENT TRANSACTION & LOG FEED</span>
+      <span>SYSTEM: ACTIVE</span>
+    </div>
+    <div class="console-body" id="consoleBody">
+      <div id="console-lines">{console_log_html}</div>
+    </div>
+  </div>"""
+        client_updates_js = """
+    async function pollStatus() {
+      try {
+        const res = await fetch('data/dashboard_status.json');
+        if (!res.ok) throw new Error('Status fetch failed');
+        const data = await res.json();
+        const indicator = document.getElementById("status-indicator");
+        if (indicator) indicator.innerHTML = '<span class="status-dot live"></span> Live';
+        document.getElementById("header-seed-capital").innerText = "Seed Capital: " + formatCents(data.capital_cents);
+        const growth = data.balance_cents - data.capital_cents;
+        document.getElementById("header-net-growth-val").innerHTML = `${growth >= 0 ? '+' : ''}${formatCents(growth)}`;
+        document.getElementById("header-net-growth-val").className = growth >= 0 ? 'green' : 'red';
+        document.getElementById("metric-cash-balance").innerText = formatCents(data.balance_cents);
+        document.getElementById("metric-revenue").innerText = formatCents(data.revenue_cents);
+        document.getElementById("metric-operating-spend").innerText = formatCents(data.expense_cents);
+        const netProfit = data.net_profit_cents;
+        const profitElem = document.getElementById("metric-net-profit");
+        profitElem.innerText = (netProfit >= 0 ? '+' : '') + formatCents(netProfit);
+        profitElem.className = 'val ' + (netProfit >= 0 ? 'green' : 'red');
+        document.getElementById("metric-margin").innerText = data.margin_pct + '%';
+        if (lastChartSVG !== data.chart_svg) {
+          document.getElementById("chart-container").innerHTML = data.chart_svg;
+          lastChartSVG = data.chart_svg;
+        }
+        if (lastExpenseHTML !== data.expense_breakdown_html) {
+          document.getElementById("expense-breakdown").innerHTML = data.expense_breakdown_html;
+          lastExpenseHTML = data.expense_breakdown_html;
+        }
+        if (lastJobsHTML !== data.job_cards_html) {
+          document.getElementById("jobs-grid").innerHTML = data.job_cards_html;
+          lastJobsHTML = data.job_cards_html;
+        }
+        if (lastConsoleHTML !== data.console_log_html) {
+          document.getElementById("console-lines").innerHTML = data.console_log_html;
+          lastConsoleHTML = data.console_log_html;
+          scrollConsole();
+        }
+        jobsData = data.jobs_data;
+        briefs = data.briefs;
+        if (currentOpenJobId) updateDrawerContent(currentOpenJobId);
+        if (typeof updateBriefsList === 'function') updateBriefsList();
+      } catch (err) {
+        const indicator = document.getElementById("status-indicator");
+        if (indicator) indicator.innerHTML = '<span class="status-dot offline"></span> Reconnecting...';
+      }
+    }
+    setInterval(pollStatus, 2000);"""
 
     html = f"""<!doctype html>
 <html lang="en">
@@ -926,6 +1038,7 @@ def render(snapshot: dict, log: list[dict]) -> Path:
       50% {{ opacity: 1; }}
       100% {{ opacity: 0.3; }}
     }}
+    {live_css}
     /* Modal styles */
     .modal {{
       display: none;
@@ -1059,15 +1172,7 @@ def render(snapshot: dict, log: list[dict]) -> Path:
 
   </div>
 
-  <div class="console-panel">
-    <div class="console-header">
-      <span class="console-title"><span class="console-dot"></span> AGENT TRANSACTION & LOG FEED</span>
-      <span>SYSTEM: ACTIVE</span>
-    </div>
-    <div class="console-body" id="consoleBody">
-      <div id="console-lines">{console_log_html}</div>
-    </div>
-  </div>
+  {feed_section}
 
   <!-- Drawer Overlay & Container -->
   <div id="overlay" class="overlay" onclick="closeDrawer()"></div>
@@ -1242,104 +1347,14 @@ def render(snapshot: dict, log: list[dict]) -> Path:
     let lastJobsHTML = '';
     let lastConsoleHTML = '';
 
-    async function pollStatus() {{
-      try {{
-        const res = await fetch('data/dashboard_status.json');
-        if (!res.ok) throw new Error('Status fetch failed');
-        const data = await res.json();
-        
-        // Update connection indicator
-        const indicator = document.getElementById("status-indicator");
-        if (indicator) {{
-          indicator.innerHTML = '<span class="status-dot live"></span> Live';
-        }}
-        
-        // Update metrics
-        document.getElementById("header-seed-capital").innerText = "Seed Capital: " + formatCents(data.capital_cents);
-        const growth = data.balance_cents - data.capital_cents;
-        const growthSign = growth >= 0 ? '+' : '';
-        const growthClass = growth >= 0 ? 'green' : 'red';
-        document.getElementById("header-net-growth-val").innerHTML = `${{growthSign}}${{formatCents(growth)}}`;
-        document.getElementById("header-net-growth-val").className = growthClass;
-        
-        document.getElementById("metric-cash-balance").innerText = formatCents(data.balance_cents);
-        document.getElementById("metric-revenue").innerText = formatCents(data.revenue_cents);
-        document.getElementById("metric-operating-spend").innerText = formatCents(data.expense_cents);
-        
-        const netProfit = data.net_profit_cents;
-        const profitClass = netProfit >= 0 ? 'green' : 'red';
-        const profitSign = netProfit >= 0 ? '+' : '';
-        const profitElem = document.getElementById("metric-net-profit");
-        profitElem.innerText = profitSign + formatCents(netProfit);
-        profitElem.className = 'val ' + profitClass;
-        
-        document.getElementById("metric-margin").innerText = data.margin_pct + '%';
-        
-        // Update containers only if content changed to avoid layout recalculation / flicker
-        if (lastChartSVG !== data.chart_svg) {{
-          document.getElementById("chart-container").innerHTML = data.chart_svg;
-          lastChartSVG = data.chart_svg;
-        }}
-        if (lastExpenseHTML !== data.expense_breakdown_html) {{
-          document.getElementById("expense-breakdown").innerHTML = data.expense_breakdown_html;
-          lastExpenseHTML = data.expense_breakdown_html;
-        }}
-        if (lastJobsHTML !== data.job_cards_html) {{
-          document.getElementById("jobs-grid").innerHTML = data.job_cards_html;
-          lastJobsHTML = data.job_cards_html;
-        }}
-        if (lastConsoleHTML !== data.console_log_html) {{
-          const consoleLines = document.getElementById("console-lines");
-          consoleLines.innerHTML = data.console_log_html;
-          lastConsoleHTML = data.console_log_html;
-          scrollConsole();
-        }}
-        
-        // Sync raw variables for details drawer
-        jobsData = data.jobs_data;
-        briefs = data.briefs;
-        
-        updateBriefsList();
-        
-        // Update open drawer if active
-        if (currentOpenJobId) {{
-          updateDrawerContent(currentOpenJobId);
-        }}
-      }} catch (err) {{
-        console.error(err);
-        const indicator = document.getElementById("status-indicator");
-        if (indicator) {{
-          indicator.innerHTML = '<span class="status-dot offline"></span> Reconnecting...';
-        }}
-      }}
-    }}
-    
-    // Poll every 2 seconds
-    setInterval(pollStatus, 2000);
+    {client_updates_js}
   </script>
 </body>
 </html>"""
 
-    # Write the dashboard status JSON
     status_dir = Path(__file__).resolve().parent.parent / "data"
     status_dir.mkdir(exist_ok=True)
     status_json_path = status_dir / "dashboard_status.json"
-    
-    status_data = {
-        "balance_cents": s["balance_cents"],
-        "capital_cents": s["capital_cents"],
-        "revenue_cents": s["revenue_cents"],
-        "expense_cents": s["expense_cents"],
-        "net_profit_cents": s["net_profit_cents"],
-        "margin_pct": s["margin_pct"],
-        "chart_svg": chart_svg,
-        "expense_breakdown_html": expense_breakdown_html,
-        "ops_html": ops_html,
-        "job_cards_html": job_cards_html,
-        "console_log_html": console_log_html,
-        "jobs_data": dict(jobs_data),
-        "briefs": briefs
-    }
     status_json_path.write_text(json.dumps(status_data, indent=2))
 
     OUT.write_text(html)

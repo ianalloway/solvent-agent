@@ -15,10 +15,11 @@ pip install -r requirements.txt
 pip install -r requirements-serve.txt
 
 export SOLVENT_BASE_URL=http://127.0.0.1:8787
-export SOLVENT_DELIVERY_SECRET=change-me-in-production
+export SOLVENT_DELIVERY_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
 
-# Terminal 1 — API + webhooks + hosted briefs
+# Terminal 1 — API + webhooks + interactive dashboard
 python3 -m solvent serve --port 8787
+open http://127.0.0.1:8787/
 
 # Terminal 2 — async job processor
 python3 -m solvent worker
@@ -26,6 +27,15 @@ python3 -m solvent worker
 # Or combined dev mode:
 python3 run_demo.py --serve --no-onboard
 ```
+
+### Interactive dashboard + voice
+
+`python3 -m solvent serve` serves a live dashboard at `/` with:
+
+- **SSE** (`GET /api/events`) — treasury metrics, job cards, and console log update in real time
+- **Chat** (`POST /api/chat`) — talk to the agent; supports `/status`, `/jobs`, `/quote topic | 50`
+- **Voice** — mic button uses browser Web Speech API (Chrome/Edge); toggle 🔊 for spoken replies
+- **Jobs** (`POST /api/job`) — same payload as `POST /jobs`
 
 ## Stripe setup (test mode)
 
@@ -82,7 +92,7 @@ python3 -m solvent tune --apply
 | `STRIPE_API_KEY` | Test/restricted Stripe key |
 | `STRIPE_WEBHOOK_SECRET` | Webhook signature verification |
 | `SOLVENT_BASE_URL` | Checkout success URLs + hosted briefs |
-| `SOLVENT_DELIVERY_SECRET` | HMAC token for `/briefs/{id}` |
+| `SOLVENT_DELIVERY_SECRET` | HMAC token for `/briefs/{id}`; required, at least 32 characters, high entropy, and not a placeholder |
 | `SOLVENT_ASYNC` | Non-blocking payment (worker resumes jobs) |
 | `SOLVENT_ALLOW_POLL` | Legacy payment polling |
 | `SOLVENT_LOG_JSON` | JSON lines to stderr + `data/solvent.log` |

@@ -109,6 +109,11 @@ class StageRunner:
             event["ts"] = time.time()
         if self.on_event:
             self.on_event(event)
+        try:
+            from .gateway import handle_job_event
+            handle_job_event(event)
+        except Exception:
+            pass
         log_event(
             self.t,
             job_id=event.get("job_id", ""),

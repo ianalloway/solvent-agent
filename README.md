@@ -152,6 +152,7 @@ In interactive mode, type `/fund 200` at the prompt to deposit $200 into the liv
 
 ```python
 from solvent.agent import Solvent
+from solvent.jobs import SAMPLE_JOBS
 
 agent = Solvent(seed_cents=10_000)          # reset treasury, seed $100
 agent.handle_job(SAMPLE_JOBS[0])            # process one job
@@ -176,9 +177,14 @@ pip install -r requirements.txt -r requirements-serve.txt
 python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
 python3 -m solvent worker              # resume incomplete jobs, process queue
 
+# Interactive voice dashboard (chat + live SSE updates):
+open http://127.0.0.1:8787/
+
 # Or dev convenience:
 python3 run_demo.py --serve --no-onboard
 ```
+
+The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Chat hits `/api/chat`, which routes through the Nemotron agent loop.
 
 See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, reconciliation, and auto-tuning.
 
@@ -223,8 +229,33 @@ With both keys set:
 | `STRIPE_PAYMENT_POLL_TIMEOUT` | Seconds to wait for payment (default `120`) |
 | `STRIPE_PAYMENT_POLL_INTERVAL` | Poll interval in seconds (default `2`) |
 | `SOLVENT_FORCE_STRIPE_SIMULATE` | Force offline simulate mode even with a key |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
+| `SOLVENT_TELEGRAM_DM_POLICY` | `pairing` · `allowlist` · `open` (default `pairing`) |
+| `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |
 
 Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated runs reuse a single **SOLVENT Research Brief** product instead of cluttering your Stripe dashboard.
+
+---
+
+## 💬 Telegram (conversational channel)
+
+Full chat on Telegram with OpenClaw-style pairing and Hermes-style tool/memory patterns. See **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
+
+```bash
+pip install -r requirements-telegram.txt
+export TELEGRAM_BOT_TOKEN=...
+
+python -m solvent serve &    # Stripe webhooks + checkout
+python -m solvent worker &   # fulfill jobs
+python -m solvent telegram     # long-poll bot
+
+python -m solvent doctor       # diagnostics
+python -m solvent pairing list # pending DM codes
+```
+
+Users pair via `/start`, commission briefs in natural language, receive checkout links, and get push updates when jobs are paid and delivered.
+
+Personality and operating rules come from the **agent workspace** (`SOUL.md`, `BRAIN.md`, `AGENTS.md`) — see **[docs/WORKSPACE.md](docs/WORKSPACE.md)**.
 
 ---
 
@@ -253,6 +284,13 @@ solvent/
   jobs.py          sample inbound work
   dashboard.py     renders the treasury to HTML + JSON
   config.py        onboarding wizard and config persistence
+  gateway.py       channel router (Telegram → chat sessions)
+  chat.py          conversational loop + business tools
+  memory.py        Hermes-style session memory
+  hermes_tools.py  progressive tool disclosure bridge
+  doctor.py        stack diagnostics
+  workspace.py     SOUL/BRAIN/AGENTS prompt assembly
+  channels/        Telegram long-poll adapter
 run_demo.py        the full business loop (CLI entry point)
 demo_guardrails.py the safety story (standalone)
 tests/             pytest suite
