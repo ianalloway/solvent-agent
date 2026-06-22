@@ -63,15 +63,57 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     def get_brief(job_id: str, token: str = ""):
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
-        path = Path(__file__).resolve().parent.parent / "data" / "reports" / f"{job_id}.md"
-        if not path.is_file():
-            for p in (Path(__file__).resolve().parent.parent / "data" / "reports").glob("*.md"):
-                if job_id in p.stem:
-                    path = p
-                    break
-        if not path.is_file():
-            raise HTTPException(404, "brief not found")
-        return HTMLResponse(markdown_to_html(path.read_text(encoding="utf-8")))
+            
+        path_html = Path(__file__).resolve().parent.parent / "data" / "reports" / f"{job_id}.html"
+        if path_html.is_file():
+            return HTMLResponse(path_html.read_text(encoding="utf-8"))
+            
+        path_md = Path(__file__).resolve().parent.parent / "data" / "reports" / f"{job_id}.md"
+        if path_md.is_file():
+            return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
+            
+        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
+        if reports_dir.is_dir():
+            for p in reports_dir.glob("*"):
+                if job_id in p.stem and p.suffix in (".html", ".md"):
+                    if p.suffix == ".html":
+                        return HTMLResponse(p.read_text(encoding="utf-8"))
+                    else:
+                        return HTMLResponse(markdown_to_html(p.read_text(encoding="utf-8")))
+                        
+        raise HTTPException(404, "brief not found")
+
+    @app.get("/api/briefs")
+    def list_briefs():
+        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
+        if not reports_dir.is_dir():
+            return []
+        stems = set()
+        for p in reports_dir.glob("*"):
+            if p.suffix in (".md", ".html") and p.stem != ".gitkeep":
+                stems.add(p.stem)
+        return sorted(list(stems))
+
+    @app.get("/api/briefs/{job_id}")
+    def get_brief_api(job_id: str):
+        path_html = Path(__file__).resolve().parent.parent / "data" / "reports" / f"{job_id}.html"
+        if path_html.is_file():
+            return HTMLResponse(path_html.read_text(encoding="utf-8"))
+            
+        path_md = Path(__file__).resolve().parent.parent / "data" / "reports" / f"{job_id}.md"
+        if path_md.is_file():
+            return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
+            
+        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
+        if reports_dir.is_dir():
+            for p in reports_dir.glob("*"):
+                if job_id in p.stem and p.suffix in (".html", ".md"):
+                    if p.suffix == ".html":
+                        return HTMLResponse(p.read_text(encoding="utf-8"))
+                    else:
+                        return HTMLResponse(markdown_to_html(p.read_text(encoding="utf-8")))
+                        
+        raise HTTPException(404, "brief not found")
 
     return app
 

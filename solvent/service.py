@@ -73,6 +73,11 @@ def fulfill(job: dict) -> dict:
     path = safe_report_path(OUTPUT_DIR, job["id"])
     path.write_text(text)
 
+    from .delivery import markdown_to_html
+    html_content = markdown_to_html(text, job_id=job["id"], topic=job.get("topic"))
+    html_path = path.with_suffix(".html")
+    html_path.write_text(html_content, encoding="utf-8")
+
     return {
         "deliverable_path": str(path),
         "text": text,
