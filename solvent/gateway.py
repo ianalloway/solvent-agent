@@ -53,10 +53,11 @@ class Gateway:
         *,
         user_label: str | None = None,
     ) -> str:
-        if not _rate_ok(f"{channel}:{external_id}"):
-            return "Rate limit exceeded. Please wait before sending more messages."
-
         session = self.memory.get_or_create(channel, external_id, user_label)
+        is_command = text.strip().startswith("/")
+
+        if not is_command and not _rate_ok(f"{channel}:{external_id}"):
+            return "Rate limit exceeded. Please wait before sending more messages."
 
         if channel == "telegram" and not pairing.is_allowed(external_id, user_label):
             if text.strip().lower().startswith("/start"):
@@ -67,7 +68,7 @@ class Gateway:
                 )
             return "Pairing required. Send /start to get a pairing code."
 
-        if text.strip().startswith("/"):
+        if is_command:
             return self._handle_command(channel, external_id, text.strip(), session)
 
         return handle_message(

@@ -6,9 +6,6 @@ import os
 import unittest
 from unittest import mock
 
-
-from fastapi import Request
-
 # ---------------------------------------------------------------------------
 # Receipt builder unit tests
 # ---------------------------------------------------------------------------
@@ -165,6 +162,7 @@ class TestReceiptEndpoint(unittest.TestCase):
     def _make_receipt_app(self, agent):
         """Build a minimal FastAPI app that exposes only the receipt endpoint."""
         from fastapi import FastAPI, HTTPException
+        from starlette.requests import Request
         from starlette.responses import PlainTextResponse
         from solvent.delivery import verify_delivery_token
         from solvent.receipt import build_receipt

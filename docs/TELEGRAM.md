@@ -33,7 +33,7 @@ python -m solvent worker     # fulfill paid jobs
 python -m solvent telegram     # long-poll bot
 ```
 
-`serve` also hosts the **interactive dashboard** at `http://127.0.0.1:8787/` — typed chat, Web Speech mic input, and live treasury updates via SSE. Same UI documented in the main README.
+`serve` also hosts the **interactive dashboard** at `http://127.0.0.1:8787/` — typed chat, Web Speech mic input, and live treasury updates via SSE. Job lifecycle messages from `worker` reach the dashboard via `data/chat_outbox.jsonl` when `serve` is running.
 
 Verify configuration:
 
