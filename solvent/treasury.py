@@ -119,6 +119,7 @@ class Treasury:
                     ("quote_json", "TEXT"),
                     ("locked_until", "REAL"),
                     ("job_payload_json", "TEXT"),
+                    ("retry_count", "INTEGER DEFAULT 0"),
                 ):
                     self._ensure_column(conn, "jobs", col, ctype)
                 conn.execute("""
@@ -387,6 +388,7 @@ class Treasury:
         "topic", "budget_cents", "customer_email", "est_tokens", "market_data_calls",
         "web_search_calls", "error_reason", "checkout_session_id", "checkout_url",
         "deliverable_url", "current_stage", "quote_json", "locked_until", "job_payload_json",
+        "retry_count",
     )
 
     def upsert_job(self, job_id: str, status: str, **kwargs) -> None:
@@ -627,6 +629,20 @@ class Treasury:
                     (job_id, stage),
                 ).fetchone()
                 return (row["c"] or 0) > 0
+
+    def increment_retry_count(self, job_id: str) -> int:
+        """Atomically increment retry_count for a job and return the new value."""
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    conn.execute(
+                        "UPDATE jobs SET retry_count = COALESCE(retry_count, 0) + 1, updated_at = ? WHERE id = ?",
+                        (time.time(), job_id),
+                    )
+                    row = conn.execute(
+                        "SELECT retry_count FROM jobs WHERE id = ?", (job_id,)
+                    ).fetchone()
+                    return row["retry_count"] if row else 0
 
     # ---- chat sessions (gateway / Hermes memory) -----------------------
     def get_or_create_chat_session(

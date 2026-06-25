@@ -414,7 +414,7 @@ class StageRunner:
 
             self.t.upsert_job(job_id, "completed", current_stage="booked")
             pnl = self.t.job_pnl_cents(job_id)
-            return self._emit(
+            booked_event = self._emit(
                 stage="booked",
                 job_id=job_id,
                 job_pnl=pnl,
@@ -422,6 +422,15 @@ class StageRunner:
                 status="completed",
                 actual_margin_pct=cogs["actual_margin_pct"],
             )
+            try:
+                from .receipt import build_receipt
+                _job_row = self.t.get_job(job_id) or {}
+                _full_job = {**_job_row, **job}
+                receipt_text = build_receipt(_full_job, pnl, self.t.balance_cents())
+                self._emit(stage="receipt_ready", job_id=job_id, receipt=receipt_text)
+            except Exception:
+                pass
+            return booked_event
         except Exception as e:
             reason = str(e)
             refund_key = f"refund:{job_id}:{payment_intent_id}"
@@ -440,13 +449,22 @@ class StageRunner:
             self._emit(stage="refunded", job_id=job_id, amount=paid_amount, reason=reason)
             self.t.upsert_job(job_id, "failed", error_reason=reason, current_stage="failed")
             pnl = self.t.job_pnl_cents(job_id)
-            return self._emit(
+            booked_event = self._emit(
                 stage="booked",
                 job_id=job_id,
                 job_pnl=pnl,
                 balance=self.t.balance_cents(),
                 status="failed",
             )
+            try:
+                from .receipt import build_refund_receipt
+                _job_row = self.t.get_job(job_id) or {}
+                _full_job = {**_job_row, **job, "error_reason": reason}
+                refund_receipt_text = build_refund_receipt(_full_job, paid_amount)
+                self._emit(stage="refund_receipt_ready", job_id=job_id, receipt=refund_receipt_text)
+            except Exception:
+                pass
+            return booked_event
 
     def handle_webhook_payment(self, payment: dict) -> dict | None:
         """Apply a verified webhook payment and advance the job."""
@@ -461,3 +479,100 @@ class StageRunner:
         if not row:
             return None
         return self.advance_job(job_id)
+
+    def retry_job(self, job_id: str) -> dict:
+        """Retry a failed or payment_pending job, restarting from the appropriate stage.
+
+        Rules:
+        - Only ``failed`` or ``payment_pending`` (awaiting_payment) jobs may be retried.
+        - Increments ``retry_count``; raises ValueError if the cap of 3 is exceeded.
+        - ``payment_pending`` jobs resume from ``_stage_checkout`` (reuses the existing link).
+        - ``failed`` pre-payment jobs restart from the quote stage.
+        - ``failed`` post-payment jobs re-run ``_stage_fulfill_and_book`` only (no re-charge).
+        """
+        MAX_RETRIES = 3
+
+        row = self.t.get_job(job_id)
+        if not row:
+            raise ValueError(f"Job {job_id!r} not found")
+
+        status = row.get("status", "")
+        if status not in ("failed", "awaiting_payment"):
+            raise ValueError(
+                f"Job {job_id!r} cannot be retried: status is {status!r} "
+                "(only 'failed' or 'awaiting_payment'/'payment_pending' jobs are retryable)"
+            )
+
+        new_count = self.t.increment_retry_count(job_id)
+        if new_count > MAX_RETRIES:
+            raise ValueError(
+                f"Job {job_id!r} has exceeded the maximum retry limit ({MAX_RETRIES})"
+            )
+
+        self._emit(stage="retry_started", job_id=job_id, retry_count=new_count, previous_status=status)
+
+        # Reconstruct the job payload
+        payload = row.get("job_payload_json")
+        if isinstance(payload, str):
+            job = json.loads(payload)
+        else:
+            job = {
+                "id": job_id,
+                "topic": row.get("topic"),
+                "budget_cents": row.get("budget_cents"),
+                "customer_email": row.get("customer_email"),
+                "est_tokens": row.get("est_tokens"),
+                "market_data_calls": row.get("market_data_calls"),
+                "web_search_calls": row.get("web_search_calls"),
+            }
+
+        # --- payment_pending: resume from checkout (reuse existing payment link) ---
+        if status == "awaiting_payment":
+            checkout = {
+                "session_id": row.get("checkout_session_id"),
+                "url": row.get("checkout_url"),
+                "amount_cents": row.get("budget_cents"),
+            }
+            q_data = json.loads(row["quote_json"]) if row.get("quote_json") else {}
+            if q_data:
+                checkout["amount_cents"] = q_data.get("price_cents", checkout["amount_cents"])
+            from .pricing import Quote
+            if q_data and all(k in q_data for k in Quote.__dataclass_fields__):
+                quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
+            else:
+                quote_obj = self._stage_quote(job).get("_quote")
+                if quote_obj is None:
+                    return self._emit(stage="declined", job_id=job_id, reason="quote failed during retry")
+            paid = self._stage_paid(job, checkout, quote_obj)
+            if paid.get("stage") == "payment_pending":
+                return paid
+            return self._stage_fulfill_and_book(job, quote_obj, paid)
+
+        # --- failed job: determine which stage failed ---
+        error_reason = row.get("error_reason", "")
+        paid_already = self.t.job_has_revenue(job_id)
+
+        if paid_already:
+            # Payment already collected — only re-run fulfillment (no re-charge)
+            q_data = json.loads(row["quote_json"]) if row.get("quote_json") else {}
+            from .pricing import Quote
+            if q_data and all(k in q_data for k in Quote.__dataclass_fields__):
+                quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
+            else:
+                from .pricing import quote as _quote
+                quote_obj = _quote(job, self.pricing)
+            paid = {"stripe_ref": None, "amount_cents": q_data.get("price_cents", 0)}
+            for e in self.t.entries:
+                if e.job_id == job_id and e.kind == "revenue":
+                    paid["stripe_ref"] = e.stripe_ref
+                    paid["amount_cents"] = e.amount_cents
+                    break
+            # Clear previous failed stage records so fulfill runs fresh
+            return self._stage_fulfill_and_book(job, quote_obj, paid)
+        else:
+            # Failed before payment — restart from quote
+            return self.run_job(job)
+
+
+# Alias so ``python -m solvent retry`` can import SolventStages from this module.
+SolventStages = StageRunner

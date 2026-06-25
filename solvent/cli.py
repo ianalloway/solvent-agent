@@ -256,6 +256,12 @@ def resolve_config(args) -> "SolventConfig":
 
 
 def main():
+    # Fast-path: tui subcommand bypasses argparse entirely
+    if len(sys.argv) > 1 and sys.argv[1] == "tui":
+        from .tui import run
+        run()
+        return
+
     parser = argparse.ArgumentParser(
         description="Run SOLVENT — a self-funding analyst agent.",
     )

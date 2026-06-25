@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-from collections import defaultdict
 from typing import Callable
 
 from .agent import Solvent
@@ -11,10 +9,15 @@ from .chat import handle_message, format_job_notification
 from .memory import SessionMemory
 from . import pairing
 from .treasury import Treasury, fmt
+from .rate_limit import RateLimiter
 
 _outbound_handlers: dict[str, Callable[[str, str], None]] = {}
-_rate_limits: dict[str, list[float]] = defaultdict(list)
-RATE_LIMIT_PER_HOUR = 30
+_rate_limiter = RateLimiter()
+
+try:
+    _rate_limiter.cleanup()
+except Exception:
+    pass
 
 
 def register_outbound(channel: str, handler: Callable[[str, str], None]) -> None:
@@ -33,13 +36,8 @@ def notify(channel: str, external_id: str, text: str) -> None:
 
 
 def _rate_ok(user_key: str) -> bool:
-    now = time.time()
-    window = _rate_limits[user_key]
-    _rate_limits[user_key] = [t for t in window if now - t < 3600]
-    if len(_rate_limits[user_key]) >= RATE_LIMIT_PER_HOUR:
-        return False
-    _rate_limits[user_key].append(now)
-    return True
+    allowed, _reason = _rate_limiter.check(user_key)
+    return allowed
 
 
 class Gateway:
@@ -121,6 +119,22 @@ class Gateway:
         jid = event.get("job_id")
         if not jid:
             return
+
+        # Push formatted receipt to the Telegram / dashboard session that owns the job.
+        if event.get("stage") in ("receipt_ready", "refund_receipt_ready"):
+            receipt_text = event.get("receipt", "")
+            if receipt_text:
+                try:
+                    for sess in self.agent.t.list_chat_sessions_by_channel("telegram"):
+                        if sess.get("notify_job_id") == jid:
+                            notify("telegram", sess["external_id"], receipt_text)
+                    for sess in self.agent.t.list_chat_sessions_by_channel("dashboard"):
+                        if sess.get("notify_job_id") == jid:
+                            notify("dashboard", sess["external_id"], receipt_text)
+                except Exception:
+                    pass
+            return
+
         msg = format_job_notification(event)
         if not msg:
             return

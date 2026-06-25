@@ -15,6 +15,7 @@ from .gateway import Gateway, register_outbound
 from .delivery import verify_delivery_token, markdown_to_html, is_safe_job_id
 from .event_hub import EventHub
 from .stripe_client import StripeClient
+from .webhook_log import WebhookLog
 
 try:
     from starlette.requests import Request
@@ -63,6 +64,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, sync_payment=False)
     gateway = Gateway(agent=agent)
     stripe = StripeClient()
+    webhook_log = WebhookLog()
     status_lock = threading.Lock()
     last_status_json = ""
 
@@ -94,6 +96,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     register_outbound("dashboard", _dashboard_outbound)
 
     app = FastAPI(title="SOLVENT", version="2.1")
+    app.state.webhook_log = webhook_log
 
     @app.on_event("startup")
     async def _startup():
@@ -199,14 +202,55 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         metrics = agent.t.get_metrics(job_id)
         return {"job": dict(row), "metrics": metrics}
 
+    @app.get("/api/receipt/{job_id}")
+    def get_receipt(job_id: str, token: str = "", request: Request = None):
+        """Return a plaintext job receipt.
+
+        Access requires either:
+        - A valid delivery token (``?token=...``), OR
+        - The request originating from localhost (127.0.0.1 / ::1).
+        """
+        from starlette.requests import Request as StarletteRequest
+
+        row = agent.t.get_job(job_id)
+        if not row:
+            raise HTTPException(404, "job not found")
+
+        # Auth: localhost OR valid delivery token
+        is_local = False
+        if request is not None:
+            client_host = getattr(request.client, "host", "") if request.client else ""
+            is_local = client_host in ("127.0.0.1", "::1", "localhost")
+
+        if not is_local:
+            if not verify_delivery_token(job_id, token):
+                raise HTTPException(403, "invalid or expired delivery token")
+
+        from .receipt import build_receipt
+        job_dict = dict(row)
+        pnl = agent.t.job_pnl_cents(job_id)
+        balance = agent.t.balance_cents()
+        text = build_receipt(job_dict, pnl, balance)
+
+        from starlette.responses import PlainTextResponse
+        return PlainTextResponse(text)
+
     @app.post("/webhooks/stripe")
     async def stripe_webhook(req: Request):
         payload = await req.body()
         sig = req.headers.get("Stripe-Signature", "")
-        payment = stripe.process_webhook(payload, sig, treasury=agent.t)
-        if payment and payment.get("job_id"):
-            agent._runner.handle_webhook_payment(payment)
-            _publish_status()
+        event_id = json.loads(payload).get("id", "unknown") if payload else "unknown"
+        event_type = json.loads(payload).get("type", "") if payload else ""
+        webhook_log.record(event_id, event_type, payload, "received")
+        try:
+            payment = stripe.process_webhook(payload, sig, treasury=agent.t)
+            if payment and payment.get("job_id"):
+                agent._runner.handle_webhook_payment(payment)
+                _publish_status()
+            webhook_log.mark_processed(event_id)
+        except Exception as exc:
+            webhook_log.mark_error(event_id, str(exc))
+            raise
         return {"received": True}
 
     @app.get("/briefs/{job_id}")
@@ -293,6 +337,34 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                         pass
                         
         raise HTTPException(404, "brief not found")
+
+    # ------------------------------------------------------------------
+    # Webhook monitoring + replay endpoints
+    # ------------------------------------------------------------------
+
+    @app.get("/api/webhooks")
+    def api_webhooks_list():
+        return JSONResponse(webhook_log.list_recent(50))
+
+    @app.get("/api/webhooks/stats")
+    def api_webhooks_stats():
+        return JSONResponse(webhook_log.stats())
+
+    @app.post("/api/webhooks/{event_id}/replay")
+    async def api_webhooks_replay(event_id: str):
+        stored = webhook_log.get_payload(event_id)
+        if stored is None:
+            raise HTTPException(404, f"No stored payload for event_id={event_id!r}")
+        try:
+            payment = stripe.process_webhook(stored, sig_header="", treasury=agent.t)
+            if payment and payment.get("job_id"):
+                agent._runner.handle_webhook_payment(payment)
+                _publish_status()
+            webhook_log.mark_processed(event_id)
+        except Exception as exc:
+            webhook_log.mark_error(event_id, str(exc))
+            raise HTTPException(500, str(exc)) from exc
+        return {"replayed": True, "event_id": event_id}
 
     return app
 

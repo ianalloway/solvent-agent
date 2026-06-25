@@ -34,6 +34,10 @@ class SolventConfig:
     telegram_dm_policy: str = "pairing"
     telegram_allow_from: list[str] | None = None
 
+    rate_burst_limit: int = 5
+    rate_hourly_limit: int = 30
+    rate_daily_limit: int = 200
+
     def validate(self) -> None:
         if self.model not in VALID_MODELS:
             raise ValueError(f"invalid model: {self.model}")
@@ -107,3 +111,14 @@ def apply_config(config: SolventConfig) -> None:
         os.environ["SOLVENT_TELEGRAM_DM_POLICY"] = config.telegram_dm_policy
     if config.telegram_allow_from:
         os.environ["SOLVENT_TELEGRAM_ALLOW_FROM"] = ",".join(config.telegram_allow_from)
+
+    try:
+        from . import gateway as _gw
+        from .rate_limit import RateLimiter as _RL
+        _gw._rate_limiter = _RL(
+            burst_limit=config.rate_burst_limit,
+            hourly_limit=config.rate_hourly_limit,
+            daily_limit=config.rate_daily_limit,
+        )
+    except Exception:
+        pass
