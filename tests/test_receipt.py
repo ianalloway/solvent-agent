@@ -67,7 +67,7 @@ class TestBuildReceipt(unittest.TestCase):
         from solvent.receipt import build_receipt
         job = self._make_job(revenue_cents=1000)
         receipt = build_receipt(job, pnl_cents=-200, balance_cents=5000)
-        self.assertIn("-$2.00", receipt)
+        self.assertIn("$-2.00", receipt)
 
 
 # ---------------------------------------------------------------------------
