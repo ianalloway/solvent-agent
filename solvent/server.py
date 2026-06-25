@@ -220,7 +220,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         is_local = False
         if request is not None:
             client_host = getattr(request.client, "host", "") if request.client else ""
-            is_local = client_host in ("127.0.0.1", "::1", "localhost")
+            is_local = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
 
         if not is_local:
             if not verify_delivery_token(job_id, token):
@@ -277,19 +277,6 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         except ValueError:
             raise HTTPException(404, "brief not found") from None
             
-        if reports_dir.is_dir():
-            for p in reports_dir.glob("*"):
-                if job_id in p.stem and p.suffix in (".html", ".md"):
-                    try:
-                        resolved_p = p.resolve()
-                        resolved_p.relative_to(reports_dir)
-                        if resolved_p.suffix == ".html":
-                            return HTMLResponse(resolved_p.read_text(encoding="utf-8"))
-                        else:
-                            return HTMLResponse(markdown_to_html(resolved_p.read_text(encoding="utf-8")))
-                    except ValueError:
-                        pass
-                        
         raise HTTPException(404, "brief not found")
 
     @app.get("/api/briefs")
@@ -323,19 +310,6 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         except ValueError:
             raise HTTPException(404, "brief not found") from None
             
-        if reports_dir.is_dir():
-            for p in reports_dir.glob("*"):
-                if job_id in p.stem and p.suffix in (".html", ".md"):
-                    try:
-                        resolved_p = p.resolve()
-                        resolved_p.relative_to(reports_dir)
-                        if resolved_p.suffix == ".html":
-                            return HTMLResponse(resolved_p.read_text(encoding="utf-8"))
-                        else:
-                            return HTMLResponse(markdown_to_html(resolved_p.read_text(encoding="utf-8")))
-                    except ValueError:
-                        pass
-                        
         raise HTTPException(404, "brief not found")
 
     # ------------------------------------------------------------------

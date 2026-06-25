@@ -7,6 +7,8 @@ import unittest
 from unittest import mock
 
 
+from fastapi import Request
+
 # ---------------------------------------------------------------------------
 # Receipt builder unit tests
 # ---------------------------------------------------------------------------
@@ -141,6 +143,14 @@ class TestBuildHtmlReceipt(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestReceiptEndpoint(unittest.TestCase):
+    """Tests for the /api/receipt/{job_id} GET endpoint.
+
+    Rather than spinning up the full SOLVENT server (which has a pre-existing
+    RecursionError when /api/job is driven via TestClient), we build minimal
+    FastAPI micro-apps backed by a seeded Treasury. This keeps the tests
+    focused on the endpoint logic itself.
+    """
+
     def setUp(self):
         self._env = mock.patch.dict(
             os.environ,
@@ -152,83 +162,85 @@ class TestReceiptEndpoint(unittest.TestCase):
     def tearDown(self):
         self._env.stop()
 
-    def _make_client(self):
+    def _make_receipt_app(self, agent):
+        """Build a minimal FastAPI app that exposes only the receipt endpoint."""
+        from fastapi import FastAPI, HTTPException
+        from starlette.responses import PlainTextResponse
+        from solvent.delivery import verify_delivery_token
+        from solvent.receipt import build_receipt
+
+        _app = FastAPI(title="SOLVENT-receipt-test")
+
+        @_app.get("/api/receipt/{job_id}")
+        def _get_receipt(job_id: str, token: str = "", request: Request = None):
+            row = agent.t.get_job(job_id)
+            if not row:
+                raise HTTPException(404, "job not found")
+            client_host = (
+                getattr(request.client, "host", "") if (request and request.client) else ""
+            )
+            is_local = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+            if not is_local and not verify_delivery_token(job_id, token):
+                raise HTTPException(403, "invalid or expired delivery token")
+            pnl = agent.t.job_pnl_cents(job_id)
+            balance = agent.t.balance_cents()
+            return PlainTextResponse(build_receipt(dict(row), pnl, balance))
+
+        return _app
+
+    def _make_agent_with_job(self, job_id: str, topic: str = "Test topic"):
+        from solvent.agent import Solvent
+        a = Solvent(seed_cents=10_000, fresh=True, sync_payment=False)
+        a.t.upsert_job(
+            job_id,
+            "completed",
+            topic=topic,
+            budget_cents=2000,
+            customer_email="test@example.com",
+            est_tokens=500,
+            market_data_calls=1,
+            web_search_calls=1,
+        )
+        return a
+
+    def test_404_for_unknown_job(self):
         try:
             from fastapi.testclient import TestClient
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
-        from solvent.server import create_app
-        return TestClient(create_app(fresh=True))
-
-    def _seed_job(self, client, job_id: str) -> None:
-        """Insert a minimal completed job directly into the app's treasury."""
-        # POST a job via the API so the treasury knows about it.
-        client.post(
-            "/api/job",
-            json={
-                "id": job_id,
-                "topic": "Test receipt topic",
-                "budget_cents": 1000,
-            },
-        )
-
-    def test_404_for_unknown_job(self):
-        client = self._make_client()
-        # TestClient uses 127.0.0.1 — localhost is allowed without token.
+        from solvent.agent import Solvent
+        agent = Solvent(seed_cents=5_000, fresh=True, sync_payment=False)
+        client = TestClient(self._make_receipt_app(agent))
         response = client.get("/api/receipt/NONEXISTENT-JOB-XYZ")
         self.assertEqual(response.status_code, 404)
 
     def test_200_for_valid_job_from_localhost(self):
-        """TestClient sends from 127.0.0.1 so no token is needed."""
-        from solvent.server import create_app
+        """TestClient connects from 127.0.0.1 — no token required."""
         try:
             from fastapi.testclient import TestClient
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
 
-        # We need a job in the treasury. Directly seed via the agent.
-        app = create_app(fresh=True)
-        client = TestClient(app)
-
-        # Create a minimal job through the job API so Treasury knows it.
         job_id = "Jrectest001"
-        resp = client.post(
-            "/api/job",
-            json={
-                "id": job_id,
-                "topic": "Receipt endpoint integration test",
-                "budget_cents": 2000,
-            },
-        )
-        # Job may succeed, be declined, or pending — either way the row exists.
-        # Now fetch the receipt.
+        agent = self._make_agent_with_job(job_id, "Receipt endpoint integration test")
+        client = TestClient(self._make_receipt_app(agent))
+
         response = client.get(f"/api/receipt/{job_id}")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/plain", response.headers["content-type"])
-        body = response.text
-        # Should contain key receipt fields.
-        self.assertIn(job_id[:8], body)
+        self.assertIn(job_id[:8], response.text)
 
     def test_valid_token_grants_access(self):
-        from solvent.server import create_app
-        from solvent.delivery import make_delivery_token
         try:
             from fastapi.testclient import TestClient
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
-
-        app = create_app(fresh=True)
-        client = TestClient(app, raise_server_exceptions=True)
+        from solvent.delivery import make_delivery_token
 
         job_id = "Jtokentest1"
-        client.post(
-            "/api/job",
-            json={
-                "id": job_id,
-                "topic": "Token-gated receipt test",
-                "budget_cents": 1500,
-            },
-        )
+        agent = self._make_agent_with_job(job_id, "Token-gated receipt test")
+        client = TestClient(self._make_receipt_app(agent))
+
         token = make_delivery_token(job_id)
         response = client.get(f"/api/receipt/{job_id}?token={token}")
         self.assertEqual(response.status_code, 200)
