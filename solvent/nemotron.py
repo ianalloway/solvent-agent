@@ -12,12 +12,35 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
+import urllib.error
 import urllib.request
 
 from . import tools
 
 MODEL = os.environ.get("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+# Bounded retry for transient upstream failures (rate limits, 5xx, timeouts).
+MAX_RETRIES = _int_env("NEMOTRON_MAX_RETRIES", 2)
+RETRY_BASE_DELAY = 0.5  # seconds; doubled each attempt
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True if ``exc`` is worth retrying (rate limit, server error, network)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code == 429 or 500 <= exc.code < 600
+    if isinstance(exc, urllib.error.URLError):
+        return True  # DNS / connection reset / TLS hiccup
+    return isinstance(exc, (TimeoutError, ConnectionError))
 
 _force_offline = False
 
@@ -40,7 +63,8 @@ def _estimate_tokens(system: str, user: str, text: str) -> dict:
     }
 
 
-def _live_complete(system: str, user: str) -> tuple[str, dict]:
+def _live_request(system: str, user: str) -> dict:
+    """Single HTTP round-trip to the Nemotron endpoint. Raises on failure."""
     key = os.environ["NVIDIA_API_KEY"]
     body = json.dumps({
         "model": MODEL,
@@ -56,7 +80,23 @@ def _live_complete(system: str, user: str) -> tuple[str, dict]:
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=60) as r:
-        data = json.loads(r.read())
+        return json.loads(r.read())
+
+
+def _live_complete(system: str, user: str) -> tuple[str, dict]:
+    # Retry transient upstream failures with exponential backoff before the
+    # caller falls back to the offline stub. Permanent errors (bad key, 4xx)
+    # raise immediately so we don't waste time or mask a real misconfiguration.
+    attempt = 0
+    while True:
+        try:
+            data = _live_request(system, user)
+            break
+        except Exception as exc:
+            if attempt >= MAX_RETRIES or not _is_transient(exc):
+                raise
+            time.sleep(RETRY_BASE_DELAY * (2 ** attempt))
+            attempt += 1
     text = data["choices"][0]["message"]["content"]
     usage = data.get("usage") or {}
     if usage:
@@ -107,31 +147,199 @@ def complete(system: str, user: str) -> tuple[str, dict]:
     return text, _estimate_tokens(system, user, text)
 
 
-_TOOL_CALL_RE = re.compile(
-    r"TOOL_CALL:\s*(\w+)\s*(\{.*?\})",
-    re.DOTALL,
-)
-_HERMES_TOOL_RE = re.compile(
-    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
-    re.DOTALL,
-)
+# Markers that wrap an explicit tool-call payload. We prefer these over a bare
+# JSON scan because they are unambiguous and avoid false positives from JSON
+# that happens to appear inside the brief itself.
+_HERMES_OPEN_RE = re.compile(r"<tool_call>", re.IGNORECASE)
+_LEGACY_NAME_RE = re.compile(r"TOOL_CALL:\s*([A-Za-z_]\w*)\s*", re.IGNORECASE)
+
+
+def _find_balanced(text: str, start: int) -> int:
+    """Return the index just past the ``{...}`` object beginning at ``start``.
+
+    Walks the string honouring quoted strings and escapes so nested objects
+    (e.g. ``{"arguments": {"a": 1}}``) are matched correctly. Returns ``-1`` if
+    the braces never balance. ``text[start]`` must be ``{``.
+    """
+    depth = 0
+    in_str = False
+    esc = False
+    for j in range(start, len(text)):
+        c = text[j]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return j + 1
+    return -1
+
+
+def _coerce_args(value) -> dict:
+    """Normalise a tool ``arguments`` value into a dict.
+
+    Real tool-calling models frequently emit ``arguments`` as a JSON-encoded
+    *string* rather than an object. Decode those; drop anything that is not an
+    object so downstream ``args.get(...)`` never blows up on a str/None.
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _normalize_call(obj) -> tuple[str, dict] | None:
+    """Turn a parsed JSON object into ``(name, args)`` if it looks like a call."""
+    if not isinstance(obj, dict):
+        return None
+    # OpenAI shape: {"type": "function", "function": {"name": .., "arguments": ..}}
+    fn = obj.get("function")
+    if isinstance(fn, dict):
+        obj = fn
+    name = obj.get("name") or obj.get("tool")
+    if not isinstance(name, str) or not name:
+        return None
+    args = obj.get("arguments")
+    if args is None:
+        args = obj.get("parameters")
+    if args is None:
+        args = obj.get("args")
+    return (name, _coerce_args(args) if args is not None else {})
+
+
+def _expand(obj) -> list[tuple[str, dict]]:
+    """Expand a parsed JSON value into zero or more calls.
+
+    Handles a single call object, an OpenAI-style ``{"tool_calls": [...]}``
+    envelope, and a bare list of call objects.
+    """
+    out: list[tuple[str, dict]] = []
+    if isinstance(obj, dict) and isinstance(obj.get("tool_calls"), list):
+        obj = obj["tool_calls"]
+    if isinstance(obj, list):
+        for item in obj:
+            call = _normalize_call(item)
+            if call:
+                out.append(call)
+        return out
+    call = _normalize_call(obj)
+    if call:
+        out.append(call)
+    return out
+
+
+def _strip_code_fence(s: str) -> str:
+    """Remove a single surrounding markdown code fence, if present."""
+    s = s.strip()
+    if s.startswith("```"):
+        nl = s.find("\n")
+        if nl != -1:
+            s = s[nl + 1:]
+        s = s.rstrip()
+        if s.endswith("```"):
+            s = s[:-3]
+    return s.strip()
 
 
 def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
-    """Parse Hermes <tool_call> JSON and legacy TOOL_CALL: lines."""
-    calls: list[tuple[str, dict]] = []
-    for m in _HERMES_TOOL_RE.finditer(text):
+    """Extract tool calls from model output, tolerant of real-world formatting.
+
+    Recognises, in priority order:
+
+    * Hermes/Nous ``<tool_call>{...}</tool_call>`` blocks (any number)
+    * Legacy ``TOOL_CALL: name {json}`` lines (name outside the JSON)
+    * As a fallback *only* when no marker matched and the whole message is a
+      single JSON object: a bare or ```` ```json ```` fenced call / OpenAI
+      ``{"tool_calls": [...]}`` envelope.
+
+    Brace matching is balanced (handles nested ``arguments`` objects), multiple
+    calls are returned in document order, and ``arguments`` supplied as a JSON
+    string is decoded. JSON merely *embedded* in prose or a brief is never
+    mistaken for a call. Anything unparseable is skipped rather than raised.
+    """
+    if not text:
+        return []
+
+    results: list[tuple[int, str, dict]] = []
+    consumed: list[tuple[int, int]] = []
+
+    def _claim(start: int, end: int) -> None:
+        consumed.append((start, end))
+
+    def _overlaps(start: int) -> bool:
+        return any(lo <= start < hi for lo, hi in consumed)
+
+    # 1. Explicit <tool_call> markers (the canonical Hermes format).
+    for m in _HERMES_OPEN_RE.finditer(text):
+        brace = text.find("{", m.end())
+        if brace == -1:
+            continue
+        end = _find_balanced(text, brace)
+        if end == -1:
+            continue
         try:
-            payload = json.loads(m.group(1))
-            calls.append((payload.get("name", ""), payload.get("arguments") or {}))
+            obj = json.loads(text[brace:end])
         except json.JSONDecodeError:
             continue
-    for m in _TOOL_CALL_RE.finditer(text):
-        try:
-            calls.append((m.group(1), json.loads(m.group(2))))
-        except json.JSONDecodeError:
+        for name, args in _expand(obj):
+            results.append((m.start(), name, args))
+        _claim(m.start(), end)
+
+    # 2. Legacy "TOOL_CALL: name {json}" lines (name lives outside the object).
+    for m in _LEGACY_NAME_RE.finditer(text):
+        if _overlaps(m.start()):
             continue
-    return calls
+        # The trailing \s* is consumed by the regex, so the object (if any)
+        # begins immediately at m.end().
+        brace = m.end() if m.end() < len(text) and text[m.end()] == "{" else -1
+        args: dict = {}
+        claim_end = m.end()
+        if brace != -1:
+            end = _find_balanced(text, brace)
+            if end != -1:
+                try:
+                    parsed = json.loads(text[brace:end])
+                    if isinstance(parsed, dict):
+                        args = parsed
+                    claim_end = end
+                except json.JSONDecodeError:
+                    pass
+        results.append((m.start(), m.group(1), args))
+        _claim(m.start(), claim_end)
+
+    # 3. Bare / fenced JSON fallback — ONLY when no explicit marker matched and
+    #    the entire (fence-stripped) message *is* a single JSON object. This
+    #    supports models that reply with just an OpenAI-style call or a fenced
+    #    block, without mistaking illustrative JSON embedded in prose/a brief for
+    #    a tool call.
+    if not results:
+        whole = _strip_code_fence(text)
+        if whole.startswith("{") and _find_balanced(whole, 0) == len(whole):
+            try:
+                obj = json.loads(whole)
+            except json.JSONDecodeError:
+                obj = None
+            if obj is not None:
+                for name, args in _expand(obj):
+                    results.append((0, name, args))
+
+    results.sort(key=lambda r: r[0])
+    return [(name, args) for _, name, args in results]
 
 
 def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.ToolContext]:
@@ -141,39 +349,62 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
     notes: list[str] = []
     system = (
         "You are SOLVENT, a disciplined sell-side research analyst. "
-        "You may request tools using TOOL_CALL: tool_name {\"arg\": \"value\"}. "
+        "To call a tool, emit a Hermes tool call: "
+        "<tool_call>{\"name\": \"tool_name\", \"arguments\": {\"arg\": \"value\"}}</tool_call>. "
         "Allowed tools: web_search, market_data, summarize. "
         "Do not request payment or treasury actions. "
-        "After gathering evidence, write the final brief with markdown headings."
+        "After gathering evidence, write the final brief with markdown headings "
+        "(no tool calls in the final answer)."
     )
-    user = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
+    # The transcript carries the running conversation (the model's own plan
+    # text plus each tool observation) so reasoning stays coherent across
+    # rounds; `notes` is the deduplicated evidence handed to the final synth.
+    transcript = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
 
     for _round in range(tools.MAX_TOOL_ROUNDS):
-        text, usage = complete(system, user)
+        text, usage = complete(system, transcript)
         matches = parse_tool_calls(text)
+
         if not matches:
+            # The model answered without tools: a finished brief ends the loop;
+            # anything else gets one nudge toward synthesis.
             if "# " in text or "## " in text:
                 return text, usage, ctx
-            user = text + "\n\nWrite the final research brief now with markdown headings."
+            transcript += (
+                f"\n\nAssistant: {text}"
+                "\n\nWrite the final research brief now with markdown headings."
+            )
             continue
+
+        # Act: run the requested tools, recording each observation.
+        observations: list[str] = []
         for name, args in matches:
             if ctx.total_calls >= tools.MAX_TOOL_CALLS:
+                ctx.budget_exhausted = True
                 break
             try:
                 result = tools.dispatch(
                     name, args, ctx, lambda s, u: complete(s, u)[0], live_search=live_search
                 )
-                notes.append(f"### {name}\n{result}")
             except (ValueError, RuntimeError):
                 continue
-        user = (
-            f"Research notes so far:\n" + "\n\n".join(notes) +
-            "\n\nWrite the final decision-ready research brief for: " + topic
-        )
+            notes.append(f"### {name}\n{result}")
+            observations.append(f"[{name}] {result}")
 
+        # Preserve the model's plan and the new observations for the next round.
+        transcript += f"\n\nAssistant: {text}\n\nTool results:\n" + "\n".join(observations)
+
+        # Once the tool budget is spent there is nothing more to gather — stop
+        # spinning and go straight to synthesis.
+        if ctx.budget_exhausted:
+            break
+
+    # Synthesize: one final pass, tools explicitly closed.
     final_user = (
-        f"Research notes:\n" + "\n\n".join(notes) +
-        f"\n\nProduce the final brief for: {topic}"
+        transcript
+        + "\n\nResearch notes:\n" + "\n\n".join(notes)
+        + f"\n\nNo more tools. Write the final decision-ready research brief for: {topic} "
+        "with markdown headings."
     )
     text, usage = complete(system, final_user)
     return text, usage, ctx

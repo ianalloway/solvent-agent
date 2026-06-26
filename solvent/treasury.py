@@ -146,9 +146,13 @@ class Treasury:
                         refunded INTEGER DEFAULT 0,
                         tool_calls INTEGER DEFAULT 0,
                         decline_reason TEXT,
+                        block_rule TEXT,
+                        block_reason TEXT,
                         ts REAL NOT NULL
                     )
                 """)
+                self._ensure_column(conn, "job_metrics", "block_rule", "TEXT")
+                self._ensure_column(conn, "job_metrics", "block_reason", "TEXT")
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS stripe_checkout (
                         job_id TEXT PRIMARY KEY,
@@ -554,6 +558,7 @@ class Treasury:
                             "est_cost_cents", "actual_cost_cents", "est_margin_pct",
                             "actual_margin_pct", "margin_drift_cents", "fulfillment_seconds",
                             "refunded", "tool_calls", "decline_reason",
+                            "block_rule", "block_reason",
                         ):
                             if col in kwargs:
                                 fields.append(f"{col} = ?")
@@ -570,6 +575,7 @@ class Treasury:
                             "est_cost_cents", "actual_cost_cents", "est_margin_pct",
                             "actual_margin_pct", "margin_drift_cents", "fulfillment_seconds",
                             "refunded", "tool_calls", "decline_reason",
+                            "block_rule", "block_reason",
                         ):
                             if col in kwargs:
                                 cols.append(col)

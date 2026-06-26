@@ -310,7 +310,9 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         elif st == "spend":
             msg = f"↳ Paid vendor <span class='vendor-badge'>{h(e['vendor'])}</span>: <span class='red-txt'>−{fmt(e['amount'])}</span> ({h(e['memo'])})"
         elif st == "spend_blocked":
-            msg = f"🛑 Spend BLOCKED by guardrail: {fmt(e['amount'])} to {h(e['vendor'])} ({h(e['memo'])})"
+            _why = e.get("reason") or e.get("rule")
+            _why_txt = f" — {h(_why)}" if _why else ""
+            msg = f"🛑 Spend BLOCKED by guardrail: {fmt(e['amount'])} to {h(e['vendor'])} ({h(e['memo'])}){_why_txt}"
         elif st == "refunded":
             msg = f"↩️ Escrow Refunded: Returned <span class='red-txt'>{fmt(e['amount'])}</span> to customer ({h(e['reason'])})"
         elif st == "booked":

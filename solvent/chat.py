@@ -194,6 +194,8 @@ def handle_message(
         user += f"\n{slot_hint}\n"
     user += f"\nUser: {text}"
 
+    tool_budget = tools.MAX_TOOL_CALLS
+    calls_made = 0
     for _ in range(6):
         reply, _ = nemotron.complete(system_prompt, user)
         calls = nemotron.parse_tool_calls(reply)
@@ -202,7 +204,14 @@ def handle_message(
             return reply
         notes = []
         for name, args in calls:
+            if calls_made >= tool_budget:
+                notes.append(
+                    f"[budget] per-turn tool-call limit ({tool_budget}) reached; "
+                    "answer the user now without more tool calls."
+                )
+                break
             result = registry.dispatch(name, args)
+            calls_made += 1
             notes.append(f"[{name}] {result}")
         user = user + f"\n\nAssistant: {reply}\n\nTool results:\n" + "\n".join(notes)
 

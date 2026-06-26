@@ -48,6 +48,34 @@ class TestChatTools(unittest.TestCase):
         self.assertIn("healthy", reply.lower())
 
     @patch.object(nemotron, "complete")
+    def test_per_turn_tool_budget(self, mock_complete):
+        """A single reply with many tool calls is capped at the per-turn budget."""
+        import solvent.chat as chatmod
+        from solvent.hermes_tools import ToolRegistry
+
+        many = " ".join(
+            '<tool_call>{"name": "treasury_status", "arguments": {}}</tool_call>'
+            for _ in range(25)
+        )
+        mock_complete.side_effect = [(many, {}), ("All set.", {})]
+
+        calls = {"n": 0}
+        orig = ToolRegistry.dispatch
+
+        def counting(self, name, args):
+            calls["n"] += 1
+            return orig(self, name, args)
+
+        with patch.object(ToolRegistry, "dispatch", counting), \
+             patch.object(chatmod.tools, "MAX_TOOL_CALLS", 5):
+            reply = handle_message(
+                self.session["id"], "spam tools", agent=self.agent, memory=self.memory
+            )
+
+        self.assertLessEqual(calls["n"], 5)
+        self.assertIn("set", reply.lower())
+
+    @patch.object(nemotron, "complete")
     def test_submit_brief_via_tool(self, mock_complete):
         mock_complete.side_effect = [
             (
