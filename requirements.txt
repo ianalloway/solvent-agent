@@ -3,7 +3,7 @@
 stripe>=9.0.0
 
 # Terminal dashboard
-rich>=13.0.0
+rich>=15.0.0
 
 # Tests
 pytest>=7.0.0
