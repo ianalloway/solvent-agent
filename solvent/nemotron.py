@@ -243,18 +243,17 @@ def _expand(obj) -> list[tuple[str, dict]]:
     return out
 
 
-def _objects_at(text: str, positions) -> list[tuple[int, int, object]]:
-    """Parse a balanced JSON object at each ``{``; yield (start, end, value)."""
-    found: list[tuple[int, int, object]] = []
-    for i in positions:
-        end = _find_balanced(text, i)
-        if end == -1:
-            continue
-        try:
-            found.append((i, end, json.loads(text[i:end])))
-        except json.JSONDecodeError:
-            continue
-    return found
+def _strip_code_fence(s: str) -> str:
+    """Remove a single surrounding markdown code fence, if present."""
+    s = s.strip()
+    if s.startswith("```"):
+        nl = s.find("\n")
+        if nl != -1:
+            s = s[nl + 1:]
+        s = s.rstrip()
+        if s.endswith("```"):
+            s = s[:-3]
+    return s.strip()
 
 
 def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
@@ -262,14 +261,16 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
 
     Recognises, in priority order:
 
-    * Hermes/Nous ``<tool_call>{...}</tool_call>`` blocks
-    * Markdown ```` ```json ```` fenced blocks wrapping a call object
+    * Hermes/Nous ``<tool_call>{...}</tool_call>`` blocks (any number)
     * Legacy ``TOOL_CALL: name {json}`` lines (name outside the JSON)
-    * A bare JSON call object as a last-resort fallback
+    * As a fallback *only* when no marker matched and the whole message is a
+      single JSON object: a bare or ```` ```json ```` fenced call / OpenAI
+      ``{"tool_calls": [...]}`` envelope.
 
     Brace matching is balanced (handles nested ``arguments`` objects), multiple
     calls are returned in document order, and ``arguments`` supplied as a JSON
-    string is decoded. Anything unparseable is skipped rather than raised.
+    string is decoded. JSON merely *embedded* in prose or a brief is never
+    mistaken for a call. Anything unparseable is skipped rather than raised.
     """
     if not text:
         return []
@@ -321,27 +322,21 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
         results.append((m.start(), m.group(1), args))
         _claim(m.start(), claim_end)
 
-    # 3. Bare / fenced JSON call objects for any region not already claimed.
-    #    To avoid mistaking ordinary JSON in the brief for a call, a bare object
-    #    must carry an explicit arguments key (or be an OpenAI/list envelope).
-    brace_positions = [
-        i for i, c in enumerate(text) if c == "{" and not _overlaps(i)
-    ]
-    for start, end, obj in _objects_at(text, brace_positions):
-        if _overlaps(start):
-            continue
-        if isinstance(obj, dict) and not (
-            isinstance(obj.get("tool_calls"), list)
-            or isinstance(obj.get("function"), dict)
-            or any(k in obj for k in ("arguments", "parameters", "args"))
-        ):
-            continue
-        calls = _expand(obj)
-        if not calls:
-            continue
-        for name, args in calls:
-            results.append((start, name, args))
-        _claim(start, end)
+    # 3. Bare / fenced JSON fallback — ONLY when no explicit marker matched and
+    #    the entire (fence-stripped) message *is* a single JSON object. This
+    #    supports models that reply with just an OpenAI-style call or a fenced
+    #    block, without mistaking illustrative JSON embedded in prose/a brief for
+    #    a tool call.
+    if not results:
+        whole = _strip_code_fence(text)
+        if whole.startswith("{") and _find_balanced(whole, 0) == len(whole):
+            try:
+                obj = json.loads(whole)
+            except json.JSONDecodeError:
+                obj = None
+            if obj is not None:
+                for name, args in _expand(obj):
+                    results.append((0, name, args))
 
     results.sort(key=lambda r: r[0])
     return [(name, args) for _, name, args in results]
@@ -354,10 +349,12 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
     notes: list[str] = []
     system = (
         "You are SOLVENT, a disciplined sell-side research analyst. "
-        "You may request tools using TOOL_CALL: tool_name {\"arg\": \"value\"}. "
+        "To call a tool, emit a Hermes tool call: "
+        "<tool_call>{\"name\": \"tool_name\", \"arguments\": {\"arg\": \"value\"}}</tool_call>. "
         "Allowed tools: web_search, market_data, summarize. "
         "Do not request payment or treasury actions. "
-        "After gathering evidence, write the final brief with markdown headings."
+        "After gathering evidence, write the final brief with markdown headings "
+        "(no tool calls in the final answer)."
     )
     user = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
 

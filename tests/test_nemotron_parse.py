@@ -73,6 +73,10 @@ class TestNemotronParse(unittest.TestCase):
             [("web_search", {"query": "a"}), ("summarize", {"text": "t"})],
         )
 
+    def test_fenced_block_as_whole_message(self):
+        text = '```json\n{"name": "market_data", "arguments": {"symbol": "NVDA"}}\n```'
+        self.assertEqual(parse_tool_calls(text), [("market_data", {"symbol": "NVDA"})])
+
     # --- things that must NOT be mistaken for calls ------------------------
     def test_prose_without_calls(self):
         self.assertEqual(parse_tool_calls("# Brief\n\nSome prose. {not a call}"), [])
@@ -80,6 +84,27 @@ class TestNemotronParse(unittest.TestCase):
     def test_bare_data_object_is_not_a_call(self):
         """A JSON object lacking a name/arguments shape is not a tool call."""
         self.assertEqual(parse_tool_calls('Data: {"price": 100, "vol": 5}'), [])
+
+    def test_json_embedded_in_brief_is_not_a_call(self):
+        """Regression: a brief that *contains* call-shaped JSON must not parse.
+
+        The bare-JSON fallback only fires when the whole message is one JSON
+        object; JSON illustrated inside prose stays prose.
+        """
+        brief = (
+            "## Example config\n"
+            'Use this snippet: {"name": "deploy", "arguments": {"x": 1}} in your file.\n'
+            "## Recommendation\nShip it."
+        )
+        self.assertEqual(parse_tool_calls(brief), [])
+
+    def test_explicit_marker_suppresses_bare_fallback(self):
+        """A real <tool_call> plus stray JSON elsewhere yields only the real call."""
+        text = (
+            '<tool_call>{"name": "web_search", "arguments": {"query": "ai"}}</tool_call>\n'
+            'For reference: {"name": "noise", "arguments": {"y": 2}}'
+        )
+        self.assertEqual(parse_tool_calls(text), [("web_search", {"query": "ai"})])
 
     def test_empty_and_none(self):
         self.assertEqual(parse_tool_calls(""), [])
