@@ -12,7 +12,7 @@ from .guardrails import Guardrails, GuardrailError
 from .pricing import quote, PricingPolicy
 from .stripe_client import StripeClient
 from .security import sanitise_job, SOLVENTSecurityError
-from . import service, delivery
+from . import service, delivery, tools
 from .observability import log_event
 
 
@@ -361,6 +361,12 @@ class StageRunner:
                     "deliverable_path": result["deliverable_path"],
                     "tokens": result["tokens"],
                 })
+                _tctx = result.get("tool_ctx")
+                if getattr(_tctx, "budget_exhausted", False):
+                    self._emit(
+                        stage="tool_budget_exhausted", job_id=job_id,
+                        tool_calls=_tctx.total_calls, limit=tools.MAX_TOOL_CALLS,
+                    )
             self._emit(
                 stage="fulfilled",
                 job_id=job_id,
@@ -401,9 +407,15 @@ class StageRunner:
                 if amount <= 0:
                     continue
                 spend_key = f"spend:{job_id}:{vendor}"
-                if self.t.get_stage(spend_key) and self.t.get_stage(spend_key)["status"] == "completed":
+                existing = self.t.get_stage(spend_key)
+                if existing and existing["status"] == "completed":
                     continue
                 with self.t.lock():
+                    # Re-check under the lock: a concurrent advancer may have paid
+                    # this vendor between the fast-path check above and here.
+                    locked = self.t.get_stage(spend_key)
+                    if locked and locked["status"] == "completed":
+                        continue
                     decision = self.guard.evaluate(amount, vendor, projected_job_margin_cents=job_margin)
                     if not decision.allowed:
                         self._emit(

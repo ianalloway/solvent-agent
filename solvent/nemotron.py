@@ -368,6 +368,7 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
             continue
         for name, args in matches:
             if ctx.total_calls >= tools.MAX_TOOL_CALLS:
+                ctx.budget_exhausted = True
                 break
             try:
                 result = tools.dispatch(
