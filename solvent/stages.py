@@ -404,9 +404,16 @@ class StageRunner:
                 if self.t.get_stage(spend_key) and self.t.get_stage(spend_key)["status"] == "completed":
                     continue
                 with self.t.lock():
-                    if not self.guard.approve(amount, vendor, projected_job_margin_cents=job_margin):
-                        self._emit(stage="spend_blocked", job_id=job_id, vendor=vendor, amount=amount, memo=memo)
-                        raise GuardrailError(f"spend to {vendor} of {amount}c rejected by guardrails")
+                    decision = self.guard.evaluate(amount, vendor, projected_job_margin_cents=job_margin)
+                    if not decision.allowed:
+                        self._emit(
+                            stage="spend_blocked", job_id=job_id, vendor=vendor,
+                            amount=amount, memo=memo,
+                            rule=decision.rule, reason=decision.reason,
+                        )
+                        raise GuardrailError(
+                            f"spend to {vendor} of {amount}c rejected by guardrails: {decision.reason}"
+                        )
                     pay = self.stripe.pay_vendor(vendor, amount, memo)
                     self.t.spend(amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"])
                     self.t.complete_stage(job_id, "spend", spend_key, {"vendor": vendor, "amount": amount})
