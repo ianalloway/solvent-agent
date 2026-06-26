@@ -43,6 +43,18 @@ class TestFinancialsHtml(unittest.TestCase):
         self.assertIn("green-txt", html)  # positive net profit
         self.assertNotIn("<script", html)
 
+    def test_forecast_rendered_when_enough_history(self):
+        from solvent.treasury import LedgerEntry
+        DAY = 86_400.0
+        entries = [
+            LedgerEntry("capital", 10000, "seed", ts=0),
+            LedgerEntry("revenue", 1000, "j1", job_id="J1", ts=0),
+            LedgerEntry("revenue", 1000, "j2", job_id="J2", ts=DAY),
+        ]
+        html = dashboard._financials_html(build_report(entries, horizon_days=10))
+        self.assertIn("Projected balance", html)
+        self.assertIn("Forecast best / worst", html)
+
 
 class TestRenderIncludesPanel(unittest.TestCase):
     def test_render_emits_financials_panel(self):

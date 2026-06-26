@@ -9,6 +9,7 @@ from solvent.finance import (
     balance_series,
     sparkline,
     period_pnl,
+    forecast,
     build_report,
     format_report,
 )
@@ -145,6 +146,44 @@ class TestPeriodPnl(unittest.TestCase):
         self.assertEqual(period_pnl([], "day"), [])
 
 
+class TestForecast(unittest.TestCase):
+    def test_insufficient_history(self):
+        fc = forecast([_e("revenue", 100, ts=T_JAN1)])  # one active day
+        self.assertEqual(fc["status"], "insufficient_history")
+        self.assertIsNone(fc["projected_balance_cents"])
+
+    def test_projects_from_steady_daily_net(self):
+        # +$10/day for two days, zero volatility -> linear projection, tight band
+        entries = [
+            _e("capital", 10000, ts=T_JAN1),
+            _e("revenue", 1000, job_id="J1", ts=T_JAN1),
+            _e("revenue", 1000, job_id="J2", ts=T_JAN2),
+        ]
+        fc = forecast(entries, horizon_days=10)
+        self.assertEqual(fc["status"], "ok")
+        self.assertEqual(fc["daily_mean_cents"], 1000)
+        self.assertEqual(fc["daily_volatility_cents"], 0)
+        # balance 12000 + 1000*10 = 22000, no volatility -> best==worst==projected
+        self.assertEqual(fc["projected_balance_cents"], 22000)
+        self.assertEqual(fc["best_cents"], 22000)
+        self.assertEqual(fc["worst_cents"], 22000)
+
+    def test_volatility_widens_band(self):
+        entries = [
+            _e("capital", 10000, ts=T_JAN1),
+            _e("revenue", 2000, job_id="J1", ts=T_JAN1),
+            _e("expense", 1000, job_id="J2", vendor="v", ts=T_JAN2),
+        ]
+        fc = forecast(entries, horizon_days=9)
+        self.assertEqual(fc["status"], "ok")
+        self.assertGreater(fc["best_cents"], fc["projected_balance_cents"])
+        self.assertLess(fc["worst_cents"], fc["projected_balance_cents"])
+
+    def test_nonpositive_horizon(self):
+        entries = [_e("revenue", 100, ts=T_JAN1), _e("revenue", 100, ts=T_JAN2)]
+        self.assertEqual(forecast(entries, horizon_days=0)["status"], "insufficient_history")
+
+
 class TestReport(unittest.TestCase):
     def test_build_and_format(self):
         entries = [
@@ -157,12 +196,14 @@ class TestReport(unittest.TestCase):
         self.assertIn("unit_economics", report)
         self.assertIn("runway", report)
         self.assertIn("period_pnl", report)
+        self.assertIn("forecast", report)
         self.assertEqual(report["period"], "day")
         text = format_report(report)
         self.assertIn("Financial Report", text)
         self.assertIn("Net profit", text)
         self.assertIn("Unit economics", text)
         self.assertIn("Net P&L by day", text)
+        self.assertIn("Forecast", text)
 
 
 if __name__ == "__main__":

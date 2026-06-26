@@ -400,6 +400,16 @@ def _financials_html(report: dict) -> str:
         runway_txt = "No activity yet"
     parts.append(row("Runway", h(runway_txt)))
 
+    fc = report.get("forecast")
+    if fc and fc.get("status") == "ok":
+        proj_cls = "green-txt" if fc["projected_balance_cents"] >= fc["balance_cents"] else "red-txt"
+        parts.append(
+            row(f"Projected balance ({fc['horizon_days']}d)", fmt(fc["projected_balance_cents"]), proj_cls)
+        )
+        parts.append(
+            row("Forecast best / worst", f"{fmt(fc['best_cents'])} / {fmt(fc['worst_cents'])}")
+        )
+
     out = "".join(parts)
 
     trend = report.get("period_pnl") or []

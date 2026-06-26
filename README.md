@@ -198,12 +198,16 @@ python3 -m solvent finance                # income statement, unit economics, ru
 python3 -m solvent finance --json         # machine-readable report
 python3 -m solvent finance --reserve 50   # runway to a $50 cash-reserve floor
 python3 -m solvent finance --period week  # net P&L trend by day | week | month
+python3 -m solvent finance --horizon 60   # forecast the balance 60 days out
 ```
 
 `finance` (alias `report`) turns the treasury ledger into the numbers a
 business steers by: revenue/cost/net-margin, average profit per job, a cash
 **runway** — days of burn remaining, or `cash-flow positive` once the agent
-funds itself — and a **net-P&L trend** bucketed by day, week, or month.
+funds itself — a **net-P&L trend** bucketed by day/week/month, and a
+**balance forecast** (central projection with a best/worst band whose width
+grows with daily volatility). The income statement, runway, trend, and
+forecast also render as a **Financial Statement** panel in the HTML dashboard.
 
 ---
 
