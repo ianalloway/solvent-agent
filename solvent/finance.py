@@ -17,12 +17,15 @@ pure and trivially testable without a database. Exposed on the CLI as
 
 from __future__ import annotations
 
+import datetime
 import json
 import sys
 import time
 from typing import Iterable, Optional
 
 from .treasury import LedgerEntry, Treasury, fmt
+
+_PERIODS = ("day", "week", "month")
 
 # Below this much elapsed history a daily burn/gain rate is statistical noise,
 # so we decline to project a runway rather than quote a meaningless number.
@@ -175,7 +178,60 @@ def sparkline(values: list[int]) -> str:
     )
 
 
-def build_report(entries: Iterable[LedgerEntry], *, reserve_cents: int = 0) -> dict:
+def _period_key(ts: float, period: str) -> str:
+    dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+    if period == "day":
+        return dt.strftime("%Y-%m-%d")
+    if period == "week":
+        iso = dt.isocalendar()
+        return f"{iso[0]}-W{iso[1]:02d}"
+    if period == "month":
+        return dt.strftime("%Y-%m")
+    raise ValueError(f"unknown period {period!r}; expected one of {_PERIODS}")
+
+
+def period_pnl(entries: Iterable[LedgerEntry], period: str = "day") -> list[dict]:
+    """Net P&L bucketed by calendar period, in chronological order.
+
+    Each bucket carries revenue, operating cost, net profit (capital excluded),
+    and the running ending cash balance (capital included) at period close.
+    """
+    if period not in _PERIODS:
+        raise ValueError(f"unknown period {period!r}; expected one of {_PERIODS}")
+
+    buckets: dict[str, dict] = {}
+    order: list[str] = []
+    for e in sorted(entries, key=lambda e: e.ts):
+        key = _period_key(e.ts, period)
+        if key not in buckets:
+            buckets[key] = {
+                "period": key, "revenue_cents": 0, "operating_cost_cents": 0,
+                "net_cents": 0, "capital_cents": 0,
+            }
+            order.append(key)
+        b = buckets[key]
+        if e.kind == "revenue":
+            b["revenue_cents"] += e.amount_cents
+            b["net_cents"] += e.amount_cents
+        elif e.kind == "expense":
+            b["operating_cost_cents"] += e.amount_cents
+            b["net_cents"] -= e.amount_cents
+        else:  # capital
+            b["capital_cents"] += e.amount_cents
+
+    running = 0
+    out = []
+    for key in order:
+        b = buckets[key]
+        running += b["net_cents"] + b["capital_cents"]
+        b["ending_balance_cents"] = running
+        out.append(b)
+    return out
+
+
+def build_report(
+    entries: Iterable[LedgerEntry], *, reserve_cents: int = 0, period: str = "day"
+) -> dict:
     """Assemble the full financial picture as a JSON-serialisable dict."""
     entries = list(entries)
     return {
@@ -183,6 +239,8 @@ def build_report(entries: Iterable[LedgerEntry], *, reserve_cents: int = 0) -> d
         "unit_economics": unit_economics(entries),
         "runway": runway(entries, reserve_cents=reserve_cents),
         "balance_sparkline": sparkline(balance_series(entries)),
+        "period": period,
+        "period_pnl": period_pnl(entries, period),
     }
 
 
@@ -237,23 +295,50 @@ def format_report(report: dict) -> str:
     spark = report.get("balance_sparkline")
     if spark:
         lines += ["", f"Balance trajectory  {spark}"]
+
+    trend = report.get("period_pnl") or []
+    if trend:
+        period = report.get("period", "day")
+        recent = trend[-12:]
+        lines += ["", f"Net P&L by {period} (last {len(recent)})"]
+        for b in recent:
+            sign = "+" if b["net_cents"] >= 0 else "-"
+            lines.append(
+                f"  {b['period']:<11} net {sign}{fmt(abs(b['net_cents']))}"
+                f"   (rev {fmt(b['revenue_cents'])} / cost {fmt(b['operating_cost_cents'])})"
+                f"   bal {fmt(b['ending_balance_cents'])}"
+            )
+        net_spark = sparkline([b["net_cents"] for b in recent])
+        if net_spark:
+            lines += ["", f"Net P&L trend       {net_spark}"]
     return "\n".join(lines)
 
 
 def main() -> None:
-    """CLI: ``python -m solvent finance [--json] [--reserve USD]``."""
+    """CLI: ``python -m solvent finance [--json] [--reserve USD] [--period P]``."""
     args = sys.argv[1:]
     as_json = "--json" in args
     reserve_cents = 0
+    period = "day"
+    usage = "Usage: python -m solvent finance [--json] [--reserve <usd>] [--period day|week|month]"
     if "--reserve" in args:
         try:
             reserve_cents = int(float(args[args.index("--reserve") + 1]) * 100)
         except (ValueError, IndexError):
-            print("Usage: python -m solvent finance [--json] [--reserve <usd>]")
+            print(usage)
+            sys.exit(1)
+    if "--period" in args:
+        try:
+            period = args[args.index("--period") + 1]
+        except IndexError:
+            print(usage)
+            sys.exit(1)
+        if period not in _PERIODS:
+            print(usage)
             sys.exit(1)
 
     entries = Treasury().entries
-    report = build_report(entries, reserve_cents=reserve_cents)
+    report = build_report(entries, reserve_cents=reserve_cents, period=period)
     if as_json:
         print(json.dumps(report, indent=2))
     else:

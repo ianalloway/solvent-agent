@@ -8,12 +8,16 @@ from solvent.finance import (
     runway,
     balance_series,
     sparkline,
+    period_pnl,
     build_report,
     format_report,
 )
 from solvent.treasury import LedgerEntry
 
 DAY = 86_400.0
+# 2021-01-01 00:00:00 UTC and 2021-01-02 00:00:00 UTC
+T_JAN1 = 1_609_459_200.0
+T_JAN2 = T_JAN1 + DAY
 
 
 def _e(kind, cents, *, job_id=None, vendor=None, ts=0.0):
@@ -112,6 +116,35 @@ class TestSparkline(unittest.TestCase):
         self.assertLessEqual(len(balance_series(entries, buckets=10)), 10)
 
 
+class TestPeriodPnl(unittest.TestCase):
+    def test_buckets_by_day_with_running_balance(self):
+        entries = [
+            _e("capital", 10000, ts=T_JAN1),
+            _e("revenue", 5000, job_id="J1", ts=T_JAN1),
+            _e("expense", 1000, job_id="J1", vendor="v", ts=T_JAN1),
+            _e("revenue", 3000, job_id="J2", ts=T_JAN2),
+            _e("expense", 2000, job_id="J2", vendor="v", ts=T_JAN2),
+        ]
+        rows = period_pnl(entries, "day")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["period"], "2021-01-01")
+        self.assertEqual(rows[0]["net_cents"], 4000)        # 5000 - 1000
+        self.assertEqual(rows[0]["ending_balance_cents"], 14000)  # +10000 capital
+        self.assertEqual(rows[1]["net_cents"], 1000)        # 3000 - 2000
+        self.assertEqual(rows[1]["ending_balance_cents"], 15000)
+
+    def test_month_bucketing(self):
+        rows = period_pnl([_e("revenue", 100, ts=T_JAN1)], "month")
+        self.assertEqual(rows[0]["period"], "2021-01")
+
+    def test_invalid_period_raises(self):
+        with self.assertRaises(ValueError):
+            period_pnl([], "fortnight")
+
+    def test_empty(self):
+        self.assertEqual(period_pnl([], "day"), [])
+
+
 class TestReport(unittest.TestCase):
     def test_build_and_format(self):
         entries = [
@@ -119,14 +152,17 @@ class TestReport(unittest.TestCase):
             _e("revenue", 5000, job_id="J1", ts=0),
             _e("expense", 1000, job_id="J1", vendor="nvidia-nemotron", ts=2 * DAY),
         ]
-        report = build_report(entries, reserve_cents=2000)
+        report = build_report(entries, reserve_cents=2000, period="day")
         self.assertIn("income_statement", report)
         self.assertIn("unit_economics", report)
         self.assertIn("runway", report)
+        self.assertIn("period_pnl", report)
+        self.assertEqual(report["period"], "day")
         text = format_report(report)
         self.assertIn("Financial Report", text)
         self.assertIn("Net profit", text)
         self.assertIn("Unit economics", text)
+        self.assertIn("Net P&L by day", text)
 
 
 if __name__ == "__main__":

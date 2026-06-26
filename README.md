@@ -197,12 +197,13 @@ python3 -m solvent tune --apply             # apply after 5+ completed jobs
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
 python3 -m solvent finance --reserve 50   # runway to a $50 cash-reserve floor
+python3 -m solvent finance --period week  # net P&L trend by day | week | month
 ```
 
 `finance` (alias `report`) turns the treasury ledger into the numbers a
-business steers by: revenue/cost/net-margin, average profit per job, and a cash
+business steers by: revenue/cost/net-margin, average profit per job, a cash
 **runway** — days of burn remaining, or `cash-flow positive` once the agent
-funds itself.
+funds itself — and a **net-P&L trend** bucketed by day, week, or month.
 
 ---
 
