@@ -52,6 +52,10 @@ def main():
         s = SolventStages(treasury=t, guard=Guardrails(t), stripe=StripeClient())
         result = s.retry_job(job_id)
         import json; print(json.dumps(result, indent=2, default=str))
+    elif len(sys.argv) > 1 and sys.argv[1] in ("finance", "report"):
+        sys.argv.pop(1)
+        from .finance import main as finance_main
+        finance_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "webhooks":
         from .webhook_log import WebhookLog
         import json
@@ -66,10 +70,9 @@ def main():
             for row in wl.list_failed():
                 print(f"  {row['event_id'][:16]} {row['event_type']} err={row['error'][:60]}")
     else:
-        from run_demo import main as demo_main
+        # No subcommand: fall through to the demo / interactive CLI.
+        from .cli import main as demo_main
         demo_main()
-
-from .cli import main
 
 
 if __name__ == "__main__":

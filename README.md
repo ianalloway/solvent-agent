@@ -194,7 +194,15 @@ See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP deli
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent tune                   # propose pricing improvements (dry-run)
 python3 -m solvent tune --apply             # apply after 5+ completed jobs
+python3 -m solvent finance                # income statement, unit economics, runway
+python3 -m solvent finance --json         # machine-readable report
+python3 -m solvent finance --reserve 50   # runway to a $50 cash-reserve floor
 ```
+
+`finance` (alias `report`) turns the treasury ledger into the numbers a
+business steers by: revenue/cost/net-margin, average profit per job, and a cash
+**runway** — days of burn remaining, or `cash-flow positive` once the agent
+funds itself.
 
 ---
 
