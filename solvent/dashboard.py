@@ -347,9 +347,82 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     }
 
 
+def _ledger_from_snapshot(entries: list[dict]) -> list:
+    """Rebuild LedgerEntry objects from snapshot dicts, tolerating partial rows."""
+    from .treasury import LedgerEntry
+    out = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        try:
+            out.append(LedgerEntry(
+                kind=e.get("kind", "expense"),
+                amount_cents=int(e.get("amount_cents", 0) or 0),
+                memo=str(e.get("memo", "")),
+                job_id=e.get("job_id"),
+                vendor=e.get("vendor"),
+                ts=float(e.get("ts", 0) or 0),
+            ))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _financials_html(report: dict) -> str:
+    """Render the finance report as an HTML fragment for the dashboard panel."""
+    inc = report["income_statement"]
+    ue = report["unit_economics"]
+    rw = report["runway"]
+
+    def row(label: str, value: str, cls: str = "") -> str:
+        return (
+            '<div class="vendor-metric"><div class="vendor-info">'
+            f'<span class="vendor-name">{h(label)}</span>'
+            f'<span class="vendor-amount {cls}">{value}</span>'
+            "</div></div>"
+        )
+
+    net_cls = "green-txt" if inc["net_profit_cents"] >= 0 else "red-txt"
+    parts = [
+        row("Revenue", fmt(inc["revenue_cents"])),
+        row("Operating cost", fmt(inc["operating_cost_cents"])),
+        row(f"Net profit ({inc['net_margin_pct']}% margin)", fmt(inc["net_profit_cents"]), net_cls),
+        row("Avg profit / job", f"{fmt(ue['avg_profit_cents'])} ({ue['contribution_margin_pct']}%)"),
+    ]
+
+    if rw["status"] == "cashflow_positive":
+        runway_txt = f"Cash-flow positive (+{fmt(rw['daily_net_cents'])}/day)"
+    elif rw["status"] == "burning":
+        runway_txt = f"{rw['runway_days']} days (burning {fmt(-rw['daily_net_cents'])}/day)"
+    elif rw["status"] == "insufficient_history":
+        runway_txt = "Insufficient history"
+    else:
+        runway_txt = "No activity yet"
+    parts.append(row("Runway", h(runway_txt)))
+
+    out = "".join(parts)
+
+    trend = report.get("period_pnl") or []
+    if trend:
+        spark = report.get("balance_sparkline", "")
+        out += (
+            '<div style="margin-top:10px;font-size:12px;color:var(--color-text-muted)">'
+            f'Net P&amp;L trend by {h(report.get("period", "day"))} '
+            f'<span style="letter-spacing:2px">{h(spark)}</span></div>'
+        )
+        for b in trend[-8:]:
+            sign = "+" if b["net_cents"] >= 0 else "−"
+            cls = "green-txt" if b["net_cents"] >= 0 else "red-txt"
+            out += row(b["period"], f"{sign}{fmt(abs(b['net_cents']))}", cls)
+    return out
+
+
 def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     s = snapshot
     status_data = build_status_data(s, log)
+    from .finance import build_report
+    _entries = _ledger_from_snapshot(s.get("entries", []))
+    financials_html = _financials_html(build_report(_entries))
     chart_svg = status_data["chart_svg"]
     expense_breakdown_html = status_data["expense_breakdown_html"]
     ops_html = status_data["ops_html"]
@@ -1158,7 +1231,12 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       <div class="vendor-breakdown-list" id="ops-panel">
         {ops_html}
       </div>
-      
+
+      <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Financial Statement <span style="font-size:11px;color:var(--color-text-muted);font-weight:normal">income · unit economics · runway</span></h2>
+      <div class="vendor-breakdown-list" id="financials-panel">
+        {financials_html}
+      </div>
+
       <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Delivered Research Briefs</h2>
       <div id="briefs-list-container" style="display:flex; flex-direction:column; gap:10px; max-height: 250px; overflow-y: auto;">
         <p class='no-data-msg'>No research briefs delivered yet.</p>
