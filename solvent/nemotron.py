@@ -356,16 +356,28 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
         "After gathering evidence, write the final brief with markdown headings "
         "(no tool calls in the final answer)."
     )
-    user = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
+    # The transcript carries the running conversation (the model's own plan
+    # text plus each tool observation) so reasoning stays coherent across
+    # rounds; `notes` is the deduplicated evidence handed to the final synth.
+    transcript = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
 
     for _round in range(tools.MAX_TOOL_ROUNDS):
-        text, usage = complete(system, user)
+        text, usage = complete(system, transcript)
         matches = parse_tool_calls(text)
+
         if not matches:
+            # The model answered without tools: a finished brief ends the loop;
+            # anything else gets one nudge toward synthesis.
             if "# " in text or "## " in text:
                 return text, usage, ctx
-            user = text + "\n\nWrite the final research brief now with markdown headings."
+            transcript += (
+                f"\n\nAssistant: {text}"
+                "\n\nWrite the final research brief now with markdown headings."
+            )
             continue
+
+        # Act: run the requested tools, recording each observation.
+        observations: list[str] = []
         for name, args in matches:
             if ctx.total_calls >= tools.MAX_TOOL_CALLS:
                 ctx.budget_exhausted = True
@@ -374,17 +386,25 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
                 result = tools.dispatch(
                     name, args, ctx, lambda s, u: complete(s, u)[0], live_search=live_search
                 )
-                notes.append(f"### {name}\n{result}")
             except (ValueError, RuntimeError):
                 continue
-        user = (
-            f"Research notes so far:\n" + "\n\n".join(notes) +
-            "\n\nWrite the final decision-ready research brief for: " + topic
-        )
+            notes.append(f"### {name}\n{result}")
+            observations.append(f"[{name}] {result}")
 
+        # Preserve the model's plan and the new observations for the next round.
+        transcript += f"\n\nAssistant: {text}\n\nTool results:\n" + "\n".join(observations)
+
+        # Once the tool budget is spent there is nothing more to gather — stop
+        # spinning and go straight to synthesis.
+        if ctx.budget_exhausted:
+            break
+
+    # Synthesize: one final pass, tools explicitly closed.
     final_user = (
-        f"Research notes:\n" + "\n\n".join(notes) +
-        f"\n\nProduce the final brief for: {topic}"
+        transcript
+        + "\n\nResearch notes:\n" + "\n\n".join(notes)
+        + f"\n\nNo more tools. Write the final decision-ready research brief for: {topic} "
+        "with markdown headings."
     )
     text, usage = complete(system, final_user)
     return text, usage, ctx
