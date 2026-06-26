@@ -418,6 +418,9 @@ class StageRunner:
                         continue
                     decision = self.guard.evaluate(amount, vendor, projected_job_margin_cents=job_margin)
                     if not decision.allowed:
+                        self.t.upsert_metrics(
+                            job_id, block_rule=decision.rule, block_reason=decision.reason
+                        )
                         self._emit(
                             stage="spend_blocked", job_id=job_id, vendor=vendor,
                             amount=amount, memo=memo,
