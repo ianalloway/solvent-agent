@@ -229,8 +229,55 @@ def period_pnl(entries: Iterable[LedgerEntry], period: str = "day") -> list[dict
     return out
 
 
+def forecast(entries: Iterable[LedgerEntry], *, horizon_days: int = 30) -> dict:
+    """Project the cash balance ``horizon_days`` out, with a best/worst band.
+
+    Models daily net P&L as a random walk: the central projection extends the
+    mean daily net, and the band widens with the daily volatility scaled by
+    ``sqrt(horizon)`` (so uncertainty grows over time, not linearly). Based on
+    *active* days, so it assumes a similar working cadence continues.
+    """
+    entries = list(entries)
+    balance = sum(_signed(e) for e in entries)
+    base = {
+        "horizon_days": horizon_days,
+        "balance_cents": balance,
+        "daily_mean_cents": None,
+        "daily_volatility_cents": None,
+        "projected_balance_cents": None,
+        "best_cents": None,
+        "worst_cents": None,
+        "status": "insufficient_history",
+    }
+
+    daily = period_pnl(entries, "day")
+    nets = [b["net_cents"] for b in daily]
+    if len(nets) < 2 or horizon_days <= 0:
+        return base
+
+    mean = sum(nets) / len(nets)
+    variance = sum((n - mean) ** 2 for n in nets) / (len(nets) - 1)
+    std = variance ** 0.5
+    band = std * (horizon_days ** 0.5)
+    projected = balance + mean * horizon_days
+
+    base.update(
+        status="ok",
+        daily_mean_cents=round(mean),
+        daily_volatility_cents=round(std),
+        projected_balance_cents=round(projected),
+        best_cents=round(projected + band),
+        worst_cents=round(projected - band),
+    )
+    return base
+
+
 def build_report(
-    entries: Iterable[LedgerEntry], *, reserve_cents: int = 0, period: str = "day"
+    entries: Iterable[LedgerEntry],
+    *,
+    reserve_cents: int = 0,
+    period: str = "day",
+    horizon_days: int = 30,
 ) -> dict:
     """Assemble the full financial picture as a JSON-serialisable dict."""
     entries = list(entries)
@@ -241,6 +288,7 @@ def build_report(
         "balance_sparkline": sparkline(balance_series(entries)),
         "period": period,
         "period_pnl": period_pnl(entries, period),
+        "forecast": forecast(entries, horizon_days=horizon_days),
     }
 
 
@@ -292,6 +340,18 @@ def format_report(report: dict) -> str:
             f"(to {fmt(rw['reserve_cents'])} reserve)."
         )
 
+    fc = report.get("forecast")
+    if fc:
+        lines += ["", f"Forecast ({fc['horizon_days']}d)"]
+        if fc["status"] != "ok":
+            lines.append("  Insufficient history to project a balance.")
+        else:
+            lines += [
+                f"  Daily net (mean)   {fmt(fc['daily_mean_cents'])}  (±{fmt(fc['daily_volatility_cents'])} vol)",
+                f"  Projected balance  {fmt(fc['projected_balance_cents'])}",
+                f"  Best / worst       {fmt(fc['best_cents'])} / {fmt(fc['worst_cents'])}",
+            ]
+
     spark = report.get("balance_sparkline")
     if spark:
         lines += ["", f"Balance trajectory  {spark}"]
@@ -320,7 +380,11 @@ def main() -> None:
     as_json = "--json" in args
     reserve_cents = 0
     period = "day"
-    usage = "Usage: python -m solvent finance [--json] [--reserve <usd>] [--period day|week|month]"
+    horizon_days = 30
+    usage = (
+        "Usage: python -m solvent finance [--json] [--reserve <usd>] "
+        "[--period day|week|month] [--horizon <days>]"
+    )
     if "--reserve" in args:
         try:
             reserve_cents = int(float(args[args.index("--reserve") + 1]) * 100)
@@ -336,9 +400,20 @@ def main() -> None:
         if period not in _PERIODS:
             print(usage)
             sys.exit(1)
+    if "--horizon" in args:
+        try:
+            horizon_days = int(args[args.index("--horizon") + 1])
+        except (ValueError, IndexError):
+            print(usage)
+            sys.exit(1)
+        if horizon_days <= 0:
+            print(usage)
+            sys.exit(1)
 
     entries = Treasury().entries
-    report = build_report(entries, reserve_cents=reserve_cents, period=period)
+    report = build_report(
+        entries, reserve_cents=reserve_cents, period=period, horizon_days=horizon_days
+    )
     if as_json:
         print(json.dumps(report, indent=2))
     else:
