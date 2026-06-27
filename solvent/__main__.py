@@ -2,8 +2,44 @@
 
 import sys
 
+HELP = """\
+SOLVENT — a self-funding analyst agent.
+
+Usage: solvent <command> [options]
+       solvent                 run the demo (interactive onboarding on first run)
+
+Commands:
+  (none)        run the batch demo / interactive session
+  serve         webhooks + job API + hosted briefs
+  worker        resume incomplete jobs, process the queue
+  telegram      long-poll the Telegram bot
+  finance       income statement, unit economics, runway, forecast (alias: report)
+  tune          propose pricing improvements (--apply to commit)
+  reconcile     Stripe <-> ledger drift check
+  doctor        stack diagnostics
+  pairing       manage Telegram DM pairing codes
+  workspace     seed the agent workspace (SOUL/BRAIN/AGENTS)
+  retry <id>    re-run a stuck job
+  webhooks      inspect the webhook event log (stats|list|failed)
+  help          show this message
+  version       print the installed version
+
+Run `solvent <command> --help` where supported for command-specific options.
+"""
+
+
+def _print_version():
+    from . import __version__
+    print(f"solvent {__version__}")
+
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("version", "--version", "-V"):
+        _print_version()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] in ("help", "--help", "-h"):
+        print(HELP)
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "serve":
         sys.argv.pop(1)
         from .server import main as serve_main

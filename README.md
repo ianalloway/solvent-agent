@@ -44,6 +44,31 @@ python3 run_demo.py
 
 The agent will run a full batch of 4 analyst jobs — complete with margin gating, Stripe payment simulation, NVIDIA Nemotron fulfillment, guardrail screening, and live P&L — in about 30 seconds.
 
+### Install as a package (optional)
+
+The core runs on the **standard library alone**, so a bare install pulls in
+nothing extra and gives you a `solvent` command:
+
+```bash
+pip install -e .                 # editable install from a checkout
+# or once published:  pipx install solvent-agent
+
+solvent                          # run the demo
+solvent finance                  # financial report (income, runway, forecast)
+solvent --help                   # list all commands
+solvent --version
+```
+
+Third-party features are **opt-in extras** — install only what you need:
+
+```bash
+pip install -e ".[stripe]"       # real Stripe test-mode payment links
+pip install -e ".[serve]"        # FastAPI webhooks + hosted briefs
+pip install -e ".[telegram]"     # Telegram bot channel
+pip install -e ".[rich]"         # live terminal dashboard (solvent tui)
+pip install -e ".[all]"          # everything
+```
+
 > **First run**: A short onboarding wizard asks you to choose a model, interaction mode, and whether to enable Stripe test mode. Preferences are saved to `.solvent/config.json` and never committed.
 
 ---
@@ -296,6 +321,7 @@ solvent/
   service.py       the product: an on-demand research brief
   jobs.py          sample inbound work
   dashboard.py     renders the treasury to HTML + JSON
+  finance.py       income statement · unit economics · runway · forecast
   config.py        onboarding wizard and config persistence
   gateway.py       channel router (Telegram → chat sessions)
   chat.py          conversational loop + business tools

@@ -39,6 +39,33 @@ class TestCliRouting(unittest.TestCase):
             entry.main()
         mock_demo.assert_called_once()
 
+    def test_version_prints_and_does_not_run_demo(self):
+        import io
+        from contextlib import redirect_stdout
+        from solvent import __version__
+
+        for argv in (["solvent", "version"], ["solvent", "--version"], ["solvent", "-V"]):
+            buf = io.StringIO()
+            with patch.object(entry.sys, "argv", argv), \
+                 patch("solvent.cli.main") as mock_demo, redirect_stdout(buf):
+                entry.main()
+            self.assertIn(__version__, buf.getvalue())
+            mock_demo.assert_not_called()
+
+    def test_help_lists_subcommands(self):
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with patch.object(entry.sys, "argv", ["solvent", "help"]), \
+             patch("solvent.cli.main") as mock_demo, redirect_stdout(buf):
+            entry.main()
+        out = buf.getvalue()
+        self.assertIn("Commands:", out)
+        self.assertIn("finance", out)
+        self.assertIn("serve", out)
+        mock_demo.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
