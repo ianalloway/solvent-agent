@@ -6,6 +6,11 @@ import time
 import types
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+# `rich` is an optional extra; skip the whole module when it isn't installed.
+pytest.importorskip("rich")
+
 
 # ---------------------------------------------------------------------------
 # Helpers: build minimal fake data that mirrors Treasury outputs
