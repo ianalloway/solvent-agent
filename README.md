@@ -69,6 +69,10 @@ pip install -e ".[rich]"         # live terminal dashboard (solvent tui)
 pip install -e ".[all]"          # everything
 ```
 
+When run from a source checkout, runtime data stays under `<repo>/data`. When
+installed elsewhere, SOLVENT writes to `~/.solvent` instead of into
+`site-packages` — override either with `SOLVENT_HOME=/path/to/dir`.
+
 > **First run**: A short onboarding wizard asks you to choose a model, interaction mode, and whether to enable Stripe test mode. Preferences are saved to `.solvent/config.json` and never committed.
 
 ---
@@ -261,6 +265,7 @@ With both keys set:
 
 | Variable | Purpose |
 |---|---|
+| `SOLVENT_HOME` | Where runtime data (treasury DB, reports, dashboard, logs) is stored. Defaults to the repo when run from a checkout, else `~/.solvent` |
 | `NVIDIA_API_KEY` | Live Nemotron inference (`nvapi-...`) |
 | `STRIPE_API_KEY` | Stripe test key (`sk_test_...`) |
 | `STRIPE_WEBHOOK_SECRET` | Optional webhook verification |

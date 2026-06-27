@@ -14,6 +14,7 @@ from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
 from .gateway import Gateway, register_outbound
 from .delivery import verify_delivery_token, markdown_to_html, is_safe_job_id
 from .event_hub import EventHub
+from .paths import data_dir, reports_dir as reports_dir_fn
 from .stripe_client import StripeClient
 from .webhook_log import WebhookLog
 
@@ -105,7 +106,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         dashboard.render(agent.t.snapshot(), agent.log, live=True)
 
         async def _poll_external_status():
-            status_path = Path(__file__).resolve().parent.parent / "data" / "dashboard_status.json"
+            status_path = data_dir() / "dashboard_status.json"
             last_mtime = 0.0
             while True:
                 try:
@@ -259,7 +260,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             raise HTTPException(404, "brief not found")
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
-        reports_dir = (Path(__file__).resolve().parent.parent / "data" / "reports").resolve()
+        reports_dir = reports_dir_fn().resolve()
         
         path_html = (reports_dir / f"{job_id}.html").resolve()
         try:
@@ -281,7 +282,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     @app.get("/api/briefs")
     def list_briefs():
-        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
+        reports_dir = reports_dir_fn()
         if not reports_dir.is_dir():
             return []
         stems = set()
@@ -292,7 +293,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     @app.get("/api/briefs/{job_id}")
     def get_brief_api(job_id: str):
-        reports_dir = (Path(__file__).resolve().parent.parent / "data" / "reports").resolve()
+        reports_dir = reports_dir_fn().resolve()
         
         path_html = (reports_dir / f"{job_id}.html").resolve()
         try:

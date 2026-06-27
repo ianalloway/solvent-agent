@@ -22,7 +22,9 @@ import fcntl
 import threading
 from contextlib import contextmanager
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "solvent.db"
+from .paths import db_path as _db_path
+
+DB_PATH = _db_path()
 
 EntryKind = Literal["revenue", "expense", "capital"]
 
