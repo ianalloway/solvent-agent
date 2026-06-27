@@ -10,7 +10,6 @@ that refreshes every 2 seconds until Ctrl-C.
 
 from __future__ import annotations
 
-import sys
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -27,12 +26,11 @@ try:
     from rich.console import Console
     from rich.columns import Columns
     from rich import box
+    _RICH_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    print(
-        "[SOLVENT] The 'rich' library is required for the terminal dashboard.\n"
-        "Install it with:  pip install rich"
-    )
-    sys.exit(1)
+    # Importing this module must never crash the interpreter — `rich` is an
+    # optional extra. Only `run()` actually needs it; report cleanly there.
+    _RICH_AVAILABLE = False
 
 if TYPE_CHECKING:
     from .treasury import Treasury
@@ -246,6 +244,13 @@ def run(treasury: "Treasury | None" = None, refresh_interval: float = 2.0) -> No
     refresh_interval:
         How often (in seconds) to poll the database for updates.
     """
+    if not _RICH_AVAILABLE:
+        print(
+            "[SOLVENT] The 'rich' library is required for the terminal dashboard.\n"
+            "Install it with:  pip install 'solvent-agent[rich]'  (or: pip install rich)"
+        )
+        return
+
     if treasury is None:
         from .treasury import Treasury
         treasury = Treasury()
