@@ -19,8 +19,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 from .treasury import fmt
 from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
+from .paths import data_dir, reports_dir, dashboard_html
 
-OUT = Path(__file__).resolve().parent.parent / "treasury_dashboard.html"
+OUT = dashboard_html()
 
 
 def h(value: object) -> str:
@@ -97,9 +98,9 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     
     # 1. Read generated briefs from reports folder
     briefs = {}
-    reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
-    if reports_dir.exists():
-        for p in reports_dir.glob("*.md"):
+    reports_path = reports_dir()
+    if reports_path.exists():
+        for p in reports_path.glob("*.md"):
             try:
                 briefs[p.stem] = p.read_text()
             except Exception:
@@ -1442,8 +1443,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
 </body>
 </html>"""
 
-    status_dir = Path(__file__).resolve().parent.parent / "data"
-    status_dir.mkdir(exist_ok=True)
+    status_dir = data_dir()
     status_json_path = status_dir / "dashboard_status.json"
     status_json_path.write_text(json.dumps(status_data, indent=2))
 

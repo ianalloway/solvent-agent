@@ -12,7 +12,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-OUTBOX_DIR = Path(__file__).resolve().parent.parent / "data" / "outbox"
+from .paths import data_dir
+
+OUTBOX_DIR = data_dir() / "outbox"
 _SAFE_JOB_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _PLACEHOLDER_DELIVERY_SECRETS = {
     "solvent-dev-secret-change-me",
