@@ -4,6 +4,12 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 
+# Python packaging artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
 # Virtual Environment
 .venv/
 venv/
