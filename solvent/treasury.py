@@ -206,6 +206,14 @@ class Treasury:
                         created_at REAL NOT NULL
                     )
                 """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS openclaw_tokens (
+                        token TEXT PRIMARY KEY,
+                        expires_at REAL NOT NULL,
+                        used INTEGER DEFAULT 0,
+                        created_at REAL NOT NULL
+                    )
+                """)
                 self._ensure_column(conn, "chat_sessions", "pending_job_json", "TEXT")
                 self._ensure_column(conn, "chat_sessions", "notify_job_id", "TEXT")
 
@@ -795,6 +803,36 @@ class Treasury:
                     (user_id,),
                 ).fetchone()
                 return bool(prow)
+
+
+    def create_openclaw_token(self, ttl: float = 600) -> str:
+        token = "OC-" + uuid.uuid4().hex[:8].upper()
+        now = time.time()
+        with self.lock():
+            with self._conn() as conn:
+                with conn:
+                    conn.execute(
+                        "INSERT INTO openclaw_tokens (token, expires_at, used, created_at) VALUES (?, ?, 0, ?)",
+                        (token, now + ttl, now),
+                    )
+        return token
+
+    def verify_openclaw_token(self, token: str) -> bool:
+        """Return True and mark used if the token is valid and unexpired."""
+        now = time.time()
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT expires_at, used FROM openclaw_tokens WHERE token = ?",
+                    (token,),
+                ).fetchone()
+                if not row or row["used"] or row["expires_at"] < now:
+                    return False
+                with conn:
+                    conn.execute(
+                        "UPDATE openclaw_tokens SET used = 1 WHERE token = ?", (token,)
+                    )
+                return True
 
 
 def fmt(cents: int) -> str:
