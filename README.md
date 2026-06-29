@@ -44,6 +44,35 @@ python3 run_demo.py
 
 The agent will run a full batch of 4 analyst jobs — complete with margin gating, Stripe payment simulation, NVIDIA Nemotron fulfillment, guardrail screening, and live P&L — in about 30 seconds.
 
+### Install as a package (optional)
+
+The core runs on the **standard library alone**, so a bare install pulls in
+nothing extra and gives you a `solvent` command:
+
+```bash
+pip install -e .                 # editable install from a checkout
+# or once published:  pipx install solvent-agent
+
+solvent                          # run the demo
+solvent finance                  # financial report (income, runway, forecast)
+solvent --help                   # list all commands
+solvent --version
+```
+
+Third-party features are **opt-in extras** — install only what you need:
+
+```bash
+pip install -e ".[stripe]"       # real Stripe test-mode payment links
+pip install -e ".[serve]"        # FastAPI webhooks + hosted briefs
+pip install -e ".[telegram]"     # Telegram bot channel
+pip install -e ".[rich]"         # live terminal dashboard (solvent tui)
+pip install -e ".[all]"          # everything
+```
+
+When run from a source checkout, runtime data stays under `<repo>/data`. When
+installed elsewhere, SOLVENT writes to `~/.solvent` instead of into
+`site-packages` — override either with `SOLVENT_HOME=/path/to/dir`.
+
 > **First run**: A short onboarding wizard asks you to choose a model, interaction mode, and whether to enable Stripe test mode. Preferences are saved to `.solvent/config.json` and never committed.
 
 ---
@@ -194,7 +223,20 @@ See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP deli
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent tune                   # propose pricing improvements (dry-run)
 python3 -m solvent tune --apply             # apply after 5+ completed jobs
+python3 -m solvent finance                # income statement, unit economics, runway
+python3 -m solvent finance --json         # machine-readable report
+python3 -m solvent finance --reserve 50   # runway to a $50 cash-reserve floor
+python3 -m solvent finance --period week  # net P&L trend by day | week | month
+python3 -m solvent finance --horizon 60   # forecast the balance 60 days out
 ```
+
+`finance` (alias `report`) turns the treasury ledger into the numbers a
+business steers by: revenue/cost/net-margin, average profit per job, a cash
+**runway** — days of burn remaining, or `cash-flow positive` once the agent
+funds itself — a **net-P&L trend** bucketed by day/week/month, and a
+**balance forecast** (central projection with a best/worst band whose width
+grows with daily volatility). The income statement, runway, trend, and
+forecast also render as a **Financial Statement** panel in the HTML dashboard.
 
 ---
 
@@ -223,6 +265,7 @@ With both keys set:
 
 | Variable | Purpose |
 |---|---|
+| `SOLVENT_HOME` | Where runtime data (treasury DB, reports, dashboard, logs) is stored. Defaults to the repo when run from a checkout, else `~/.solvent` |
 | `NVIDIA_API_KEY` | Live Nemotron inference (`nvapi-...`) |
 | `STRIPE_API_KEY` | Stripe test key (`sk_test_...`) |
 | `STRIPE_WEBHOOK_SECRET` | Optional webhook verification |
@@ -283,6 +326,7 @@ solvent/
   service.py       the product: an on-demand research brief
   jobs.py          sample inbound work
   dashboard.py     renders the treasury to HTML + JSON
+  finance.py       income statement · unit economics · runway · forecast
   config.py        onboarding wizard and config persistence
   gateway.py       channel router (Telegram → chat sessions)
   chat.py          conversational loop + business tools

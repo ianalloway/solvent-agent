@@ -2,8 +2,44 @@
 
 import sys
 
+HELP = """\
+SOLVENT — a self-funding analyst agent.
+
+Usage: solvent <command> [options]
+       solvent                 run the demo (interactive onboarding on first run)
+
+Commands:
+  (none)        run the batch demo / interactive session
+  serve         webhooks + job API + hosted briefs
+  worker        resume incomplete jobs, process the queue
+  telegram      long-poll the Telegram bot
+  finance       income statement, unit economics, runway, forecast (alias: report)
+  tune          propose pricing improvements (--apply to commit)
+  reconcile     Stripe <-> ledger drift check
+  doctor        stack diagnostics
+  pairing       manage Telegram DM pairing codes
+  workspace     seed the agent workspace (SOUL/BRAIN/AGENTS)
+  retry <id>    re-run a stuck job
+  webhooks      inspect the webhook event log (stats|list|failed)
+  help          show this message
+  version       print the installed version
+
+Run `solvent <command> --help` where supported for command-specific options.
+"""
+
+
+def _print_version():
+    from . import __version__
+    print(f"solvent {__version__}")
+
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("version", "--version", "-V"):
+        _print_version()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] in ("help", "--help", "-h"):
+        print(HELP)
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "serve":
         sys.argv.pop(1)
         from .server import main as serve_main
@@ -52,6 +88,10 @@ def main():
         s = SolventStages(treasury=t, guard=Guardrails(t), stripe=StripeClient())
         result = s.retry_job(job_id)
         import json; print(json.dumps(result, indent=2, default=str))
+    elif len(sys.argv) > 1 and sys.argv[1] in ("finance", "report"):
+        sys.argv.pop(1)
+        from .finance import main as finance_main
+        finance_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "webhooks":
         from .webhook_log import WebhookLog
         import json
@@ -66,10 +106,9 @@ def main():
             for row in wl.list_failed():
                 print(f"  {row['event_id'][:16]} {row['event_type']} err={row['error'][:60]}")
     else:
-        from run_demo import main as demo_main
+        # No subcommand: fall through to the demo / interactive CLI.
+        from .cli import main as demo_main
         demo_main()
-
-from .cli import main
 
 
 if __name__ == "__main__":

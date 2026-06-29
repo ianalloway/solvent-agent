@@ -7,8 +7,10 @@ import os
 import time
 from pathlib import Path
 
-_OUTBOX = Path(__file__).resolve().parent.parent / "data" / "chat_outbox.jsonl"
-_LOCK = Path(__file__).resolve().parent.parent / "data" / "chat_outbox.lock"
+from .paths import data_dir
+
+_OUTBOX = data_dir() / "chat_outbox.jsonl"
+_LOCK = data_dir() / "chat_outbox.lock"
 
 
 class _LockCtx:

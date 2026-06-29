@@ -13,10 +13,11 @@ import time
 from pathlib import Path
 
 from . import nemotron
+from .paths import reports_dir
 from .pricing import RESOURCE_COSTS_CENTS, get_resource_costs
 from .security import sanitise_prompt_input, safe_report_path, PromptInjectionError, InputValidationError
 
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data" / "reports"
+OUTPUT_DIR = reports_dir()
 
 
 def _resources_from_usage(
