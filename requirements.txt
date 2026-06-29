@@ -1,9 +1,0 @@
-# SOLVENT runs with the Python standard library alone (offline stubs).
-# Install this ONLY if you want real Stripe test-mode payment links:
-stripe>=9.0.0
-
-# Terminal dashboard
-rich>=13.0.0
-
-# Tests
-pytest>=7.0.0
