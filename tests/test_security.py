@@ -10,7 +10,6 @@ Covers:
 
 import hashlib
 import hmac
-import json
 import time
 import sys
 import os
@@ -70,8 +69,6 @@ from solvent.security import (
     PromptInjectionError, InputValidationError, PathTraversalError,
     GuardrailBypassError,
 )
-from pathlib import Path
-import tempfile
 
 
 # ============================================================

@@ -1,7 +1,6 @@
 """Security tests for dashboard rendering."""
 
 import json
-from pathlib import Path
 
 from solvent import dashboard
 

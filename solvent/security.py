@@ -347,7 +347,6 @@ def validate_catalog_schema(catalog: dict) -> dict:
     Returns:
         A clean dict with only permitted keys.
     """
-    allowed = {"product_id", "price_ids", "prices", "cardholder_id"}
     clean: dict = {}
 
     if "product_id" in catalog:

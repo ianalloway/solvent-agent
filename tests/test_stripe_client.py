@@ -8,9 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from solvent.stripe_client import (
-    CATALOG_PATH,
     StripeClient,
-    WEBHOOK_CACHE_PATH,
 )
 
 
@@ -245,7 +243,9 @@ class TestStripeClientLive(unittest.TestCase):
         )
 
     def test_webhook_caches_payment(self):
-        import hashlib, hmac as _hmac, time as _time
+        import hashlib
+        import hmac as _hmac
+        import time as _time
         session = {
             "id": "cs_wh",
             "payment_status": "paid",

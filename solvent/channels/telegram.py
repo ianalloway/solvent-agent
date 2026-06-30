@@ -68,7 +68,6 @@ def build_application(gateway: Gateway | None = None) -> object:
 
 
 def main():
-    import asyncio
     app = build_application()
     print("SOLVENT Telegram bot starting (long-poll)...")
     app.run_polling(allowed_updates=["message"])

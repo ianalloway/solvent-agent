@@ -21,6 +21,7 @@ from solvent.jobs import SAMPLE_JOBS
 from solvent.treasury import fmt
 from solvent import dashboard
 from solvent.config import (
+    SolventConfig,
     apply_config,
     config_exists,
     default_config,
@@ -63,42 +64,42 @@ def print_event(e: dict):
     st = e.get("stage")
     jid = e.get("job_id", "")
     prefix = f"{C_CYAN}[{jid}]{C_RESET}"
-    
+
     if st == "quote":
         verdict = f"{C_GREEN}ACCEPT{C_RESET}" if e["accept"] else f"{C_RED}DECLINE{C_RESET}"
         print(f"   ⚖️  {prefix} Margin Gate: price {C_BOLD}{fmt(e['price'])}{C_RESET} | est cost {fmt(e['est_cost'])} | projected margin {e['margin_pct']}% → {verdict}")
         time.sleep(0.4)
-        
+
     elif st == "declined":
         print(f"   ✋  {prefix} {C_RED}Declined:{C_RESET} {e['reason']}")
         time.sleep(0.4)
-        
+
     elif st == "invoice":
         show_spinner(0.6, f"Generating Stripe Payment Link for {jid}...")
         tag = "simulated" if e["simulated"] else "LIVE"
         print(f"   📄  {prefix} Issued checkout link [{tag}]")
         print(f"       {C_GREY}URL:{C_RESET} {C_BLUE}{e['url']}{C_RESET}")
         time.sleep(0.4)
-        
+
     elif st == "paid":
         show_spinner(0.8, f"Polling Stripe invoice confirmation for {jid}...")
         print(f"   💵  {prefix} {C_GREEN}Stripe Confirmed:{C_RESET} Payment of {C_GREEN}+{fmt(e['amount'])}{C_RESET} received")
         time.sleep(0.4)
-        
+
     elif st == "fulfilled":
         show_spinner(1.2, f"Nemotron compiling sell-side research brief for {jid}...")
         filename = Path(e['deliverable']).name
         print(f"   📝  {prefix} {C_GREEN}Fulfillment Finished:{C_RESET} Deliverable saved to {C_BLUE}data/reports/{filename}{C_RESET} ({e['tokens']} tokens)")
         time.sleep(0.4)
-        
+
     elif st == "spend":
         time.sleep(0.3)
         print(f"   🛡️   {C_GREY}↳ Spend Approved:{C_RESET} Scoped payment {C_RED}−{fmt(e['amount'])}{C_RESET} to {C_BOLD}{e['vendor']}{C_RESET} ({e['memo']})")
-        
+
     elif st == "spend_blocked":
         time.sleep(0.3)
         print(f"   🛑  {C_RED}↳ Spend BLOCKED:{C_RESET} Guardrail rejected transaction of {fmt(e['amount'])} to {e['vendor']} ({e['memo']})")
-        
+
     elif st == "refunded":
         time.sleep(0.3)
         print(f"   ↩️  {prefix} {C_RED}Escrow Refunded:{C_RESET} Returned {C_RED}{fmt(e['amount'])}{C_RESET} to customer ({e['reason']})")
@@ -119,7 +120,7 @@ def print_results(snap: dict):
     print(f"   Operating spend {C_RED}{fmt(snap['expense_cents'])}{C_RESET}")
     print(f"   Net profit     {C_GREEN if snap['net_profit_cents']>=0 else C_RED}{fmt(snap['net_profit_cents'])}{C_RESET}  ({snap['margin_pct']}% margin)")
     print(f"   Cash balance   {C_YELLOW}{fmt(snap['balance_cents'])}{C_RESET}  (seed was {fmt(snap['capital_cents'])})")
-    
+
     grew = snap['balance_cents'] - snap['capital_cents']
     if grew > 0:
         print(f"   {C_GREEN}→ The agent grew its own treasury by {fmt(grew)} this session!{C_RESET}")
@@ -133,15 +134,15 @@ def run_batch_demo(seed_cents: int = 10_000, fresh: bool = True):
     """Run the standard batch demo of 4 predefined jobs."""
     print(f"\n🪙  {C_BOLD}SOLVENT — Standard Batch Run (4 Inbound Jobs){C_RESET}")
     print(BAR)
-    
+
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, on_event=print_event)
     print(f"   Seed capital: {C_YELLOW}{fmt(agent.t.capital_cents())}{C_RESET}\n")
-    
+
     for job in SAMPLE_JOBS:
         print(f"{C_BOLD}■ {job['id']}: {job['topic']}{C_RESET}")
         show_spinner(0.4, "Analyzing inbound job specifications...")
         agent.handle_job(job)
-        
+
     snap = agent.t.snapshot()
     print_results(snap)
     path = dashboard.render(snap, agent.log)
@@ -152,11 +153,11 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
     """Run interactive CLI mode letting the user test custom briefs and pricing."""
     print(f"\n🪙  {C_BOLD}SOLVENT — Interactive Agent Terminal{C_RESET}")
     print(BAR)
-    
+
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, on_event=print_event)
     print(f"   Current balance: {C_YELLOW}{fmt(agent.t.balance_cents())}{C_RESET}")
     print(f"   {C_GREY}Tip: Type /fund <amount> (e.g. /fund 100) to add funds to the treasury.{C_RESET}\n")
-    
+
     job_index = 1
     while True:
         print(f"{C_BOLD}--- Enter New Research Request ---{C_RESET}")
@@ -164,7 +165,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
         if not topic:
             print(f"{C_RED}Request topic cannot be blank.{C_RESET}\n")
             continue
-            
+
         if topic.startswith("/fund"):
             parts = topic.split()
             if len(parts) < 2:
@@ -193,7 +194,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
             except ValueError:
                 print(f"{C_RED}Invalid amount. Usage: /fund <amount_in_usd>{C_RESET}\n")
                 continue
-            
+
         budget_str = input(f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $").strip()
         try:
             budget_cents = int(float(budget_str) * 100)
@@ -203,16 +204,16 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
         except ValueError:
             print(f"{C_RED}Invalid numeric entry. Use standard formats like 49.00.{C_RESET}\n")
             continue
-            
+
         job_id = f"I{job_index}"
         job_index += 1
-        
+
         # Scale resource specifications based on budget
         is_large = budget_cents >= 5000
         est_tokens = 12000 if is_large else 7500
         market_calls = 3 if is_large else 2
         search_calls = 9 if is_large else 6
-        
+
         custom_job = {
             "id": job_id,
             "topic": topic,
@@ -223,25 +224,24 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
             "market_data_calls": market_calls,
             "web_search_calls": search_calls
         }
-        
+
         print(f"\n{C_BOLD}■ {job_id}: {topic}{C_RESET}")
         show_spinner(0.4, "Analyzing inbound job specifications...")
         agent.handle_job(custom_job)
-        
+
         cont = input(f"Submit another research request? ({C_BOLD}y/N{C_RESET}): ").strip().lower()
         print()
         if cont != "y":
             break
-            
+
     snap = agent.t.snapshot()
     print_results(snap)
     path = dashboard.render(snap, agent.log)
     print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
 
 
-def resolve_config(args) -> "SolventConfig":
+def resolve_config(args) -> SolventConfig:
     """Load, onboard, or default user preferences."""
-    from solvent.config import SolventConfig
 
     if wants_reconfigure():
         return run_wizard()
