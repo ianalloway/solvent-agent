@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Callable
 
 from .agent import Solvent
@@ -85,6 +86,7 @@ class Gateway:
                 "SOLVENT research business bot.\n"
                 "/status — treasury snapshot\n"
                 "/jobs — recent jobs\n"
+                "/pair qr — generate OpenClaw pairing QR code\n"
                 "/quote <topic> | <budget_usd> — margin preview\n"
                 "Or chat naturally to commission a research brief."
             )
@@ -103,6 +105,17 @@ class Gateway:
                 f"{j['id']}: {j.get('status')} — {(j.get('topic') or '')[:40]}"
                 for j in jobs
             )
+        if cmd == "/pair" and arg.strip().lower() == "qr":
+            token = self.agent.t.create_openclaw_token(ttl=600)
+            from . import qr as _qr
+            host = os.environ.get("SOLVENT_BASE_URL", "").replace("http://", "").replace("https://", "").split("/")[0]
+            try:
+                port = int(host.split(":")[-1]) if ":" in host else 443
+                host = host.split(":")[0]
+            except ValueError:
+                port = 443
+            return _qr.render_token(token, host=host, port=port)
+
         if cmd == "/quote" and "|" in arg:
             topic, budget_s = [x.strip() for x in arg.split("|", 1)]
             try:
