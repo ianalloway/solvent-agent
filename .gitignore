@@ -24,6 +24,7 @@ data/solvent.lock
 data/ledger.lock
 data/ledger.json
 data/dashboard_status.json
+data/.upgrade_check
 
 # Generated dashboard (created by run_demo.py)
 treasury_dashboard.html
