@@ -24,7 +24,6 @@ try:
     from rich.table import Table
     from rich.text import Text
     from rich.console import Console
-    from rich.columns import Columns
     from rich import box
     _RICH_AVAILABLE = True
 except ImportError:  # pragma: no cover

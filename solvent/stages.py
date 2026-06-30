@@ -136,7 +136,6 @@ class StageRunner:
         if err:
             return self._emit(stage="declined", job_id=job.get("id", "unknown") if job else "unknown", reason=err)
 
-        job_id = job["id"]
         q = self._stage_quote(job)
         if q.get("stage") == "declined" or not q.get("accept"):
             return q
@@ -176,7 +175,6 @@ class StageRunner:
         if status == "pending_quote" or not row.get("quote_json"):
             return self.run_job(job)
         q_data = json.loads(row["quote_json"])
-        q = type("Q", (), q_data)()
         if status == "awaiting_payment":
             checkout = {
                 "session_id": row.get("checkout_session_id"),
@@ -571,7 +569,6 @@ class StageRunner:
             return self._stage_fulfill_and_book(job, quote_obj, paid)
 
         # --- failed job: determine which stage failed ---
-        error_reason = row.get("error_reason", "")
         paid_already = self.t.job_has_revenue(job_id)
 
         if paid_already:

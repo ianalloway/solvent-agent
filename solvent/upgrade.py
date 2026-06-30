@@ -70,8 +70,8 @@ def check_upgrade(*, quiet: bool = False) -> dict:
             print(f"solvent {current} is up to date.")
         else:
             print(f"solvent {current} → {latest} available.")
-            print(f"  Upgrade with:  pip install --upgrade solvent-agent")
-            print(f"  Or full extras: pip install --upgrade 'solvent-agent[all]'")
+            print("  Upgrade with:  pip install --upgrade solvent-agent")
+            print("  Or full extras: pip install --upgrade 'solvent-agent[all]'")
 
     return {"current": current, "latest": latest, "up_to_date": up_to_date, "error": False}
 
@@ -108,7 +108,7 @@ def main():
         print(json.dumps(result, indent=2))
 
     if not result["up_to_date"] and args.install:
-        print(f"\nRunning: pip install --upgrade solvent-agent")
+        print("\nRunning: pip install --upgrade solvent-agent")
         rc = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "solvent-agent"])
         sys.exit(rc)
 

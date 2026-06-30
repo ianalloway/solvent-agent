@@ -23,12 +23,8 @@ _PLACEHOLDER_DELIVERY_SECRETS = {
 
 
 def is_safe_job_id(job_id: str) -> bool:
-    return bool(_SAFE_JOB_ID.fullmatch(job_id))
-
-
-def is_safe_job_id(job_id: str) -> bool:
     """Reject path traversal in brief URLs."""
-    return bool(job_id) and "/" not in job_id and ".." not in job_id and "\\" not in job_id
+    return bool(_SAFE_JOB_ID.fullmatch(job_id))
 
 
 def _delivery_secret() -> str:
@@ -308,13 +304,13 @@ def markdown_to_html(
       <div class="logo">🪙 SOLVENT BRIEF</div>
       <div class="badge">Verified Research</div>
     </div>
-    
+
     {metadata_html}
-    
+
     <div id="brief-content">
 {body}
     </div>
- 
+
     <div class="action-buttons">
       <button id="copy-btn" class="btn" onclick="copyBrief()">
         Copy Content
@@ -324,7 +320,7 @@ def markdown_to_html(
       </button>
     </div>
   </div>
- 
+
   <script>
     function copyBrief() {{
       const content = document.getElementById('brief-content').innerText;

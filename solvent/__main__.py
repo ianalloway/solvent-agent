@@ -92,7 +92,8 @@ def main():
         t = Treasury()
         s = SolventStages(treasury=t, guard=Guardrails(t), stripe=StripeClient())
         result = s.retry_job(job_id)
-        import json; print(json.dumps(result, indent=2, default=str))
+        import json
+        print(json.dumps(result, indent=2, default=str))
     elif len(sys.argv) > 1 and sys.argv[1] in ("finance", "report"):
         sys.argv.pop(1)
         from .finance import main as finance_main

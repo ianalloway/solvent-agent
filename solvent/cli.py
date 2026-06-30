@@ -21,6 +21,7 @@ from solvent.jobs import SAMPLE_JOBS
 from solvent.treasury import fmt
 from solvent import dashboard
 from solvent.config import (
+    SolventConfig,
     apply_config,
     config_exists,
     default_config,
@@ -239,7 +240,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
     print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
 
 
-def resolve_config(args) -> "SolventConfig":
+def resolve_config(args) -> SolventConfig:
     """Load, onboard, or default user preferences."""
 
     if wants_reconfigure():

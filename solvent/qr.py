@@ -47,7 +47,7 @@ def render_token(token: str, host: str = "", port: int = 0) -> str:
     else:
         lines.append("(Install qrcode[pil] for a scannable QR image)")
 
-    lines.append(f"\nEnter this token in the OpenClaw app → Gateway Auth Token field.")
+    lines.append("\nEnter this token in the OpenClaw app → Gateway Auth Token field.")
     return "\n".join(lines)
 
 

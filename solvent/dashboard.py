@@ -262,7 +262,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
             <span class="badge badge-{status_class}">{status_label}</span>
           </div>
           <h3 class="job-title">{job_title}</h3>
-          
+
           <div class="job-metrics">
             <div class="job-metric-item">
               <span class="job-metric-lbl">Budget</span>
@@ -281,7 +281,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
               <span class="job-metric-val">{margin_str}</span>
             </div>
           </div>
-          
+
           <div class="job-card-footer">
             {btn_html}
           </div>
@@ -967,7 +967,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     .grey-txt {{ color: var(--color-text-muted); }}
     .gold-txt {{ color: var(--color-warning); }}
     .filepath-txt {{ color: #38bdf8; font-weight: 500; }}
-    
+
     .vendor-badge {{
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--color-border);
@@ -1099,7 +1099,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       text-align: center;
       padding: 16px 0;
     }}
-    
+
     /* Connection Status Indicator */
     .status-dot {{
       display: inline-block;
@@ -1227,13 +1227,13 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
   </div>
 
   <div class="dashboard-body">
-    
+
     <div class="panel">
       <h2>Financial Performance <span style="font-size:11px;color:var(--color-text-muted);font-weight:normal">cumulative ledger balance</span></h2>
       <div class="chart-container" id="chart-container">
         {chart_svg}
       </div>
-      
+
       <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Resource Allocation Breakdown</h2>
       <div class="vendor-breakdown-list" id="expense-breakdown">
         {expense_breakdown_html}
@@ -1313,13 +1313,13 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     function updateBriefsList() {{
       const container = document.getElementById("briefs-list-container");
       if (!container) return;
-      
+
       const jobIds = Object.keys(briefs || {{}});
       if (jobIds.length === 0) {{
         container.innerHTML = "<p class='no-data-msg'>No research briefs delivered yet.</p>";
         return;
       }}
-      
+
       let html = "";
       jobIds.forEach(jobId => {{
         const job = jobsData[jobId] || {{}};
