@@ -15,6 +15,7 @@ Commands:
   upgrade       check for newer version on PyPI; --check exits 1 if outdated
   jobs          list/show/retry/cancel jobs (jobs --help for sub-commands)
   logs          tail the structured event log; -f to follow, --job/--stage to filter
+  config        show/get/set/reset local configuration values
   serve         webhooks + job API + hosted briefs
   worker        resume incomplete jobs, process the queue
   telegram      long-poll the Telegram bot
@@ -65,6 +66,10 @@ def main():
         sys.argv.pop(1)
         from .logs import main as logs_main
         logs_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "config":
+        sys.argv.pop(1)
+        from .config_cmd import main as config_main
+        config_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "serve":
         sys.argv.pop(1)
         from .server import main as serve_main
