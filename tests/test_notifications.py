@@ -1,6 +1,5 @@
 """Tests for cross-process chat outbox."""
 
-import json
 import os
 import tempfile
 import unittest

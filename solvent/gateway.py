@@ -9,7 +9,7 @@ from .agent import Solvent
 from .chat import handle_message, format_job_notification
 from .memory import SessionMemory
 from . import pairing
-from .treasury import Treasury, fmt
+from .treasury import fmt
 from .rate_limit import RateLimiter
 
 _outbound_handlers: dict[str, Callable[[str, str], None]] = {}

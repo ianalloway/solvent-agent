@@ -7,10 +7,8 @@ import json
 import os
 import threading
 import time
-from pathlib import Path
 
 from .agent import Solvent
-from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
 from .gateway import Gateway, register_outbound
 from .delivery import verify_delivery_token, markdown_to_html, is_safe_job_id
 from .event_hub import EventHub
@@ -242,7 +240,6 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         - A valid delivery token (``?token=...``), OR
         - The request originating from localhost (127.0.0.1 / ::1).
         """
-        from starlette.requests import Request as StarletteRequest
 
         row = agent.t.get_job(job_id)
         if not row:
@@ -292,7 +289,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
         reports_dir = reports_dir_fn().resolve()
-        
+
         path_html = (reports_dir / f"{job_id}.html").resolve()
         try:
             path_html.relative_to(reports_dir)
@@ -300,7 +297,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 return HTMLResponse(path_html.read_text(encoding="utf-8"))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
-            
+
         path_md = (reports_dir / f"{job_id}.md").resolve()
         try:
             path_md.relative_to(reports_dir)
@@ -308,7 +305,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
-            
+
         raise HTTPException(404, "brief not found")
 
     @app.get("/api/briefs")
@@ -325,7 +322,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     @app.get("/api/briefs/{job_id}")
     def get_brief_api(job_id: str):
         reports_dir = reports_dir_fn().resolve()
-        
+
         path_html = (reports_dir / f"{job_id}.html").resolve()
         try:
             path_html.relative_to(reports_dir)
@@ -333,7 +330,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 return HTMLResponse(path_html.read_text(encoding="utf-8"))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
-            
+
         path_md = (reports_dir / f"{job_id}.md").resolve()
         try:
             path_md.relative_to(reports_dir)
@@ -341,7 +338,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
-            
+
         raise HTTPException(404, "brief not found")
 
     # ------------------------------------------------------------------

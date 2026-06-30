@@ -6,7 +6,6 @@ import json
 import os
 import sys
 import time
-from pathlib import Path
 
 from .paths import data_dir
 

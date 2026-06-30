@@ -10,11 +10,10 @@ Stripe on the SPEND side. This is what ties COGS to each unit of revenue.
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from . import nemotron
 from .paths import reports_dir
-from .pricing import RESOURCE_COSTS_CENTS, get_resource_costs
+from .pricing import get_resource_costs
 from .security import sanitise_prompt_input, safe_report_path, PromptInjectionError, InputValidationError
 
 OUTPUT_DIR = reports_dir()

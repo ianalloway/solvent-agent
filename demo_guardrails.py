@@ -42,6 +42,6 @@ for label, amt, vendor, margin in attempts:
         print(f"  {C_GREEN}✅ ALLOWED{C_RESET}  ${amt/100:>6.2f} → {vendor:<16} | {C_BOLD}{label}{C_RESET}")
     except GuardrailError as e:
         print(f"  {C_RED}🛑 BLOCKED{C_RESET}  ${amt/100:>6.2f} → {vendor:<16} | {label}\n               {C_GREY}reason:{C_RESET} {C_RED}{e}{C_RESET}")
-        
+
 print(BAR)
 print("  Every outbound payment is screened by guardrails before reaching Stripe.\n")

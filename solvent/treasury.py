@@ -57,7 +57,7 @@ class Treasury:
             # Support transition from legacy JSON paths to DB paths transparently
             if self.path.suffix == ".json":
                 self.path = self.path.with_suffix(".db")
-        
+
         self.lock_path = self.path.with_suffix(".lock")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

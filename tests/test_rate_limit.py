@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 import unittest
-from unittest.mock import patch
 
 from solvent.rate_limit import RateLimiter
 
@@ -187,7 +186,8 @@ class TestCleanup(unittest.TestCase):
 class TestPersistence(unittest.TestCase):
     def test_db_persists_across_restarts(self):
         """State written by one RateLimiter instance must be visible to the next."""
-        import tempfile, os
+        import tempfile
+        import os
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "rl.db")
@@ -204,7 +204,8 @@ class TestPersistence(unittest.TestCase):
             self.assertEqual(s["hourly_count"], 3)
 
     def test_ban_persists_across_restarts(self):
-        import tempfile, os
+        import tempfile
+        import os
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "rl2.db")

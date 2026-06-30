@@ -99,14 +99,14 @@ def markdown_to_html(
     # Generate collapsible metadata block
     gen_time = timestamp or time.time()
     date_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(gen_time))
-    
+
     rows = []
     if job_id:
         rows.append(f"<div style='font-weight:600;'>Job ID:</div><div style='font-family:monospace;'>{_esc(job_id)}</div>")
     if topic:
         rows.append(f"<div style='font-weight:600;'>Topic:</div><div>{_esc(topic)}</div>")
     rows.append(f"<div style='font-weight:600;'>Generated At:</div><div>{date_str}</div>")
-    
+
     metadata_rows = "\n".join(rows)
     metadata_html = f"""
     <details class="metadata-details" style="margin-bottom: 2rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;">
@@ -122,13 +122,13 @@ def markdown_to_html(
 
     lines = md.splitlines()
     html_lines: list[str] = []
-    
+
     in_table = False
     in_list = False
-    
+
     for line in lines:
         line_stripped = line.strip()
-        
+
         # Handle lists
         if line_stripped.startswith("- "):
             if in_table:
@@ -143,7 +143,7 @@ def markdown_to_html(
         elif in_list:
             html_lines.append("</ul>")
             in_list = False
- 
+
         # Handle tables
         if line_stripped.startswith("|") and line_stripped.endswith("|"):
             if not in_list:
@@ -151,16 +151,16 @@ def markdown_to_html(
             else:
                 html_lines.append("</ul>")
                 in_list = False
-                
+
             if not in_table:
                 html_lines.append("<div style='overflow-x:auto; margin:1.5rem 0;'><table style='width:100%; border-collapse:collapse; background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden;'>")
                 in_table = True
             cells = [c.strip() for c in line_stripped.split("|")[1:-1]]
-            
+
             # If it's a separator line (like |---|---|), skip it
             if all(all(char in "- :" for char in cell) for cell in cells):
                 continue
-            
+
             # Determine if this is a header row
             is_header = len(html_lines) > 0 and html_lines[-1].startswith("<div style='overflow-x:auto")
             tag = "th" if is_header else "td"
@@ -169,7 +169,7 @@ def markdown_to_html(
                 style += " background:rgba(255,255,255,0.03); font-weight:600; color:#ffffff;"
             else:
                 style += " color:#9ca3af;"
-                
+
             row_html = "<tr>"
             for cell in cells:
                 cell_parsed = _parse_bold(cell)
@@ -180,7 +180,7 @@ def markdown_to_html(
         elif in_table:
             html_lines.append("</table></div>")
             in_table = False
- 
+
         # Handle headers
         if line_stripped.startswith("# "):
             html_lines.append(f"<h1 style='font-size:1.875rem; font-weight:800; color:#ffffff; margin-top:0; margin-bottom:1rem; line-height:1.2;'>{_esc(line_stripped[2:])}</h1>")
@@ -193,14 +193,14 @@ def markdown_to_html(
         else:
             content = _parse_bold(line)
             html_lines.append(f"<p style='margin-top:0; margin-bottom:1.25rem; color:#9ca3af;'>{content}</p>")
-            
+
     if in_list:
         html_lines.append("</ul>")
     if in_table:
         html_lines.append("</table></div>")
-        
+
     body = "\n".join(html_lines)
-    
+
     return f"""<!DOCTYPE html>
 <html>
 <head>

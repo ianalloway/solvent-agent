@@ -1,13 +1,11 @@
 """Tests for idempotent job stages."""
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from solvent.agent import Solvent
-from solvent.treasury import Treasury
 
 
 class TestStagesIdempotency(unittest.TestCase):
