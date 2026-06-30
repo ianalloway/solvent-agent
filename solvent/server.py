@@ -137,6 +137,37 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     def health():
         return {"status": "ok", "balance_cents": agent.t.balance_cents()}
 
+    @app.get("/api/pair/qr")
+    def api_pair_qr():
+        """Generate an OpenClaw pairing token and return a QR code PNG (or JSON fallback)."""
+        import os
+        token = agent.t.create_openclaw_token(ttl=600)
+        base_url = os.environ.get("SOLVENT_BASE_URL", "")
+        host = base_url.replace("https://", "").replace("http://", "").split("/")[0]
+        try:
+            port = int(host.split(":")[-1]) if ":" in host else 443
+            host_name = host.split(":")[0]
+        except ValueError:
+            port = 443
+            host_name = host
+        from . import qr as _qr
+        png = _qr.png_bytes(token, host=host_name, port=port)
+        if png:
+            from starlette.responses import Response
+            return Response(content=png, media_type="image/png")
+        return JSONResponse({"token": token, "note": "install qrcode[pil] for PNG output"})
+
+    @app.post("/api/pair/verify")
+    async def api_pair_verify(req: Request):
+        body = await req.json()
+        token = (body.get("token") or "").strip()
+        if not token:
+            raise HTTPException(400, "token required")
+        ok = agent.t.verify_openclaw_token(token)
+        if not ok:
+            raise HTTPException(403, "invalid or expired token")
+        return {"verified": True}
+
     @app.get("/")
     def dashboard_page():
         from . import dashboard
