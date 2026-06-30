@@ -11,6 +11,7 @@ Usage: solvent <command> [options]
 Commands:
   (none)        run the batch demo / interactive session
   status        live summary: balance, jobs, API key presence; --watch to auto-refresh
+  upgrade       check for newer version on PyPI; --check exits 1 if outdated
   serve         webhooks + job API + hosted briefs
   worker        resume incomplete jobs, process the queue
   telegram      long-poll the Telegram bot
@@ -45,6 +46,10 @@ def main():
         sys.argv.pop(1)
         from .status import main as status_main
         status_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "upgrade":
+        sys.argv.pop(1)
+        from .upgrade import main as upgrade_main
+        upgrade_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "serve":
         sys.argv.pop(1)
         from .server import main as serve_main
