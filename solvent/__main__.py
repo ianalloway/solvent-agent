@@ -127,6 +127,8 @@ def main():
                 print(f"  {row['event_id'][:16]} {row['event_type']} err={row['error'][:60]}")
     else:
         # No subcommand: fall through to the demo / interactive CLI.
+        from .upgrade import background_update_hint
+        background_update_hint()
         from .cli import main as demo_main
         demo_main()
 

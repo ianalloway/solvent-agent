@@ -5,15 +5,24 @@ Usage:
     solvent upgrade           print upgrade instructions if a newer version exists
     solvent upgrade --check   exit 1 if current version is behind PyPI (CI-friendly)
     solvent upgrade --install run pip install to upgrade in-place
+
+Background hint: call background_update_hint() at startup to fire a
+non-blocking daemon thread that prints a one-line upgrade notice to stderr
+if outdated. Rate-limited to once per day; skipped when
+SOLVENT_NO_UPDATE_CHECK=1 is set.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from typing import Optional
+
+_CHECK_INTERVAL = 86400  # 24 hours in seconds
 
 _PYPI_URL = "https://pypi.org/pypi/solvent-agent/json"
 _TIMEOUT = 5  # seconds
@@ -116,6 +125,40 @@ def main():
         sys.exit(1)
 
     sys.exit(0)
+
+
+def background_update_hint() -> None:
+    """Fire a daemon thread that prints a one-line upgrade hint to stderr if outdated.
+
+    Rate-limited to once per _CHECK_INTERVAL seconds via a timestamp file.
+    Skipped when SOLVENT_NO_UPDATE_CHECK=1 is set.
+    """
+    if os.environ.get("SOLVENT_NO_UPDATE_CHECK"):
+        return
+
+    import threading
+
+    def _check() -> None:
+        try:
+            from .paths import data_dir
+            stamp_path = data_dir() / ".upgrade_check"
+            if stamp_path.exists():
+                last = float(stamp_path.read_text().strip())
+                if time.time() - last < _CHECK_INTERVAL:
+                    return
+            latest = latest_pypi_version()
+            stamp_path.write_text(str(time.time()))
+            if latest and not (_parse_version(current_version()) >= _parse_version(latest)):
+                print(
+                    f"\n[solvent] Update available: {current_version()} → {latest}"
+                    f"  (pip install --upgrade solvent-agent)\n",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass  # never let the background check crash the agent
+
+    t = threading.Thread(target=_check, daemon=True)
+    t.start()
 
 
 if __name__ == "__main__":
