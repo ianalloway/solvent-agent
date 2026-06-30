@@ -10,6 +10,7 @@ Usage: solvent <command> [options]
 
 Commands:
   (none)        run the batch demo / interactive session
+  init          first-run setup: create dirs, DB, and workspace files
   serve         webhooks + job API + hosted briefs
   worker        resume incomplete jobs, process the queue
   telegram      long-poll the Telegram bot
@@ -40,7 +41,11 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] in ("help", "--help", "-h"):
         print(HELP)
         return
-    if len(sys.argv) > 1 and sys.argv[1] == "serve":
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        sys.argv.pop(1)
+        from .init import main as init_main
+        init_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "serve":
         sys.argv.pop(1)
         from .server import main as serve_main
         serve_main()
