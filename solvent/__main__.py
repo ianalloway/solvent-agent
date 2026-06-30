@@ -10,6 +10,7 @@ Usage: solvent <command> [options]
 
 Commands:
   (none)        run the batch demo / interactive session
+  init          first-run setup: create dirs, DB, and workspace files
   status        live summary: balance, jobs, API key presence; --watch to auto-refresh
   upgrade       check for newer version on PyPI; --check exits 1 if outdated
   serve         webhooks + job API + hosted briefs
@@ -42,7 +43,11 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] in ("help", "--help", "-h"):
         print(HELP)
         return
-    if len(sys.argv) > 1 and sys.argv[1] == "status":
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        sys.argv.pop(1)
+        from .init import main as init_main
+        init_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "status":
         sys.argv.pop(1)
         from .status import main as status_main
         status_main()
