@@ -24,6 +24,7 @@ dependencies = []
 stripe = ["stripe>=9.0.0"]
 rich = ["rich>=13.0.0"]
 serve = ["fastapi>=0.110.0", "uvicorn[standard]>=0.27.0"]
+qr = ["qrcode[pil]>=7.0"]
 telegram = ["python-telegram-bot>=21.0"]
 dev = ["pytest>=7.0.0"]
 all = [
