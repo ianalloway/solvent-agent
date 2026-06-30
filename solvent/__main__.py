@@ -13,6 +13,7 @@ Commands:
   init          first-run setup: create dirs, DB, and workspace files
   status        live summary: balance, jobs, API key presence; --watch to auto-refresh
   upgrade       check for newer version on PyPI; --check exits 1 if outdated
+  jobs          list/show/retry/cancel jobs (jobs --help for sub-commands)
   serve         webhooks + job API + hosted briefs
   worker        resume incomplete jobs, process the queue
   telegram      long-poll the Telegram bot
@@ -51,6 +52,10 @@ def main():
         sys.argv.pop(1)
         from .status import main as status_main
         status_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "jobs":
+        sys.argv.pop(1)
+        from .job_cmd import main as jobs_main
+        jobs_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "upgrade":
         sys.argv.pop(1)
         from .upgrade import main as upgrade_main
