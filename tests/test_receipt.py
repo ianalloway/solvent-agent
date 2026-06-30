@@ -161,16 +161,22 @@ class TestReceiptEndpoint(unittest.TestCase):
 
     def _make_receipt_app(self, agent):
         """Build a minimal FastAPI app that exposes only the receipt endpoint."""
-        from fastapi import FastAPI, HTTPException
-        from starlette.requests import Request
+        from fastapi import FastAPI, HTTPException, Request
         from starlette.responses import PlainTextResponse
         from solvent.delivery import verify_delivery_token
         from solvent.receipt import build_receipt
 
+        # With ``from __future__ import annotations``, the nested route's
+        # ``request: Request`` annotation is stored as the string "Request".
+        # FastAPI resolves that string from module globals at route registration
+        # time, not this local function scope, so expose the optional FastAPI
+        # dependency only after the endpoint tests have confirmed it is installed.
+        globals()["Request"] = Request
+
         _app = FastAPI(title="SOLVENT-receipt-test")
 
         @_app.get("/api/receipt/{job_id}")
-        def _get_receipt(job_id: str, token: str = "", request: Request = None):
+        def _get_receipt(request: Request, job_id: str, token: str = ""):
             row = agent.t.get_job(job_id)
             if not row:
                 raise HTTPException(404, "job not found")
