@@ -10,6 +10,7 @@ Usage: solvent <command> [options]
 
 Commands:
   (none)        run the batch demo / interactive session
+  status        live summary: balance, jobs, API key presence; --watch to auto-refresh
   upgrade       check for newer version on PyPI; --check exits 1 if outdated
   serve         webhooks + job API + hosted briefs
   worker        resume incomplete jobs, process the queue
@@ -41,7 +42,11 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] in ("help", "--help", "-h"):
         print(HELP)
         return
-    if len(sys.argv) > 1 and sys.argv[1] == "upgrade":
+    if len(sys.argv) > 1 and sys.argv[1] == "status":
+        sys.argv.pop(1)
+        from .status import main as status_main
+        status_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "upgrade":
         sys.argv.pop(1)
         from .upgrade import main as upgrade_main
         upgrade_main()
