@@ -56,6 +56,10 @@ def main():
         sys.argv.pop(1)
         from .metrics_cmd import main as metrics_main
         metrics_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "sessions":
+        sys.argv.pop(1)
+        from .solvent/sessions_cmd import main as sessions_main
+        sessions_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "events":
         sys.argv.pop(1)
         from .solvent/events_cmd import main as events_main
