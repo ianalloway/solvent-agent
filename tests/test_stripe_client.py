@@ -48,10 +48,11 @@ class TestStripeClientSimulate(unittest.TestCase):
 
     def test_simulate_pay_vendor(self):
         client = StripeClient()
-        pay = client.pay_vendor("nvidia-nemotron", 500, "tokens")
+        pay = client.pay_vendor("nvidia-nemotron", 500, "tokens", job_id="job_sim_1")
         self.assertTrue(pay["simulated"])
         self.assertFalse(pay["issuing"])
         self.assertTrue(pay["id"].startswith("pay_sim_"))
+        self.assertEqual(pay["job_id"], "job_sim_1")
 
 
 class TestStripeClientLive(unittest.TestCase):
@@ -307,15 +308,17 @@ class TestStripeClientLive(unittest.TestCase):
         self._mock_stripe.issuing.Card.create.return_value = mock.Mock(id="ic_1", last4="4242")
 
         client = StripeClient()
-        pay = client.pay_vendor("market-data-api", 240, "2 pulls")
+        pay = client.pay_vendor("market-data-api", 240, "2 pulls", job_id="job_live_123")
 
         self.assertFalse(pay["simulated"])
         self.assertTrue(pay["issuing"])
         self.assertEqual(pay["id"], "ic_1")
-        limits = self._mock_stripe.issuing.Card.create.call_args.kwargs["spending_controls"][
-            "spending_limits"
-        ]
+        self.assertEqual(pay["job_id"], "job_live_123")
+        
+        create_kwargs = self._mock_stripe.issuing.Card.create.call_args.kwargs
+        limits = create_kwargs["spending_controls"]["spending_limits"]
         self.assertEqual(limits[0]["amount"], 240)
+        self.assertEqual(create_kwargs["metadata"]["job_id"], "job_live_123")
 
     def test_issuing_fallback_on_error(self):
         self._mock_stripe.issuing.Cardholder.list.side_effect = Exception("issuing disabled")

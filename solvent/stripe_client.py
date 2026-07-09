@@ -419,7 +419,7 @@ class StripeClient:
         self._save_catalog()
         return holder.id
 
-    def pay_vendor(self, vendor: str, amount_cents: int, memo: str) -> dict:
+    def pay_vendor(self, vendor: str, amount_cents: int, memo: str, job_id: str | None = None) -> dict:
         """Outbound payment for a resource the agent provisions for itself."""
         if self.live and self._issuing_enabled():
             try:
@@ -434,7 +434,12 @@ class StripeClient:
                             {"amount": amount_cents, "interval": "per_authorization"},
                         ],
                     },
-                    metadata={"vendor": vendor, "memo": memo[:500], "agent": "SOLVENT"},
+                    metadata={
+                        "vendor": vendor,
+                        "memo": memo[:500],
+                        "agent": "SOLVENT",
+                        "job_id": job_id or "",
+                    },
                 )
                 return {
                     "id": card.id,
@@ -444,6 +449,7 @@ class StripeClient:
                     "simulated": False,
                     "issuing": True,
                     "card_last4": getattr(card, "last4", None),
+                    "job_id": job_id,
                     "ts": time.time(),
                 }
             except Exception:
@@ -456,6 +462,7 @@ class StripeClient:
             "memo": memo,
             "simulated": True,
             "issuing": False,
+            "job_id": job_id,
             "ts": time.time(),
         }
 

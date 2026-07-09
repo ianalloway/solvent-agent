@@ -427,7 +427,7 @@ class StageRunner:
                         raise GuardrailError(
                             f"spend to {vendor} of {amount}c rejected by guardrails: {decision.reason}"
                         )
-                    pay = self.stripe.pay_vendor(vendor, amount, memo)
+                    pay = self.stripe.pay_vendor(vendor, amount, memo, job_id=job_id)
                     self.t.spend(amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"])
                     self.t.complete_stage(job_id, "spend", spend_key, {"vendor": vendor, "amount": amount})
                     self._emit(stage="spend", job_id=job_id, vendor=vendor, amount=amount, memo=memo)
