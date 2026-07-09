@@ -52,6 +52,10 @@ def main():
         s = SolventStages(treasury=t, guard=Guardrails(t), stripe=StripeClient())
         result = s.retry_job(job_id)
         import json; print(json.dumps(result, indent=2, default=str))
+    elif len(sys.argv) > 1 and sys.argv[1] == "metrics":
+        sys.argv.pop(1)
+        from .metrics_cmd import main as metrics_main
+        metrics_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "webhooks":
         from .webhook_log import WebhookLog
         import json
