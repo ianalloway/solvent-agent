@@ -58,15 +58,15 @@ def main():
         metrics_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "sessions":
         sys.argv.pop(1)
-        from .solvent/sessions_cmd import main as sessions_main
+        from .sessions_cmd import main as sessions_main
         sessions_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "events":
         sys.argv.pop(1)
-        from .solvent/events_cmd import main as events_main
+        from .events_cmd import main as events_main
         events_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "rate-limit":
         sys.argv.pop(1)
-        from .solvent/rate_limit_cmd import main as rate_limit_main
+        from .rate_limit_cmd import main as rate_limit_main
         rate_limit_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "ledger":
         sys.argv.pop(1)
