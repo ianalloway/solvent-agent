@@ -56,6 +56,10 @@ def main():
         sys.argv.pop(1)
         from .metrics_cmd import main as metrics_main
         metrics_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "events":
+        sys.argv.pop(1)
+        from .solvent/events_cmd import main as events_main
+        events_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "rate-limit":
         sys.argv.pop(1)
         from .solvent/rate_limit_cmd import main as rate_limit_main
