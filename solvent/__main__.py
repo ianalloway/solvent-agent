@@ -56,6 +56,10 @@ def main():
         sys.argv.pop(1)
         from .metrics_cmd import main as metrics_main
         metrics_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "ledger":
+        sys.argv.pop(1)
+        from .ledger import main as ledger_main
+        ledger_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "webhooks":
         from .webhook_log import WebhookLog
         import json
