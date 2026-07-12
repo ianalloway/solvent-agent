@@ -89,7 +89,7 @@ def _tail_lines(path: Path, n: int) -> list[str]:
         f.seek(max(0, size - chunk))
         raw = f.read()
     lines = raw.decode(errors="replace").splitlines()
-    lines = [l for l in lines if l.strip()]
+    lines = [line for line in lines if line.strip()]
     return lines[-n:]
 
 
