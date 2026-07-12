@@ -1,19 +1,4 @@
-"""
-webhook_log.py — durable log of received Stripe webhook events.
-
-Stores every event received with: event_id, type, received_at, status
-(processed/error/skipped), error_message.  Allows replaying failed events.
-
-Schema:
-    webhook_events(
-        event_id   TEXT PRIMARY KEY,
-        event_type TEXT,
-        payload    BLOB,
-        received_at REAL,
-        status     TEXT,
-        error      TEXT
-    )
-"""
+"""Durable SQLite log and CLI for received Stripe webhook events."""
 
 from __future__ import annotations
 
@@ -21,6 +6,8 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any
+
+from .paths import data_dir
 
 
 class WebhookLog:
@@ -41,21 +28,19 @@ class WebhookLog:
         "CREATE INDEX IF NOT EXISTS idx_wh_received_at ON webhook_events (received_at)",
     ]
 
-    def __init__(self, db_path: str = ".solvent/webhooks.db") -> None:
-        if db_path == ":memory:":
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        db_path = db_path or (data_dir() / "webhooks.db")
+        if str(db_path) == ":memory:":
             self._db_path = ":memory:"
         else:
-            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._db_path = db_path
+            path = Path(db_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._db_path = path
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        for stmt in self._DDL:
-            self._conn.execute(stmt)
+        for statement in self._DDL:
+            self._conn.execute(statement)
         self._conn.commit()
-
-    # ------------------------------------------------------------------
-    # Write helpers
-    # ------------------------------------------------------------------
 
     def record(
         self,
@@ -77,7 +62,7 @@ class WebhookLog:
         self._conn.commit()
 
     def mark_processed(self, event_id: str) -> None:
-        """Update status → 'processed'."""
+        """Update status to processed and clear any previous error."""
         self._conn.execute(
             "UPDATE webhook_events SET status = 'processed', error = '' WHERE event_id = ?",
             (event_id,),
@@ -85,57 +70,53 @@ class WebhookLog:
         self._conn.commit()
 
     def mark_error(self, event_id: str, error: str) -> None:
-        """Update status → 'error' with an error message."""
+        """Update status to error and store the error message."""
         self._conn.execute(
             "UPDATE webhook_events SET status = 'error', error = ? WHERE event_id = ?",
             (error, event_id),
         )
         self._conn.commit()
 
-    # ------------------------------------------------------------------
-    # Read helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
-        d = dict(row)
-        # Add a human-readable timestamp field
         import datetime
+
+        data = dict(row)
         try:
-            d["received_at_fmt"] = datetime.datetime.fromtimestamp(
-                d["received_at"]
+            data["received_at_fmt"] = datetime.datetime.fromtimestamp(
+                data["received_at"]
             ).strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
-            d["received_at_fmt"] = ""
-        return d
+            data["received_at_fmt"] = ""
+        return data
 
     def list_recent(self, limit: int = 50) -> list[dict]:
-        """Return up to *limit* events sorted by received_at DESC."""
-        cur = self._conn.execute(
+        """Return up to *limit* events sorted by received_at descending."""
+        cursor = self._conn.execute(
             "SELECT * FROM webhook_events ORDER BY received_at DESC LIMIT ?",
             (limit,),
         )
-        return [self._row_to_dict(r) for r in cur.fetchall()]
+        return [self._row_to_dict(row) for row in cursor.fetchall()]
 
     def list_failed(self) -> list[dict]:
-        """Return all events where status = 'error'."""
-        cur = self._conn.execute(
+        """Return all events whose status is error."""
+        cursor = self._conn.execute(
             "SELECT * FROM webhook_events WHERE status = 'error' ORDER BY received_at DESC"
         )
-        return [self._row_to_dict(r) for r in cur.fetchall()]
+        return [self._row_to_dict(row) for row in cursor.fetchall()]
 
     def get_payload(self, event_id: str) -> bytes | None:
-        """Retrieve the raw stored payload for replay, or None if not found."""
-        cur = self._conn.execute(
+        """Retrieve the stored raw payload, or None if it is missing."""
+        cursor = self._conn.execute(
             "SELECT payload FROM webhook_events WHERE event_id = ?",
             (event_id,),
         )
-        row = cur.fetchone()
+        row = cursor.fetchone()
         return bytes(row["payload"]) if row else None
 
     def stats(self) -> dict[str, Any]:
-        """Return aggregate counts: total, processed, error, skipped, last_24h."""
-        cur = self._conn.execute(
+        """Return aggregate event counts."""
+        cursor = self._conn.execute(
             """
             SELECT
                 COUNT(*)                                          AS total,
@@ -147,7 +128,7 @@ class WebhookLog:
             """,
             (time.time() - 86400,),
         )
-        row = cur.fetchone()
+        row = cursor.fetchone()
         return {
             "total": row["total"] or 0,
             "processed": row["processed"] or 0,
@@ -155,3 +136,48 @@ class WebhookLog:
             "skipped": row["skipped"] or 0,
             "last_24h": row["last_24h"] or 0,
         }
+
+
+def main(log: WebhookLog | None = None) -> None:
+    """Inspect webhook records from the command line."""
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(
+        prog="solvent webhooks",
+        description="Inspect the durable Stripe webhook log.",
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="stats",
+        choices=("stats", "list", "failed"),
+    )
+    parser.add_argument("--limit", type=int, default=20)
+    args = parser.parse_args()
+
+    webhook_log = log or WebhookLog()
+    if args.command == "stats":
+        print(json.dumps(webhook_log.stats(), indent=2))
+        return
+
+    rows = (
+        webhook_log.list_recent(args.limit)
+        if args.command == "list"
+        else webhook_log.list_failed()[: args.limit]
+    )
+    for row in rows:
+        if args.command == "list":
+            print(
+                f"{row['received_at_fmt']} [{row['status']}] "
+                f"{row['event_type']} {row['event_id'][:16]}"
+            )
+        else:
+            print(
+                f"{row['event_id'][:16]} {row['event_type']} "
+                f"err={row['error'][:60]}"
+            )
+
+
+if __name__ == "__main__":
+    main()

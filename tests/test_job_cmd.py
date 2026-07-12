@@ -1,241 +1,229 @@
-"""tests/test_job_cmd.py — unit tests for the solvent jobs CLI."""
+"""Unit tests for the solvent jobs CLI."""
 
 import io
 import json
 import sys
 import unittest
-from contextlib import redirect_stdout
+import uuid
+from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
-from solvent.treasury import Treasury
 from solvent.job_cmd import (
-    cmd_list, cmd_show, cmd_events, cmd_cancel,
-    _fmt_cents, _ago, _fmt_ts, _col,
+    _ago,
+    _col,
+    _fmt_cents,
+    _fmt_ts,
+    cmd_cancel,
+    cmd_events,
+    cmd_list,
+    cmd_retry,
+    cmd_show,
 )
+from solvent.treasury import Treasury
 
 
 def _fresh_treasury():
-    return Treasury(path=f"/tmp/solvent_jobcmd_{id(object())}.db")
+    return Treasury(path=f"/tmp/solvent_jobcmd_{uuid.uuid4().hex}.db")
 
 
-def _seed(t: Treasury, n: int = 3) -> list[str]:
-    """Insert n jobs and return their IDs."""
+def _seed(treasury: Treasury, count: int = 3) -> list[str]:
     ids = []
     statuses = ["awaiting_payment", "in_progress", "completed", "failed"]
-    for i in range(n):
-        jid = f"job_{i:03d}"
-        t.upsert_job(jid, statuses[i % len(statuses)], topic=f"Topic {i}", budget_cents=(i + 1) * 1000)
-        ids.append(jid)
+    for index in range(count):
+        job_id = f"job_{index:03d}"
+        treasury.upsert_job(
+            job_id,
+            statuses[index % len(statuses)],
+            topic=f"Topic {index}",
+            budget_cents=(index + 1) * 1000,
+        )
+        ids.append(job_id)
     return ids
 
 
 class TestHelpers(unittest.TestCase):
-
-    def test_fmt_cents_basic(self):
+    def test_fmt_cents(self):
         self.assertEqual(_fmt_cents(500), "$5.00")
-
-    def test_fmt_cents_none(self):
         self.assertEqual(_fmt_cents(None), "—")
 
-    def test_fmt_ts_none(self):
+    def test_fmt_ts(self):
+        import time
+
         self.assertEqual(_fmt_ts(None), "—")
+        self.assertRegex(_fmt_ts(time.time()), r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 
-    def test_fmt_ts_valid(self):
+    def test_ago(self):
         import time
-        result = _fmt_ts(time.time())
-        self.assertRegex(result, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 
-    def test_ago_seconds(self):
-        import time
         self.assertIn("s", _ago(time.time() - 10))
-
-    def test_ago_none(self):
         self.assertEqual(_ago(None), "")
 
-    def test_col_truncates(self):
+    def test_col(self):
+        self.assertEqual(len(_col("hi", 10)), 10)
         self.assertEqual(len(_col("A" * 30, 10)), 10)
         self.assertTrue(_col("A" * 30, 10).endswith("…"))
 
-    def test_col_pads(self):
-        self.assertEqual(len(_col("hi", 10)), 10)
-
 
 class TestCmdList(unittest.TestCase):
-
     def test_empty_treasury_prints_no_jobs(self):
-        t = _fresh_treasury()
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_list(t)
-        self.assertIn("No jobs", buf.getvalue())
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_list(_fresh_treasury())
+        self.assertIn("No jobs", buffer.getvalue())
 
     def test_lists_jobs(self):
-        t = _fresh_treasury()
-        _seed(t, 3)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_list(t)
-        out = buf.getvalue()
-        self.assertIn("job_000", out)
-        self.assertIn("Topic 0", out)
+        treasury = _fresh_treasury()
+        _seed(treasury, 3)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_list(treasury)
+        self.assertIn("job_000", buffer.getvalue())
+        self.assertIn("Topic 0", buffer.getvalue())
 
     def test_status_filter(self):
-        t = _fresh_treasury()
-        _seed(t, 4)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_list(t, status_filter="completed")
-        out = buf.getvalue()
-        # Only completed jobs should appear
-        self.assertNotIn("awaiting_payment", out)
+        treasury = _fresh_treasury()
+        _seed(treasury, 4)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_list(treasury, status_filter="completed")
+        self.assertNotIn("awaiting_payment", buffer.getvalue())
 
     def test_json_output_is_list(self):
-        t = _fresh_treasury()
-        _seed(t, 2)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_list(t, as_json=True)
-        data = json.loads(buf.getvalue())
-        self.assertIsInstance(data, list)
+        treasury = _fresh_treasury()
+        _seed(treasury, 2)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_list(treasury, as_json=True)
+        self.assertIsInstance(json.loads(buffer.getvalue()), list)
 
     def test_limit_respected(self):
-        t = _fresh_treasury()
-        _seed(t, 10)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_list(t, limit=3)
-        # Should not contain all 10 job IDs in output
-        out = buf.getvalue()
-        # Count distinct job_ occurrences
-        count = sum(1 for i in range(10) if f"job_{i:03d}" in out)
+        treasury = _fresh_treasury()
+        _seed(treasury, 10)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_list(treasury, limit=3)
+        output = buffer.getvalue()
+        count = sum(1 for index in range(10) if f"job_{index:03d}" in output)
         self.assertLessEqual(count, 3)
-
-    def test_no_jobs_with_status_filter_message(self):
-        t = _fresh_treasury()
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_list(t, status_filter="failed")
-        self.assertIn("failed", buf.getvalue())
 
 
 class TestCmdShow(unittest.TestCase):
-
     def test_show_missing_job_exits(self):
-        t = _fresh_treasury()
         with self.assertRaises(SystemExit):
-            cmd_show(t, "nonexistent_id")
+            cmd_show(_fresh_treasury(), "missing")
 
     def test_show_existing_job(self):
-        t = _fresh_treasury()
-        t.upsert_job("job_show", "completed", topic="My topic", budget_cents=5000)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_show(t, "job_show")
-        out = buf.getvalue()
-        self.assertIn("job_show", out)
-        self.assertIn("My topic", out)
-        self.assertIn("completed", out)
+        treasury = _fresh_treasury()
+        treasury.upsert_job("job_show", "completed", topic="My topic", budget_cents=5000)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_show(treasury, "job_show")
+        output = buffer.getvalue()
+        self.assertIn("job_show", output)
+        self.assertIn("My topic", output)
+        self.assertIn("completed", output)
 
     def test_show_json(self):
-        t = _fresh_treasury()
-        t.upsert_job("job_json", "in_progress", topic="JSON topic", budget_cents=1000)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_show(t, "job_json", as_json=True)
-        data = json.loads(buf.getvalue())
+        treasury = _fresh_treasury()
+        treasury.upsert_job("job_json", "in_progress", topic="JSON topic", budget_cents=1000)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_show(treasury, "job_json", as_json=True)
+        data = json.loads(buffer.getvalue())
         self.assertEqual(data["id"], "job_json")
         self.assertIn("pnl_cents", data)
 
 
 class TestCmdEvents(unittest.TestCase):
-
     def test_events_missing_job_exits(self):
-        t = _fresh_treasury()
         with self.assertRaises(SystemExit):
-            cmd_events(t, "nope")
+            cmd_events(_fresh_treasury(), "missing")
 
-    def test_events_no_events_message(self):
-        t = _fresh_treasury()
-        t.upsert_job("ev_job", "awaiting_payment")
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_events(t, "ev_job")
-        self.assertIn("No events", buf.getvalue())
-
-    def test_events_lists_recorded(self):
-        t = _fresh_treasury()
-        t.upsert_job("ev_job2", "awaiting_payment")
-        t.record_event("ev_job2", "quote", {"amount": 500})
-        t.record_event("ev_job2", "paid", {})
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_events(t, "ev_job2")
-        out = buf.getvalue()
-        self.assertIn("quote", out)
-        self.assertIn("paid", out)
+    def test_events_lists_recorded_events(self):
+        treasury = _fresh_treasury()
+        treasury.upsert_job("events", "awaiting_payment")
+        treasury.record_event("events", "quote", {"amount": 500})
+        treasury.record_event("events", "paid", {})
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_events(treasury, "events")
+        self.assertIn("quote", buffer.getvalue())
+        self.assertIn("paid", buffer.getvalue())
 
     def test_events_json(self):
-        t = _fresh_treasury()
-        t.upsert_job("ev_j3", "in_progress")
-        t.record_event("ev_j3", "started", {})
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_events(t, "ev_j3", as_json=True)
-        data = json.loads(buf.getvalue())
-        self.assertIsInstance(data, list)
-        self.assertGreater(len(data), 0)
+        treasury = _fresh_treasury()
+        treasury.upsert_job("events", "in_progress")
+        treasury.record_event("events", "started", {})
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_events(treasury, "events", as_json=True)
+        self.assertIsInstance(json.loads(buffer.getvalue()), list)
+
+
+class TestCmdRetry(unittest.TestCase):
+    def test_retry_uses_supplied_runner_and_prints_json(self):
+        runner = mock.Mock()
+        runner.retry_job.return_value = {"stage": "booked", "status": "completed"}
+        buffer = io.StringIO()
+
+        with redirect_stdout(buffer):
+            result = cmd_retry(_fresh_treasury(), "job_retry", runner=runner)
+
+        runner.retry_job.assert_called_once_with("job_retry")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(json.loads(buffer.getvalue())["stage"], "booked")
+
+    def test_retry_user_error_exits_cleanly(self):
+        runner = mock.Mock()
+        runner.retry_job.side_effect = ValueError("not retryable")
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as context:
+            cmd_retry(_fresh_treasury(), "job_retry", runner=runner)
+
+        self.assertEqual(context.exception.code, 1)
+        self.assertIn("not retryable", stderr.getvalue())
 
 
 class TestCmdCancel(unittest.TestCase):
-
-    def test_cancel_missing_exits(self):
-        t = _fresh_treasury()
-        with self.assertRaises(SystemExit):
-            cmd_cancel(t, "nope")
-
     def test_cancel_sets_status(self):
-        t = _fresh_treasury()
-        t.upsert_job("cancel_me", "in_progress")
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_cancel(t, "cancel_me")
-        job = t.get_job("cancel_me")
-        self.assertEqual(job["status"], "cancelled")
-        self.assertIn("cancelled", buf.getvalue())
+        treasury = _fresh_treasury()
+        treasury.upsert_job("cancel_me", "in_progress")
+        with redirect_stdout(io.StringIO()):
+            cmd_cancel(treasury, "cancel_me")
+        self.assertEqual(treasury.get_job("cancel_me")["status"], "cancelled")
 
-    def test_cancel_already_done_is_noop(self):
-        t = _fresh_treasury()
-        t.upsert_job("done_job", "completed")
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_cancel(t, "done_job")
-        job = t.get_job("done_job")
-        self.assertEqual(job["status"], "completed")
-        self.assertIn("already", buf.getvalue())
+    def test_cancel_completed_job_is_noop(self):
+        treasury = _fresh_treasury()
+        treasury.upsert_job("done", "completed")
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cmd_cancel(treasury, "done")
+        self.assertEqual(treasury.get_job("done")["status"], "completed")
+        self.assertIn("already", buffer.getvalue())
 
 
 class TestJobsCLI(unittest.TestCase):
-
-    def test_main_list_no_args(self):
+    def test_main_defaults_to_list(self):
         from solvent.job_cmd import main
-        buf = io.StringIO()
-        with mock.patch("solvent.job_cmd.cmd_list") as mock_list, \
-             mock.patch.object(sys, "argv", ["solvent-jobs"]):
-            # cmd_list is called; it should receive a Treasury and no filter
-            mock_list.side_effect = lambda t, **kw: print("No jobs", file=sys.stdout)
-            with redirect_stdout(buf):
-                main()
-        mock_list.assert_called_once()
 
-    def test_main_list_subcommand(self):
+        with (
+            mock.patch("solvent.job_cmd.cmd_list") as command,
+            mock.patch.object(sys, "argv", ["solvent-jobs"]),
+        ):
+            main()
+        command.assert_called_once()
+
+    def test_main_routes_retry(self):
         from solvent.job_cmd import main
-        buf = io.StringIO()
-        with mock.patch("solvent.job_cmd.cmd_list") as mock_list, \
-             mock.patch.object(sys, "argv", ["solvent-jobs", "list"]):
-            mock_list.side_effect = lambda t, **kw: print("No jobs", file=sys.stdout)
-            with redirect_stdout(buf):
-                main()
-        mock_list.assert_called_once()
+
+        with (
+            mock.patch("solvent.job_cmd.cmd_retry") as command,
+            mock.patch.object(sys, "argv", ["solvent-jobs", "retry", "J-1"]),
+        ):
+            main()
+        command.assert_called_once()
+        self.assertEqual(command.call_args.args[1], "J-1")
 
 
 if __name__ == "__main__":

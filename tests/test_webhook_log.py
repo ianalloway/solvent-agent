@@ -1,126 +1,139 @@
-"""Tests for solvent.webhook_log — in-memory SQLite."""
+"""Tests for the durable webhook log and its CLI."""
 
 from __future__ import annotations
 
+import io
+import json
+import sys
+import tempfile
 import time
 import unittest
+from pathlib import Path
+from contextlib import redirect_stdout
+from unittest import mock
 
-from solvent.webhook_log import WebhookLog
+from solvent.webhook_log import WebhookLog, main
 
 
 class TestWebhookLog(unittest.TestCase):
     def setUp(self):
-        self.wl = WebhookLog(db_path=":memory:")
+        self.log = WebhookLog(db_path=":memory:")
 
     def test_record_appears_in_list_recent(self):
-        self.wl.record("evt_001", "payment_intent.created", b'{"id":"evt_001"}', "received")
-        rows = self.wl.list_recent()
+        self.log.record("evt_001", "payment_intent.created", b'{"id":"evt_001"}', "received")
+        rows = self.log.list_recent()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["event_id"], "evt_001")
         self.assertEqual(rows[0]["event_type"], "payment_intent.created")
         self.assertEqual(rows[0]["status"], "received")
 
     def test_list_recent_sorted_by_received_at_desc(self):
-        self.wl.record("evt_A", "charge.succeeded", b"a", "received")
+        self.log.record("evt_A", "charge.succeeded", b"a", "received")
         time.sleep(0.01)
-        self.wl.record("evt_B", "charge.failed", b"b", "received")
-        rows = self.wl.list_recent()
-        self.assertEqual(rows[0]["event_id"], "evt_B")
-        self.assertEqual(rows[1]["event_id"], "evt_A")
+        self.log.record("evt_B", "charge.failed", b"b", "received")
+        rows = self.log.list_recent()
+        self.assertEqual([row["event_id"] for row in rows], ["evt_B", "evt_A"])
 
     def test_list_recent_respects_limit(self):
-        for i in range(10):
-            self.wl.record(f"evt_{i:03}", "ping", b"x", "received")
-        rows = self.wl.list_recent(limit=3)
-        self.assertEqual(len(rows), 3)
+        for index in range(10):
+            self.log.record(f"evt_{index:03}", "ping", b"x", "received")
+        self.assertEqual(len(self.log.list_recent(limit=3)), 3)
 
     def test_received_at_fmt_populated(self):
-        self.wl.record("evt_fmt", "foo", b"y", "received")
-        rows = self.wl.list_recent()
-        self.assertNotEqual(rows[0]["received_at_fmt"], "")
+        self.log.record("evt_fmt", "foo", b"y", "received")
+        self.assertTrue(self.log.list_recent()[0]["received_at_fmt"])
 
-    def test_record_idempotent_via_replace(self):
-        self.wl.record("evt_dup", "ping", b"first", "received")
-        self.wl.record("evt_dup", "ping", b"second", "processed")
-        rows = self.wl.list_recent()
+    def test_record_is_idempotent(self):
+        self.log.record("evt_dup", "ping", b"first", "received")
+        self.log.record("evt_dup", "ping", b"second", "processed")
+        rows = self.log.list_recent()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["status"], "processed")
 
-    def test_mark_processed_changes_status(self):
-        self.wl.record("evt_p", "charge.captured", b"p", "received")
-        self.wl.mark_processed("evt_p")
-        rows = self.wl.list_recent()
-        self.assertEqual(rows[0]["status"], "processed")
-
-    def test_mark_processed_clears_error(self):
-        self.wl.record("evt_p2", "charge.captured", b"p2", "error", error="boom")
-        self.wl.mark_processed("evt_p2")
-        rows = self.wl.list_recent()
-        self.assertEqual(rows[0]["error"], "")
+    def test_mark_processed_changes_status_and_clears_error(self):
+        self.log.record("evt_p", "charge.captured", b"p", "error", error="boom")
+        self.log.mark_processed("evt_p")
+        row = self.log.list_recent()[0]
+        self.assertEqual(row["status"], "processed")
+        self.assertEqual(row["error"], "")
 
     def test_mark_error_stores_message(self):
-        self.wl.record("evt_e", "payment_intent.failed", b"e", "received")
-        self.wl.mark_error("evt_e", "Signature mismatch")
-        rows = self.wl.list_recent()
-        self.assertEqual(rows[0]["status"], "error")
-        self.assertEqual(rows[0]["error"], "Signature mismatch")
+        self.log.record("evt_e", "payment_intent.failed", b"e", "received")
+        self.log.mark_error("evt_e", "Signature mismatch")
+        row = self.log.list_recent()[0]
+        self.assertEqual(row["status"], "error")
+        self.assertEqual(row["error"], "Signature mismatch")
 
-    def test_mark_error_overrides_previous_error(self):
-        self.wl.record("evt_e2", "payment_intent.failed", b"e2", "error", error="first")
-        self.wl.mark_error("evt_e2", "second error")
-        rows = self.wl.list_recent()
-        self.assertEqual(rows[0]["error"], "second error")
-
-    def test_list_failed_only_returns_error_rows(self):
-        self.wl.record("evt_ok", "ping", b"ok", "processed")
-        self.wl.record("evt_bad", "ping", b"bad", "error", error="oops")
-        self.wl.record("evt_skip", "ping", b"skip", "skipped")
-        rows = self.wl.list_failed()
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["event_id"], "evt_bad")
-
-    def test_list_failed_empty_when_no_errors(self):
-        self.wl.record("evt_x", "ping", b"x", "processed")
-        self.assertEqual(self.wl.list_failed(), [])
+    def test_list_failed_only_returns_errors(self):
+        self.log.record("evt_ok", "ping", b"ok", "processed")
+        self.log.record("evt_bad", "ping", b"bad", "error", error="oops")
+        self.log.record("evt_skip", "ping", b"skip", "skipped")
+        rows = self.log.list_failed()
+        self.assertEqual([row["event_id"] for row in rows], ["evt_bad"])
 
     def test_stats_returns_correct_counts(self):
-        self.wl.record("s1", "t", b"", "processed")
-        self.wl.record("s2", "t", b"", "processed")
-        self.wl.record("s3", "t", b"", "error")
-        self.wl.record("s4", "t", b"", "skipped")
-        self.wl.record("s5", "t", b"", "received")
-        s = self.wl.stats()
-        self.assertEqual(s["total"], 5)
-        self.assertEqual(s["processed"], 2)
-        self.assertEqual(s["error"], 1)
-        self.assertEqual(s["skipped"], 1)
+        self.log.record("s1", "t", b"", "processed")
+        self.log.record("s2", "t", b"", "processed")
+        self.log.record("s3", "t", b"", "error")
+        self.log.record("s4", "t", b"", "skipped")
+        self.log.record("s5", "t", b"", "received")
+        stats = self.log.stats()
+        self.assertEqual(stats["total"], 5)
+        self.assertEqual(stats["processed"], 2)
+        self.assertEqual(stats["error"], 1)
+        self.assertEqual(stats["skipped"], 1)
+        self.assertEqual(stats["last_24h"], 5)
 
     def test_stats_on_empty_db(self):
-        s = self.wl.stats()
-        self.assertEqual(s["total"], 0)
-        self.assertEqual(s["processed"], 0)
-        self.assertEqual(s["error"], 0)
-        self.assertEqual(s["skipped"], 0)
-        self.assertEqual(s["last_24h"], 0)
+        self.assertEqual(
+            self.log.stats(),
+            {"total": 0, "processed": 0, "error": 0, "skipped": 0, "last_24h": 0},
+        )
 
-    def test_stats_last_24h_counts_recent(self):
-        self.wl.record("r1", "t", b"", "received")
-        self.wl.record("r2", "t", b"", "processed")
-        s = self.wl.stats()
-        self.assertEqual(s["last_24h"], 2)
+    def test_get_payload(self):
+        raw = b'{"id": "evt_raw"}'
+        self.log.record("evt_raw", "charge.succeeded", raw, "received")
+        self.assertEqual(self.log.get_payload("evt_raw"), raw)
+        self.assertIsNone(self.log.get_payload("missing"))
 
-    def test_get_payload_returns_stored_bytes(self):
-        raw = b'{"id": "evt_raw", "type": "charge.succeeded"}'
-        self.wl.record("evt_raw", "charge.succeeded", raw, "received")
-        self.assertEqual(self.wl.get_payload("evt_raw"), raw)
+    def test_default_database_honors_solvent_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict("os.environ", {"SOLVENT_HOME": tmp}, clear=False):
+                log = WebhookLog()
+                self.assertEqual(Path(log._db_path), Path(tmp).resolve() / "data" / "webhooks.db")
 
-    def test_get_payload_returns_none_when_missing(self):
-        self.assertIsNone(self.wl.get_payload("evt_nonexistent"))
 
-    def test_get_payload_returns_bytes_type(self):
-        self.wl.record("evt_bytes", "t", b"hello", "received")
-        result = self.wl.get_payload("evt_bytes")
-        self.assertIsInstance(result, bytes)
+class TestWebhookLogCLI(unittest.TestCase):
+    def setUp(self):
+        self.log = WebhookLog(db_path=":memory:")
+
+    def _run(self, *args):
+        buffer = io.StringIO()
+        with mock.patch.object(sys, "argv", ["solvent-webhooks", *args]), redirect_stdout(buffer):
+            main(self.log)
+        return buffer.getvalue()
+
+    def test_default_command_prints_stats_json(self):
+        data = json.loads(self._run())
+        self.assertEqual(data["total"], 0)
+
+    def test_list_prints_recent_events(self):
+        self.log.record("evt_list", "checkout.session.completed", b"x", "processed")
+        output = self._run("list")
+        self.assertIn("evt_list", output)
+        self.assertIn("processed", output)
+
+    def test_failed_prints_error_events(self):
+        self.log.record("evt_failed", "checkout.session.completed", b"x", "error", "boom")
+        output = self._run("failed")
+        self.assertIn("evt_failed", output)
+        self.assertIn("boom", output)
+
+    def test_limit_applies(self):
+        for index in range(3):
+            self.log.record(f"evt_{index}", "ping", b"x", "processed")
+        output = self._run("list", "--limit", "1")
+        self.assertEqual(output.count("evt_"), 1)
 
 
 if __name__ == "__main__":

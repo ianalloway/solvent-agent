@@ -10,15 +10,19 @@ from ..gateway import Gateway, register_outbound
 
 
 def send_telegram_message(external_id: str, text: str) -> None:
-    """Sync outbound via Telegram HTTP API (safe from worker threads)."""
+    """Send an outbound message through Telegram's HTTP API."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = json.dumps({"chat_id": int(external_id), "text": text[:4000]}).encode()
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
     try:
-        urllib.request.urlopen(req, timeout=15)
+        urllib.request.urlopen(request, timeout=15)
     except Exception:
         pass
 
@@ -26,11 +30,19 @@ def send_telegram_message(external_id: str, text: str) -> None:
 def _require_ptb():
     try:
         from telegram import Update
-        from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+        from telegram.ext import (
+            Application,
+            CommandHandler,
+            ContextTypes,
+            MessageHandler,
+            filters,
+        )
+
         return Update, Application, CommandHandler, MessageHandler, filters, ContextTypes
     except ImportError as exc:
         raise RuntimeError(
-            "python-telegram-bot required. Install: pip install -r requirements-telegram.txt"
+            "python-telegram-bot is required. Install with: "
+            "pip install 'solvent-agent[telegram]'"
         ) from exc
 
 
@@ -45,7 +57,7 @@ def build_application(gateway: Gateway | None = None) -> object:
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
 
-    gw = gateway or Gateway()
+    gateway = gateway or Gateway()
     register_outbound("telegram", send_telegram_message)
 
     async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -53,16 +65,17 @@ def build_application(gateway: Gateway | None = None) -> object:
             return
         user = update.effective_user
         text = update.message.text or ""
-        username = user.username
-        reply = gw.handle_inbound("telegram", str(user.id), text, user_label=username)
+        reply = gateway.handle_inbound(
+            "telegram",
+            str(user.id),
+            text,
+            user_label=user.username,
+        )
         await _reply(update, reply)
 
     app = Application.builder().token(token).build()
-    app.add_handler(CommandHandler("start", on_message))
-    app.add_handler(CommandHandler("help", on_message))
-    app.add_handler(CommandHandler("status", on_message))
-    app.add_handler(CommandHandler("jobs", on_message))
-    app.add_handler(CommandHandler("quote", on_message))
+    for command in ("start", "help", "status", "jobs", "quote"):
+        app.add_handler(CommandHandler(command, on_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
     return app
 

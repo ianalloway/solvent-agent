@@ -1,4 +1,4 @@
-"""Hermes-style diagnostics for SOLVENT."""
+"""Local diagnostics for SOLVENT's runtime, storage, and optional features."""
 
 from __future__ import annotations
 
@@ -10,13 +10,14 @@ from .paths import base_dir, data_dir
 from .treasury import Treasury
 from .workspace import ensure_workspace, list_workspace_files
 
-# Optional extras: (human label, import name, what it unlocks).
+
 _EXTRAS = [
     ("rich", "rich", "terminal dashboard"),
-    ("fastapi", "fastapi", "webhooks + hosted briefs"),
-    ("uvicorn", "uvicorn", "server runtime"),
-    ("stripe", "stripe", "live Stripe test-mode"),
+    ("fastapi", "fastapi", "webhooks and hosted briefs"),
+    ("uvicorn", "uvicorn", "HTTP server runtime"),
+    ("stripe", "stripe", "Stripe test-mode integration"),
     ("telegram", "telegram", "Telegram channel"),
+    ("qrcode", "qrcode", "pairing QR images"),
 ]
 
 
@@ -26,68 +27,91 @@ def _module_available(name: str) -> bool:
 
 def run_checks() -> list[dict]:
     checks: list[dict] = []
-    t = Treasury()
+    treasury = Treasury()
 
-    def add(name: str, ok: bool, detail: str = ""):
+    def add(name: str, ok: bool, detail: str = "") -> None:
         checks.append({"name": name, "ok": ok, "detail": detail})
 
-    # --- install / runtime environment ---------------------------------
-    pv = sys.version_info
-    add("python_version", pv >= (3, 10), f"{pv.major}.{pv.minor}.{pv.micro} (need >= 3.10)")
+    version = sys.version_info
+    add(
+        "python_version",
+        version >= (3, 10),
+        f"{version.major}.{version.minor}.{version.micro} (need >= 3.10)",
+    )
 
     try:
-        from importlib.metadata import PackageNotFoundError, version
+        from importlib.metadata import PackageNotFoundError, version as package_version
+
         try:
-            add("install_mode", True, f"pip-installed (v{version('solvent-agent')})")
+            detail = f"pip-installed (v{package_version('solvent-agent')})"
         except PackageNotFoundError:
-            add("install_mode", True, "source checkout (not pip-installed)")
+            detail = "source checkout"
     except Exception as exc:  # pragma: no cover
-        add("install_mode", True, f"unknown ({exc})")
+        detail = f"unknown ({exc})"
+    add("install_mode", True, detail)
 
     home = base_dir()
-    ddir = data_dir()
-    add("data_home", os.access(ddir, os.W_OK), f"{home}  (set SOLVENT_HOME to relocate)")
+    runtime_dir = data_dir()
+    add("data_home", os.access(runtime_dir, os.W_OK), str(home))
 
-    available = [f"{label} {'✓' if _module_available(mod) else '✗'}" for label, mod, _ in _EXTRAS]
+    available = [
+        f"{label} {'✓' if _module_available(module) else '✗'}"
+        for label, module, _ in _EXTRAS
+    ]
     add("optional_extras", True, ", ".join(available))
 
-    add("sqlite_writable", t.path.parent.exists() or True, str(t.path))
+    add(
+        "sqlite_writable",
+        os.access(treasury.path.parent, os.W_OK),
+        str(treasury.path),
+    )
     try:
-        with t._conn() as conn:
-            conn.execute("SELECT 1")
+        with treasury._conn() as connection:
+            connection.execute("SELECT 1")
         add("sqlite_connect", True)
     except Exception as exc:
         add("sqlite_connect", False, str(exc))
 
-    nvidia = bool(os.environ.get("NVIDIA_API_KEY"))
-    add("nvidia_api_key", nvidia, "set" if nvidia else "offline stub mode")
+    add(
+        "nvidia_mode",
+        True,
+        "live key set" if os.environ.get("NVIDIA_API_KEY") else "offline stub",
+    )
 
-    stripe = os.environ.get("STRIPE_API_KEY", "")
-    if stripe.startswith("sk_live_"):
-        add("stripe_key", False, "live keys refused")
-    elif stripe.startswith("sk_test_") or stripe.startswith("rk_test_"):
-        add("stripe_key", True, "test key present")
+    stripe_key = os.environ.get("STRIPE_API_KEY", "")
+    if stripe_key.startswith("sk_live_"):
+        add("stripe_mode", False, "live keys are refused")
+    elif stripe_key.startswith(("sk_test_", "rk_test_")):
+        add("stripe_mode", True, "test key present")
     else:
-        add("stripe_key", True, "simulate mode (no key)")
+        add("stripe_mode", True, "simulate mode")
 
-    tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
+    add(
+        "telegram_mode",
+        True,
+        "token set" if os.environ.get("TELEGRAM_BOT_TOKEN") else "disabled",
+    )
 
     stuck = [
-        j for j in t.list_jobs()
-        if j.get("status") in ("awaiting_payment", "in_progress", "paid_pending_fulfill")
+        job
+        for job in treasury.list_jobs()
+        if job.get("status")
+        in ("awaiting_payment", "in_progress", "paid_pending_fulfill")
     ]
-    add("stuck_jobs", len(stuck) == 0, f"{len(stuck)} stuck" if stuck else "none")
+    add("stuck_jobs", not stuck, f"{len(stuck)} stuck" if stuck else "none")
 
-    bal = t.balance_cents()
-    add("treasury_balance", bal >= 0, f"${bal/100:.2f}")
+    balance = treasury.balance_cents()
+    add("treasury_balance", balance >= 0, f"${balance / 100:.2f}")
 
     ensure_workspace()
-    files = list_workspace_files()
-    core = {"SOUL.md", "AGENTS.md", "BRAIN.md"}
-    present = {f["name"] for f in files if f["exists"]}
-    missing = core - present
-    add("workspace_files", not missing, "ok" if not missing else f"missing {', '.join(sorted(missing))}")
+    core_files = {"SOUL.md", "AGENTS.md", "BRAIN.md"}
+    present = {row["name"] for row in list_workspace_files() if row["exists"]}
+    missing = core_files - present
+    add(
+        "workspace_files",
+        not missing,
+        "ok" if not missing else f"missing {', '.join(sorted(missing))}",
+    )
 
     return checks
 
@@ -98,25 +122,23 @@ Quickstart:
   solvent finance         financial report (income · runway · forecast)
   solvent --help          list all commands
 
-Enable live features:
-  pip install -e ".[all]"            rich TUI · Stripe · server · Telegram
+Enable optional features:
+  pip install -e ".[all]"            server · Stripe · Telegram · TUI · QR
   export NVIDIA_API_KEY=nvapi-...    live Nemotron inference
   export STRIPE_API_KEY=sk_test_...  real test-mode payment links
 """
 
 
-def main():
-    checks = run_checks()
+def main() -> None:
     failed = 0
-    for c in checks:
-        mark = "OK" if c["ok"] else "FAIL"
-        detail = f" — {c['detail']}" if c.get("detail") else ""
-        print(f"[{mark}] {c['name']}{detail}")
-        if not c["ok"]:
-            failed += 1
+    for check in run_checks():
+        mark = "OK" if check["ok"] else "FAIL"
+        detail = f" — {check['detail']}" if check.get("detail") else ""
+        print(f"[{mark}] {check['name']}{detail}")
+        failed += not check["ok"]
     print(QUICKSTART)
     if failed:
-        sys.exit(1)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

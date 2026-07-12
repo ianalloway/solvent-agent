@@ -1,40 +1,39 @@
 # Contributing to SOLVENT
 
-Thanks for your interest in SOLVENT! This is a hackathon project that I'm actively improving — contributions of all kinds are welcome.
-
-## Good First Issues
-
-| Area | What to do |
-|---|---|
-| **New research topics** | Add more sample jobs in `solvent/jobs.py` |
-| **Nemotron prompts** | Improve the brief template in `solvent/service.py` |
-| **New guardrail policies** | Add a rule to `solvent/guardrails.py` |
-| **Dashboard improvements** | New charts or metrics in `solvent/dashboard.py` |
-| **Tests** | Extend the pytest suite in `tests/` |
-
-## Running Locally
+## Setup
 
 ```bash
 git clone https://github.com/ianalloway/solvent-agent.git
 cd solvent-agent
-python3 run_demo.py          # no install required for the demo
-pip install pytest
-python3 -m pytest tests/ -v  # run the test suite
+pip install -e ".[dev]"
+python3 run_demo.py --no-onboard
+python3 -m pytest -q
 ```
 
-## Pull Request Process
+Install only the optional features you are changing:
 
-1. Fork the repo and create a branch: `git checkout -b feat/your-feature`
-2. Make your changes.
-3. Ensure `python3 -m pytest tests/ -q` passes.
-4. Open a pull request with a clear description of what changed and why.
+```bash
+pip install -e ".[stripe]"
+pip install -e ".[serve]"
+pip install -e ".[telegram]"
+pip install -e ".[rich]"
+pip install -e ".[qr]"
+```
 
-## Code Style
+Dependency declarations live in `pyproject.toml`; do not add parallel requirements files.
 
-- Python 3.10+ with type hints where it helps readability.
-- No external dependencies in core `solvent/` (keep it importable with stdlib only).
-- Dependencies in `requirements.txt` are for optional live integrations only.
+## Pull requests
 
-## Questions?
+1. Create a focused branch.
+2. Keep the standard-library core importable without optional extras.
+3. Add or update tests for behavior changes.
+4. Run `python3 -m pytest -q`.
+5. Open a pull request that explains the user-visible behavior and tradeoffs.
 
-Open an [issue](https://github.com/ianalloway/solvent-agent/issues) — happy to discuss ideas!
+## Project boundaries
+
+- `solvent/agent.py` is a thin public orchestrator; durable workflow logic belongs in `solvent/stages.py`.
+- Treasury writes and Stripe actions stay behind stages and guardrails.
+- API keys belong in environment variables only.
+- Live Stripe keys are never accepted.
+- Offline mode must keep working without credentials.

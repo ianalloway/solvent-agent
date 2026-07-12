@@ -1,5 +1,5 @@
 """
-job_cmd.py — CLI for inspecting and managing SOLVENT jobs.
+CLI for inspecting and managing SOLVENT jobs.
 
 Usage:
     solvent jobs                  list recent jobs (last 20)
@@ -53,16 +53,16 @@ def _ago(ts) -> str:
     if delta < 60:
         return f"{int(delta)}s"
     if delta < 3600:
-        return f"{int(delta/60)}m"
+        return f"{int(delta / 60)}m"
     if delta < 86400:
-        return f"{int(delta/3600)}h"
-    return f"{int(delta/86400)}d"
+        return f"{int(delta / 3600)}h"
+    return f"{int(delta / 86400)}d"
 
 
 def _fmt_cents(cents) -> str:
     if cents is None:
         return "—"
-    return f"${int(cents)/100:,.2f}"
+    return f"${int(cents) / 100:,.2f}"
 
 
 def _status_label(status: str) -> str:
@@ -77,11 +77,13 @@ def _col(s: str, width: int) -> str:
     return s.ljust(width)
 
 
-# ---------------------------------------------------------------------------
-# Sub-commands
-# ---------------------------------------------------------------------------
-
-def cmd_list(treasury, *, status_filter: Optional[str] = None, limit: int = 20, as_json: bool = False):
+def cmd_list(
+    treasury,
+    *,
+    status_filter: Optional[str] = None,
+    limit: int = 20,
+    as_json: bool = False,
+):
     jobs = treasury.list_jobs()
     if status_filter:
         jobs = [j for j in jobs if j.get("status") == status_filter]
@@ -102,15 +104,16 @@ def cmd_list(treasury, *, status_filter: Optional[str] = None, limit: int = 20, 
     print(header)
     print("─" * len(header))
 
-    for j in reversed(jobs):
-        jid = j.get("id", "")[:17]
-        status = j.get("status", "")
+    for job in reversed(jobs):
+        job_id = job.get("id", "")[:17]
+        status = job.get("status", "")
         emoji = _STATUS_EMOJI.get(status, "? ")
-        topic = (j.get("topic") or "")[:41]
-        budget = _fmt_cents(j.get("budget_cents"))
-        ago = _ago(j.get("updated_at") or j.get("created_at"))
+        topic = (job.get("topic") or "")[:41]
+        budget = _fmt_cents(job.get("budget_cents"))
+        ago = _ago(job.get("updated_at") or job.get("created_at"))
         print(
-            f"{_col(jid, 18)} {emoji}{_col(status, 20)} {_col(topic, 42)} {_col(budget, 8)} {ago}"
+            f"{_col(job_id, 18)} {emoji}{_col(status, 20)} "
+            f"{_col(topic, 42)} {_col(budget, 8)} {ago}"
         )
 
 
@@ -118,7 +121,7 @@ def cmd_show(treasury, job_id: str, *, as_json: bool = False):
     job = treasury.get_job(job_id)
     if not job:
         print(f"Job not found: {job_id}", file=sys.stderr)
-        sys.exit(1)
+        raise SystemExit(1)
 
     try:
         pnl = treasury.job_pnl_cents(job_id)
@@ -150,17 +153,17 @@ def cmd_show(treasury, job_id: str, *, as_json: bool = False):
 
     if metrics:
         print("\nMetrics:")
-        for k, v in metrics.items():
-            if k == "job_id":
+        for key, value in metrics.items():
+            if key == "job_id":
                 continue
-            print(f"  {k}: {v}")
+            print(f"  {key}: {value}")
 
 
 def cmd_events(treasury, job_id: str, *, limit: int = 20, as_json: bool = False):
     job = treasury.get_job(job_id)
     if not job:
         print(f"Job not found: {job_id}", file=sys.stderr)
-        sys.exit(1)
+        raise SystemExit(1)
 
     events = treasury.list_events(job_id=job_id, limit=limit)
 
@@ -174,18 +177,37 @@ def cmd_events(treasury, job_id: str, *, limit: int = 20, as_json: bool = False)
 
     print(f"Events for {job_id}:")
     print(f"  {'TIME':17} {'STAGE':20}")
-    print(f"  {'─'*17} {'─'*20}")
-    for ev in events:
-        ts = _fmt_ts(ev.get("ts"))
-        stage = ev.get("stage", "")
+    print(f"  {'─' * 17} {'─' * 20}")
+    for event in events:
+        ts = _fmt_ts(event.get("ts"))
+        stage = event.get("stage", "")
         print(f"  {ts:17} {stage}")
+
+
+def cmd_retry(treasury, job_id: str, *, runner=None):
+    """Retry through the same StageRunner used by the worker and agent."""
+    if runner is None:
+        from .guardrails import Guardrails
+        from .stages import StageRunner
+        from .stripe_client import StripeClient
+
+        runner = StageRunner(treasury, Guardrails(treasury), StripeClient())
+
+    try:
+        result = runner.retry_job(job_id)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    print(json.dumps(result, indent=2, default=str))
+    return result
 
 
 def cmd_cancel(treasury, job_id: str):
     job = treasury.get_job(job_id)
     if not job:
         print(f"Job not found: {job_id}", file=sys.stderr)
-        sys.exit(1)
+        raise SystemExit(1)
 
     current = job.get("status", "")
     if current in ("completed", "cancelled"):
@@ -197,53 +219,55 @@ def cmd_cancel(treasury, job_id: str):
     print(f"Job {job_id} cancelled (was: {current})")
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main():
     import argparse
 
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         prog="solvent jobs",
         description="Inspect and manage SOLVENT jobs.",
     )
-    p.add_argument("--json", action="store_true", dest="as_json", help="output as JSON")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="output as JSON")
 
-    sub = p.add_subparsers(dest="cmd")
+    sub = parser.add_subparsers(dest="cmd")
 
-    list_p = sub.add_parser("list", help="list recent jobs")
-    list_p.add_argument("--status", choices=_ALL_STATUSES, help="filter by status")
-    list_p.add_argument("--limit", type=int, default=20)
+    list_parser = sub.add_parser("list", help="list recent jobs")
+    list_parser.add_argument("--status", choices=_ALL_STATUSES, help="filter by status")
+    list_parser.add_argument("--limit", type=int, default=20)
 
-    show_p = sub.add_parser("show", help="full detail for one job")
-    show_p.add_argument("job_id")
+    show_parser = sub.add_parser("show", help="full detail for one job")
+    show_parser.add_argument("job_id")
 
-    ev_p = sub.add_parser("events", help="event log for one job")
-    ev_p.add_argument("job_id")
-    ev_p.add_argument("--limit", type=int, default=20)
+    events_parser = sub.add_parser("events", help="event log for one job")
+    events_parser.add_argument("job_id")
+    events_parser.add_argument("--limit", type=int, default=20)
 
-    cancel_p = sub.add_parser("cancel", help="cancel a job")
-    cancel_p.add_argument("job_id")
+    retry_parser = sub.add_parser("retry", help="retry a failed or awaiting-payment job")
+    retry_parser.add_argument("job_id")
 
-    args = p.parse_args()
-    cmd = args.cmd or "list"
+    cancel_parser = sub.add_parser("cancel", help="cancel a job")
+    cancel_parser.add_argument("job_id")
+
+    args = parser.parse_args()
+    command = args.cmd or "list"
 
     from .treasury import Treasury
+
     treasury = Treasury()
 
-    if cmd == "list":
+    if command == "list":
         cmd_list(
             treasury,
             status_filter=getattr(args, "status", None),
             limit=getattr(args, "limit", 20),
             as_json=args.as_json,
         )
-    elif cmd == "show":
+    elif command == "show":
         cmd_show(treasury, args.job_id, as_json=args.as_json)
-    elif cmd == "events":
+    elif command == "events":
         cmd_events(treasury, args.job_id, limit=args.limit, as_json=args.as_json)
-    elif cmd == "cancel":
+    elif command == "retry":
+        cmd_retry(treasury, args.job_id)
+    elif command == "cancel":
         cmd_cancel(treasury, args.job_id)
 
 

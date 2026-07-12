@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper for running the SOLVENT demo from a source checkout."""
+"""Run the SOLVENT demo from a source checkout."""
 
-from solvent.cli import *  # noqa: F403
 from solvent.cli import main
 
 
