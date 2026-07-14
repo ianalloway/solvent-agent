@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,8 @@ from solvent.treasury import Treasury
 
 class TestChatTools(unittest.TestCase):
     def setUp(self):
+        self._env = patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
+        self._env.start()
         self.tmp = tempfile.TemporaryDirectory()
         self.db = Path(self.tmp.name) / "t.db"
         self.t = Treasury(path=self.db)
@@ -24,6 +27,7 @@ class TestChatTools(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+        self._env.stop()
 
     def test_format_job_notification(self):
         msg = format_job_notification({"stage": "delivered", "job_id": "J1", "url": "https://x"})
@@ -73,6 +77,42 @@ class TestChatTools(unittest.TestCase):
 
         self.assertLessEqual(calls["n"], 5)
         self.assertIn("set", reply.lower())
+
+    @patch.object(nemotron, "complete")
+    def test_submit_brief_ignores_tool_supplied_job_id(self, mock_complete):
+        self.t.upsert_job(
+            "VICTIM1",
+            "awaiting_payment",
+            topic="Victim topic",
+            budget_cents=7500,
+            customer_email="victim@example.com",
+            job_payload_json={"id": "VICTIM1", "topic": "Victim topic"},
+        )
+        mock_complete.side_effect = [
+            (
+                '<tool_call>{"name": "submit_brief", "arguments": '
+                '{"job_id": "VICTIM1", "topic": "Attacker topic", '
+                '"budget_cents": 5000, "customer_email": "attacker@example.com"}}</tool_call>',
+                {},
+            ),
+            ("Done.", {}),
+        ]
+
+        handle_message(
+            self.session["id"],
+            "Submit a brief",
+            agent=self.agent,
+            memory=self.memory,
+        )
+
+        victim = self.t.get_job("VICTIM1")
+        self.assertEqual(victim["topic"], "Victim topic")
+        self.assertEqual(victim["customer_email"], "victim@example.com")
+        session = self.t.get_chat_session(self.session["id"])
+        self.assertNotEqual(session.get("notify_job_id"), "VICTIM1")
+        created = [j for j in self.t.list_jobs() if j["id"] != "VICTIM1"]
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0]["topic"], "Attacker topic")
 
     @patch.object(nemotron, "complete")
     def test_submit_brief_via_tool(self, mock_complete):
