@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,7 +51,6 @@ class TestChatTools(unittest.TestCase):
     def test_per_turn_tool_budget(self, mock_complete):
         """A single reply with many tool calls is capped at the per-turn budget."""
         import solvent.chat as chatmod
-        from solvent.hermes_tools import ToolRegistry
 
         many = " ".join(
             '<tool_call>{"name": "treasury_status", "arguments": {}}</tool_call>'
@@ -59,13 +59,18 @@ class TestChatTools(unittest.TestCase):
         mock_complete.side_effect = [(many, {}), ("All set.", {})]
 
         calls = {"n": 0}
-        orig = ToolRegistry.dispatch
+        orig = chatmod._make_executor
 
-        def counting(self, name, args):
-            calls["n"] += 1
-            return orig(self, name, args)
+        def counting_executor(agent, session_id, live_search):
+            run = orig(agent, session_id, live_search)
 
-        with patch.object(ToolRegistry, "dispatch", counting), \
+            def counting_run(name, args):
+                calls["n"] += 1
+                return run(name, args)
+
+            return counting_run
+
+        with patch.object(chatmod, "_make_executor", counting_executor), \
              patch.object(chatmod.tools, "MAX_TOOL_CALLS", 5):
             reply = handle_message(
                 self.session["id"], "spam tools", agent=self.agent, memory=self.memory
@@ -84,10 +89,11 @@ class TestChatTools(unittest.TestCase):
             ),
             ("Checkout link sent.", {}),
         ]
-        reply = handle_message(
-            self.session["id"],
-            "Submit brief on EV market budget 50 email c@test.com",
-            agent=self.agent,
-            memory=self.memory,
-        )
+        with patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
+            reply = handle_message(
+                self.session["id"],
+                "Submit brief on EV market budget 50 email c@test.com",
+                agent=self.agent,
+                memory=self.memory,
+            )
         self.assertTrue("Checkout" in reply or "invoice" in reply.lower() or len(reply) > 0)

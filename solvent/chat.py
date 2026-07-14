@@ -8,7 +8,6 @@ import re
 import uuid
 
 from .agent import Solvent
-from .hermes_tools import ToolRegistry
 from .memory import SessionMemory
 from . import nemotron
 from . import tools
@@ -182,13 +181,14 @@ def handle_message(
     live_search = os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes")
 
     catalog = {**tools.TOOL_REGISTRY, **tools.BUSINESS_TOOL_REGISTRY}
-    registry = ToolRegistry(catalog, _make_executor(agent, session_id, live_search))
+    executor = _make_executor(agent, session_id, live_search)
+    tool_lines = "\n".join(f"- {name}: {meta.get('description', '')}" for name, meta in catalog.items())
 
     slot_hint = _pending_prompt(pending)
     user = (
         f"Conversation so far:\n{history}\n\n"
-        f"Available tools: {', '.join(registry.visible_tools())}\n"
-        f"{registry.describe_catalog()}\n"
+        f"Available tools: {', '.join(sorted(catalog))}\n"
+        f"{tool_lines}\n"
     )
     if slot_hint:
         user += f"\n{slot_hint}\n"
@@ -210,7 +210,7 @@ def handle_message(
                     "answer the user now without more tool calls."
                 )
                 break
-            result = registry.dispatch(name, args)
+            result = executor(name, args)
             calls_made += 1
             notes.append(f"[{name}] {result}")
         user = user + f"\n\nAssistant: {reply}\n\nTool results:\n" + "\n".join(notes)

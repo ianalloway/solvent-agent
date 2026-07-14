@@ -12,7 +12,6 @@ from .workspace import ensure_workspace, list_workspace_files
 
 # Optional extras: (human label, import name, what it unlocks).
 _EXTRAS = [
-    ("rich", "rich", "terminal dashboard"),
     ("fastapi", "fastapi", "webhooks + hosted briefs"),
     ("uvicorn", "uvicorn", "server runtime"),
     ("stripe", "stripe", "live Stripe test-mode"),
@@ -99,7 +98,7 @@ Quickstart:
   solvent --help          list all commands
 
 Enable live features:
-  pip install -e ".[all]"            rich TUI · Stripe · server · Telegram
+  pip install -e ".[all]"            Stripe · server · Telegram · QR pairing
   export NVIDIA_API_KEY=nvapi-...    live Nemotron inference
   export STRIPE_API_KEY=sk_test_...  real test-mode payment links
 """

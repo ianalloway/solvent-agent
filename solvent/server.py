@@ -53,7 +53,7 @@ def _require_fastapi():
     except ImportError as exc:
         raise RuntimeError(
             "FastAPI is required for `solvent serve`. "
-            "Install with: pip install -r requirements-serve.txt"
+            "Install with: pip install -e \".[serve]\""
         ) from exc
 
 
@@ -383,7 +383,7 @@ def main():
     try:
         import uvicorn
     except ImportError as exc:
-        raise RuntimeError("uvicorn required: pip install -r requirements-serve.txt") from exc
+        raise RuntimeError("uvicorn required: pip install -e \".[serve]\"") from exc
     app = create_app(seed_cents=int(args.seed * 100), fresh=not args.keep_balance)
     uvicorn.run(app, host=args.host, port=args.port)
 

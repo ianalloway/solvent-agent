@@ -591,7 +591,3 @@ class StageRunner:
         else:
             # Failed before payment — restart from quote
             return self.run_job(job)
-
-
-# Alias so ``python -m solvent retry`` can import SolventStages from this module.
-SolventStages = StageRunner

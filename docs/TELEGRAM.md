@@ -8,7 +8,7 @@ Talk to your self-funding research agent on Telegram. Pairing, conversational co
 2. Install Telegram dependencies:
 
 ```bash
-pip install -r requirements-telegram.txt
+pip install -e ".[telegram]"
 ```
 
 3. Export the token (never commit it):
