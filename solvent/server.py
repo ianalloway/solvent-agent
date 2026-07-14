@@ -67,9 +67,15 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     status_lock = threading.Lock()
     last_status_json = ""
 
+    def _sanitize_status_data(data: dict) -> dict:
+        sanitized = dict(data)
+        if isinstance(sanitized.get("briefs"), dict):
+            sanitized["briefs"] = {str(job_id): "" for job_id in sanitized["briefs"]}
+        return sanitized
+
     def _refresh_status() -> dict:
         from . import dashboard
-        return dashboard.build_status_data(agent.t.snapshot(), agent.log)
+        return _sanitize_status_data(dashboard.build_status_data(agent.t.snapshot(), agent.log))
 
     def _publish_status() -> None:
         nonlocal last_status_json
@@ -112,7 +118,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                         mtime = status_path.stat().st_mtime
                         if mtime > last_mtime:
                             last_mtime = mtime
-                            data = json.loads(status_path.read_text(encoding="utf-8"))
+                            data = _sanitize_status_data(json.loads(status_path.read_text(encoding="utf-8")))
                             hub.publish("status", {"data": data})
                     from .notifications import drain_chat_outbox
                     for row in drain_chat_outbox():
@@ -320,7 +326,11 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return sorted(list(stems))
 
     @app.get("/api/briefs/{job_id}")
-    def get_brief_api(job_id: str):
+    def get_brief_api(job_id: str, token: str = ""):
+        if not is_safe_job_id(job_id):
+            raise HTTPException(404, "brief not found")
+        if not verify_delivery_token(job_id, token):
+            raise HTTPException(403, "invalid or expired delivery token")
         reports_dir = reports_dir_fn().resolve()
 
         path_html = (reports_dir / f"{job_id}.html").resolve()

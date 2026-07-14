@@ -53,6 +53,42 @@ class TestHostedBriefs(unittest.TestCase):
         self.assertEqual(status.status_code, 200)
         self.assertIn("balance_cents", status.json())
 
+
+    def test_dashboard_status_does_not_disclose_brief_contents(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("FastAPI test client is not installed")
+
+        secret = "PRIVATE_DASHBOARD_LEAK_SENTINEL"
+        self.report_path.write_text(f"# Private brief\n{secret}", encoding="utf-8")
+
+        client = TestClient(create_app(fresh=True))
+        status = client.get("/api/status")
+        self.assertEqual(status.status_code, 200)
+        self.assertEqual(status.json()["briefs"].get("victim-job"), "")
+        self.assertNotIn(secret, status.text)
+
+        dash = client.get("/")
+        self.assertEqual(dash.status_code, 200)
+        self.assertIn('"victim-job": ""', dash.text)
+        self.assertNotIn(secret, dash.text)
+
+    def test_api_brief_preview_requires_delivery_token(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("FastAPI test client is not installed")
+
+        client = TestClient(create_app(fresh=True))
+        response = client.get("/api/briefs/victim-job")
+        self.assertEqual(response.status_code, 403)
+
+        token = make_delivery_token("victim-job")
+        response = client.get(f"/api/briefs/victim-job?token={token}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Private brief", response.text)
+
     def test_api_chat_status_command(self):
         try:
             from fastapi.testclient import TestClient
