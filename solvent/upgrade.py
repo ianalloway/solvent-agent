@@ -6,10 +6,10 @@ Usage:
     solvent upgrade --check   exit 1 if current version is behind PyPI (CI-friendly)
     solvent upgrade --install run pip install to upgrade in-place
 
-Background hint: call background_update_hint() at startup to fire a
-non-blocking daemon thread that prints a one-line upgrade notice to stderr
-if outdated. Rate-limited to once per day; skipped when
-SOLVENT_NO_UPDATE_CHECK=1 is set.
+Background hint: call background_update_hint() to fire a non-blocking
+daemon thread that prints a one-line upgrade notice to stderr if outdated.
+Rate-limited to once per day. The demo CLI only calls this when opted in
+via SOLVENT_UPDATE_CHECK=1 (it is off by default).
 """
 
 from __future__ import annotations

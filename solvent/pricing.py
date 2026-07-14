@@ -61,7 +61,7 @@ class PricingPolicy:
 
 
 def get_resource_costs() -> Dict[str, int]:
-    """Return effective resource costs, applying improver overrides if present."""
+    """Return effective resource costs, applying overrides from .solvent/pricing_overrides.json if present."""
     from pathlib import Path
     import json
     costs = dict(RESOURCE_COSTS_CENTS)

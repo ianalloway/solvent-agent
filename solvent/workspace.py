@@ -5,8 +5,8 @@ The workspace (``.solvent/workspace/``) is the agent's brain: markdown files
 injected into the system prompt each session, following:
 
 - Hermes: SOUL.md is slot #1 (identity), AGENTS.md is project context
-- OpenClaw: SOUL, IDENTITY, USER, TOOLS, AGENTS, MEMORY, HEARTBEAT, daily logs
 - Community: BRAIN.md for active business state (read every session)
+- OpenClaw: daily memory logs + an optional MEMORY.md for durable facts
 """
 
 from __future__ import annotations
@@ -30,22 +30,14 @@ MAX_TOTAL_CHARS = int(os.environ.get("SOLVENT_WORKSPACE_TOTAL_MAX_CHARS", "40000
 
 BOOTSTRAP_FILES = (
     "SOUL.md",
-    "IDENTITY.md",
     "AGENTS.md",
-    "USER.md",
-    "TOOLS.md",
     "BRAIN.md",
-    "HEARTBEAT.md",
-    "MEMORY.md",
-    "BOOTSTRAP.md",
 )
 
 # Hermes/OpenClaw injection order for project context
 CONTEXT_FILES = (
     "BRAIN.md",
     "AGENTS.md",
-    "TOOLS.md",
-    "USER.md",
 )
 
 SOLVENT_CORE_RULES = (
@@ -186,10 +178,6 @@ def load_soul() -> str:
     return content or _missing_marker("SOUL.md")
 
 
-def load_identity() -> str | None:
-    return _read_file(workspace_path() / "IDENTITY.md")
-
-
 def load_context_file(name: str) -> str | None:
     return _read_file(workspace_path() / name)
 
@@ -234,7 +222,6 @@ def build_system_prompt(
     *,
     session_kind: str = "main",
     include_memory: bool = True,
-    include_heartbeat: bool = False,
 ) -> str:
     """
     Compose the chat system prompt (Hermes prompt assembly + OpenClaw workspace).
@@ -256,10 +243,6 @@ def build_system_prompt(
 
     # Slot 1: SOUL (identity — verbatim, Hermes)
     add_block(load_soul())
-
-    identity = load_identity()
-    if identity:
-        add_block(f"# Identity\n\n{identity}")
 
     add_block(SOLVENT_CORE_RULES)
 
@@ -290,20 +273,6 @@ def build_system_prompt(
     skills = load_skills()
     if skills:
         add_block(skills)
-
-    if include_heartbeat:
-        hb = load_context_file("HEARTBEAT.md")
-        if hb:
-            add_block(f"# Heartbeat Checklist\n\n{hb}")
-
-    bootstrap = load_context_file("BOOTSTRAP.md")
-    if bootstrap and "[complete]" not in bootstrap.lower():
-        add_block(
-            "# Bootstrap Ritual\n\n"
-            "Complete the first-run ritual in BOOTSTRAP.md, then delete the file or "
-            "mark it complete.\n\n"
-            + bootstrap
-        )
 
     return "\n\n".join(parts)
 

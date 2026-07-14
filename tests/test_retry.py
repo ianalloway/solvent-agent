@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from solvent.stages import StageRunner, SolventStages
+from solvent.stages import StageRunner
 from solvent.treasury import Treasury
 from solvent.guardrails import Guardrails
 from solvent.stripe_client import StripeClient
@@ -295,13 +295,6 @@ class TestRetryCountIncrements(unittest.TestCase):
                             runner.retry_job("J-cnt")
                 row = runner.t.get_job("J-cnt")
                 self.assertEqual(row["retry_count"], expected_count)
-
-
-class TestSolventStagesAlias(unittest.TestCase):
-    """SolventStages must be importable and be the same class as StageRunner."""
-
-    def test_alias_is_stagerunner(self):
-        self.assertIs(SolventStages, StageRunner)
 
 
 if __name__ == "__main__":

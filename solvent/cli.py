@@ -7,11 +7,13 @@ You'll see the agent quote jobs, decline unprofitable ones, collect Stripe payme
 run Nemotron reasoning, screen payments through guardrails, and book the P&L.
 Outputs a premium, interactive treasury_dashboard.html at the end.
 
-First run: interactive onboarding wizard (see ONBOARDING.md).
+First run: interactive onboarding wizard.
 Skip wizard: --no-onboard or SOLVENT_SKIP_ONBOARD=1
 Reconfigure: --onboard
 """
 
+import os
+import secrets
 import sys
 import time
 import argparse
@@ -255,13 +257,20 @@ def resolve_config(args) -> SolventConfig:
     return cfg
 
 
-def main():
-    # Fast-path: tui subcommand bypasses argparse entirely
-    if len(sys.argv) > 1 and sys.argv[1] == "tui":
-        from .tui import run
-        run()
-        return
+def _ensure_delivery_secret() -> None:
+    """Generate a per-run SOLVENT_DELIVERY_SECRET for the zero-config demo.
 
+    Hosted brief links are HMAC-signed and `delivery.py` deliberately refuses
+    to run without a real secret (see docs/PRODUCTION.md). The CLI demo has
+    no persistent server to protect, so it's safe to mint a random one here
+    when the operator hasn't set one — production (`solvent serve`/`worker`)
+    still requires an explicit, persisted `SOLVENT_DELIVERY_SECRET`.
+    """
+    if len(os.environ.get("SOLVENT_DELIVERY_SECRET", "").strip()) < 32:
+        os.environ["SOLVENT_DELIVERY_SECRET"] = secrets.token_urlsafe(48)
+
+
+def main():
     parser = argparse.ArgumentParser(
         description="Run SOLVENT — a self-funding analyst agent.",
     )
@@ -293,6 +302,7 @@ def main():
     )
     args = parser.parse_args()
 
+    _ensure_delivery_secret()
     cfg = resolve_config(args)
     apply_config(cfg)
 
