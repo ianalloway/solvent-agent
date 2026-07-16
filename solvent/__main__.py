@@ -1,4 +1,5 @@
-"""SOLVENT CLI entry point: python3 -m solvent [serve|worker|telegram|doctor|pairing|...]"""
+"""SOLVENT CLI entry point: python3 -m solvent
+[serve|worker|telegram|doctor|pairing|...]"""
 
 import sys
 
@@ -124,10 +125,12 @@ def main():
             print(json.dumps(wl.stats(), indent=2))
         elif sub == "list":
             for row in wl.list_recent(20):
-                print(f"{row['received_at_fmt']} [{row['status']}] {row['event_type']} {row['event_id'][:16]}")
+                print(f"{row['received_at_fmt']} [{row['status']}] {row['event_type']} "
+                      f"{row['event_id'][:16]}")
         elif sub == "failed":
             for row in wl.list_failed():
-                print(f"  {row['event_id'][:16]} {row['event_type']} err={row['error'][:60]}")
+                print(f"  {row['event_id'][:16]} {row['event_type']} "
+                      f"err={row['error'][:60]}")
     else:
         # No subcommand: fall through to the demo / interactive CLI.
         # Update checks are opt-in only (SOLVENT_UPDATE_CHECK=1) — run
