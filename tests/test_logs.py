@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import time
 from io import StringIO
 from pathlib import Path
@@ -221,7 +220,7 @@ def test_show_logs_n_limits_output(tmp_path):
     records = [{"ts": time.time(), "job_id": f"j{i}", "stage": "x"} for i in range(10)]
     _make_log(tmp_path, records)
     out = _capture_show(tmp_path, n=3)
-    lines = [l for l in out.splitlines() if l.strip()]
+    lines = [line for line in out.splitlines() if line.strip()]
     assert len(lines) == 3
 
 

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 import threading
 import time
 from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-import pytest
 
 from solvent.upgrade import background_update_hint
 
