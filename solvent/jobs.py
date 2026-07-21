@@ -47,4 +47,14 @@ SAMPLE_JOBS = [
         "market_data_calls": 3,
         "web_search_calls": 9,
     },
+    {
+        "id": "J5",
+        "topic": "Unit economics of autonomous delivery drones vs. last-mile vans",
+        "context": "Logistics analyst looking for break-even thresholds.",
+        "customer_email": "analyst@logistics.example",
+        "budget_cents": 12_500,       # $125
+        "est_tokens": 14_000,
+        "market_data_calls": 4,
+        "web_search_calls": 12,
+    },
 ]
