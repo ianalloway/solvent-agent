@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 
 from .agent import Solvent
 from .gateway import Gateway, register_outbound
@@ -94,11 +95,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     register_outbound("dashboard", _dashboard_outbound)
 
-    app = FastAPI(title="SOLVENT", version="2.1")
-    app.state.webhook_log = webhook_log
-
-    @app.on_event("startup")
-    async def _startup():
+    @asynccontextmanager
+    async def _app_lifespan(app: object):
         hub.bind_loop(asyncio.get_running_loop())
         from . import dashboard
         dashboard.render(agent.t.snapshot(), agent.log, live=True)
@@ -129,7 +127,14 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                     pass
                 await asyncio.sleep(2.0)
 
-        asyncio.create_task(_poll_external_status())
+        task = asyncio.create_task(_poll_external_status())
+        try:
+            yield
+        finally:
+            task.cancel()
+
+    app = FastAPI(title="SOLVENT", version="2.1", lifespan=_app_lifespan)
+    app.state.webhook_log = webhook_log
 
     @app.get("/health")
     def health():
