@@ -29,7 +29,7 @@ class TestPackaging(unittest.TestCase):
         # core has no hard deps; functionality is opt-in via extras
         self.assertEqual(data["project"]["dependencies"], [])
         extras = data["project"]["optional-dependencies"]
-        for name in ("serve", "telegram", "stripe", "rich", "dev", "all"):
+        for name in ("serve", "telegram", "stripe", "qr", "dev", "all"):
             self.assertIn(name, extras)
 
     @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")

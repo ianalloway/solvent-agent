@@ -65,7 +65,8 @@ Third-party features are **opt-in extras** — install only what you need:
 pip install -e ".[stripe]"       # real Stripe test-mode payment links
 pip install -e ".[serve]"        # FastAPI webhooks + hosted briefs
 pip install -e ".[telegram]"     # Telegram bot channel
-pip install -e ".[rich]"         # live terminal dashboard (solvent tui)
+pip install -e ".[qr]"           # scannable QR codes for OpenClaw pairing
+pip install -e ".[dev]"          # pytest, for running the test suite
 pip install -e ".[all]"          # everything
 ```
 
@@ -190,39 +191,26 @@ snap = agent.run(SAMPLE_JOBS[1:])           # process a list; returns snapshot
 print(snap["balance_cents"], snap["margin_pct"])
 ```
 
-### Guardrails demo (standalone)
-
-```bash
-python3 demo_guardrails.py
-```
-
-Shows five spend attempts and which ones the NemoClaw-style policy blocks — without starting the agent or touching Stripe.
-
 ### Production mode (webhooks + async worker)
 
 ```bash
-pip install -r requirements.txt -r requirements-serve.txt
+pip install -e ".[serve]"
 
 python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
 python3 -m solvent worker              # resume incomplete jobs, process queue
 
 # Interactive voice dashboard (chat + live SSE updates):
 open http://127.0.0.1:8787/
-
-# Or dev convenience:
-python3 run_demo.py --serve --no-onboard
 ```
 
 The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Chat hits `/api/chat`, which routes through the Nemotron agent loop.
 
-See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, reconciliation, and auto-tuning.
+See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, and reconciliation.
 
 ### Operations
 
 ```bash
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
-python3 -m solvent tune                   # propose pricing improvements (dry-run)
-python3 -m solvent tune --apply             # apply after 5+ completed jobs
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
 python3 -m solvent finance --reserve 50   # runway to a $50 cash-reserve floor
@@ -245,7 +233,7 @@ forecast also render as a **Financial Statement** panel in the HTML dashboard.
 To use live Nemotron inference and real Stripe test-mode payment links:
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[stripe]"
 
 export NVIDIA_API_KEY=nvapi-...        # from build.nvidia.com
 export STRIPE_API_KEY=sk_test_...      # Stripe test mode only (live keys refused)
@@ -285,7 +273,7 @@ Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated r
 Full chat on Telegram with OpenClaw-style pairing and Hermes-style tool/memory patterns. See **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
 
 ```bash
-pip install -r requirements-telegram.txt
+pip install -e ".[telegram]"
 export TELEGRAM_BOT_TOKEN=...
 
 python -m solvent serve &    # Stripe webhooks + checkout
@@ -305,7 +293,7 @@ Personality and operating rules come from the **agent workspace** (`SOUL.md`, `B
 ## 🧪 Tests
 
 ```bash
-pip install pytest
+pip install -e ".[dev]"
 python3 -m pytest tests/ -v
 ```
 
@@ -318,6 +306,7 @@ Unit tests cover: pricing & margin gate · guardrail policy · treasury ledger �
 ```
 solvent/
   agent.py         the orchestrator (earn → fulfil → spend → book)
+  stages.py        idempotent stage machine (quote→paid→fulfill→deliver→spend)
   treasury.py      SQLite ledger / balance sheet
   pricing.py       the margin gate
   guardrails.py    NemoClaw-style spend policy
@@ -328,17 +317,17 @@ solvent/
   dashboard.py     renders the treasury to HTML + JSON
   finance.py       income statement · unit economics · runway · forecast
   config.py        onboarding wizard and config persistence
+  server.py        FastAPI webhooks + job API + hosted briefs (serve)
+  worker.py        async job processor + resume incomplete jobs
   gateway.py       channel router (Telegram → chat sessions)
   chat.py          conversational loop + business tools
   memory.py        Hermes-style session memory
-  hermes_tools.py  progressive tool disclosure bridge
   doctor.py        stack diagnostics
   workspace.py     SOUL/BRAIN/AGENTS prompt assembly
   channels/        Telegram long-poll adapter
 run_demo.py        the full business loop (CLI entry point)
-demo_guardrails.py the safety story (standalone)
 tests/             pytest suite
-docs/              screenshots and supporting assets
+docs/              screenshots and supporting docs
 ```
 
 ---

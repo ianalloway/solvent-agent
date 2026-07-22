@@ -1,4 +1,7 @@
-"""SOLVENT CLI entry point: python3 -m solvent [serve|worker|telegram|doctor|pairing|...]"""
+"""SOLVENT CLI entry point: python3 -m solvent.
+
+Commands: [serve|worker|telegram|doctor|pairing|...]
+"""
 
 import sys
 
@@ -20,7 +23,6 @@ Commands:
   worker        resume incomplete jobs, process the queue
   telegram      long-poll the Telegram bot
   finance       income statement, unit economics, runway, forecast (alias: report)
-  tune          propose pricing improvements (--apply to commit)
   reconcile     Stripe <-> ledger drift check
   doctor        stack diagnostics
   pairing       manage Telegram DM pairing codes
@@ -78,10 +80,6 @@ def main():
         sys.argv.pop(1)
         from .worker import main as worker_main
         worker_main()
-    elif len(sys.argv) > 1 and sys.argv[1] == "tune":
-        sys.argv.pop(1)
-        from .improver import main as tune_main
-        tune_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "reconcile":
         sys.argv.pop(1)
         from .reconcile import main as reconcile_main
@@ -102,20 +100,17 @@ def main():
         sys.argv.pop(1)
         from .workspace import main as workspace_main
         workspace_main()
-    elif len(sys.argv) > 1 and sys.argv[1] == "tui":
-        from .tui import run
-        run()
     elif len(sys.argv) > 1 and sys.argv[1] == "retry":
         job_id = sys.argv[2] if len(sys.argv) > 2 else None
         if not job_id:
             print("Usage: python -m solvent retry <job_id>")
             sys.exit(1)
-        from .stages import SolventStages
+        from .stages import StageRunner
         from .treasury import Treasury
         from .guardrails import Guardrails
         from .stripe_client import StripeClient
         t = Treasury()
-        s = SolventStages(treasury=t, guard=Guardrails(t), stripe=StripeClient())
+        s = StageRunner(treasury=t, guard=Guardrails(t), stripe=StripeClient())
         result = s.retry_job(job_id)
         import json
         print(json.dumps(result, indent=2, default=str))
@@ -132,14 +127,20 @@ def main():
             print(json.dumps(wl.stats(), indent=2))
         elif sub == "list":
             for row in wl.list_recent(20):
-                print(f"{row['received_at_fmt']} [{row['status']}] {row['event_type']} {row['event_id'][:16]}")
+                print(f"{row['received_at_fmt']} [{row['status']}] {row['event_type']} "
+                      f"{row['event_id'][:16]}")
         elif sub == "failed":
             for row in wl.list_failed():
-                print(f"  {row['event_id'][:16]} {row['event_type']} err={row['error'][:60]}")
+                print(f"  {row['event_id'][:16]} {row['event_type']} "
+                      f"err={row['error'][:60]}")
     else:
         # No subcommand: fall through to the demo / interactive CLI.
-        from .upgrade import background_update_hint
-        background_update_hint()
+        # Update checks are opt-in only (SOLVENT_UPDATE_CHECK=1) — run
+        # `solvent upgrade` explicitly to check for a newer version.
+        import os
+        if os.environ.get("SOLVENT_UPDATE_CHECK", "").strip() in ("1", "true", "yes"):
+            from .upgrade import background_update_hint
+            background_update_hint()
         from .cli import main as demo_main
         demo_main()
 

@@ -4,7 +4,6 @@ import io
 import json
 import os
 import sys
-import tempfile
 import time
 import unittest
 from contextlib import redirect_stdout
@@ -161,7 +160,6 @@ class TestStatusCLI(unittest.TestCase):
 
     def test_json_output_is_valid(self):
         from solvent.status import main
-        t = self._make_treasury()
         buf = io.StringIO()
         with mock.patch("solvent.status.gather", return_value={
             "timestamp": "2026-01-01T00:00:00+00:00",

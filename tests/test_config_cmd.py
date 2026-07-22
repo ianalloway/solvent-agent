@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import json
-import sys
-from io import StringIO
-from pathlib import Path
 from unittest import mock
 
 import pytest
 
-from solvent.config import CONFIG_PATH, SolventConfig, save_config
+from solvent.config import SolventConfig, save_config
 from solvent.config_cmd import cmd_get, cmd_reset, cmd_set, cmd_show, _coerce
 
 

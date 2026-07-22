@@ -38,6 +38,31 @@ class TestHostedBriefs(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Private brief", response.text)
 
+    def test_api_brief_routes_require_localhost_or_delivery_token(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("FastAPI test client is not installed")
+
+        client = TestClient(create_app())
+
+        listed = client.get("/api/briefs")
+        self.assertEqual(listed.status_code, 200)
+        self.assertIn("victim-job", listed.json())
+
+        response = client.get("/api/briefs/victim-job")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Private brief", response.text)
+
+        remote_client = TestClient(create_app(), client=("203.0.113.10", 12345))
+        self.assertEqual(remote_client.get("/api/briefs").status_code, 403)
+        self.assertEqual(remote_client.get("/api/briefs/victim-job").status_code, 403)
+
+        token = make_delivery_token("victim-job")
+        response = remote_client.get(f"/api/briefs/victim-job?token={token}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Private brief", response.text)
+
     def test_interactive_dashboard_routes(self):
         try:
             from fastapi.testclient import TestClient
@@ -73,21 +98,6 @@ class TestHostedBriefs(unittest.TestCase):
         self.assertEqual(dash.status_code, 200)
         self.assertIn('"victim-job": ""', dash.text)
         self.assertNotIn(secret, dash.text)
-
-    def test_api_brief_preview_requires_delivery_token(self):
-        try:
-            from fastapi.testclient import TestClient
-        except ImportError:
-            self.skipTest("FastAPI test client is not installed")
-
-        client = TestClient(create_app(fresh=True))
-        response = client.get("/api/briefs/victim-job")
-        self.assertEqual(response.status_code, 403)
-
-        token = make_delivery_token("victim-job")
-        response = client.get(f"/api/briefs/victim-job?token={token}")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Private brief", response.text)
 
     def test_api_chat_status_command(self):
         try:

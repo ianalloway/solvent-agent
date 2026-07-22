@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 
 from .agent import Solvent
 from .gateway import Gateway, register_outbound
@@ -53,7 +54,7 @@ def _require_fastapi():
     except ImportError as exc:
         raise RuntimeError(
             "FastAPI is required for `solvent serve`. "
-            "Install with: pip install -r requirements-serve.txt"
+            "Install with: pip install -e \".[serve]\""
         ) from exc
 
 
@@ -100,11 +101,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     register_outbound("dashboard", _dashboard_outbound)
 
-    app = FastAPI(title="SOLVENT", version="2.1")
-    app.state.webhook_log = webhook_log
-
-    @app.on_event("startup")
-    async def _startup():
+    @asynccontextmanager
+    async def _app_lifespan(app: object):
         hub.bind_loop(asyncio.get_running_loop())
         from . import dashboard
         dashboard.render(agent.t.snapshot(), agent.log, live=True)
@@ -135,7 +133,14 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                     pass
                 await asyncio.sleep(2.0)
 
-        asyncio.create_task(_poll_external_status())
+        task = asyncio.create_task(_poll_external_status())
+        try:
+            yield
+        finally:
+            task.cancel()
+
+    app = FastAPI(title="SOLVENT", version="2.1", lifespan=_app_lifespan)
+    app.state.webhook_log = webhook_log
 
     @app.get("/health")
     def health():
@@ -238,6 +243,12 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         metrics = agent.t.get_metrics(job_id)
         return {"job": dict(row), "metrics": metrics}
 
+    def _is_local_request(request: Request | None) -> bool:
+        if request is None:
+            return False
+        client_host = getattr(request.client, "host", "") if request.client else ""
+        return client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+
     @app.get("/api/receipt/{job_id}")
     def get_receipt(job_id: str, token: str = "", request: Request = None):
         """Return a plaintext job receipt.
@@ -252,12 +263,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             raise HTTPException(404, "job not found")
 
         # Auth: localhost OR valid delivery token
-        is_local = False
-        if request is not None:
-            client_host = getattr(request.client, "host", "") if request.client else ""
-            is_local = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
-
-        if not is_local:
+        if not _is_local_request(request):
             if not verify_delivery_token(job_id, token):
                 raise HTTPException(403, "invalid or expired delivery token")
 
@@ -315,7 +321,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         raise HTTPException(404, "brief not found")
 
     @app.get("/api/briefs")
-    def list_briefs():
+    def list_briefs(request: Request = None):
+        if not _is_local_request(request):
+            raise HTTPException(403, "brief listing is only available locally")
         reports_dir = reports_dir_fn()
         if not reports_dir.is_dir():
             return []
@@ -326,10 +334,10 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return sorted(list(stems))
 
     @app.get("/api/briefs/{job_id}")
-    def get_brief_api(job_id: str, token: str = ""):
+    def get_brief_api(job_id: str, token: str = "", request: Request = None):
         if not is_safe_job_id(job_id):
             raise HTTPException(404, "brief not found")
-        if not verify_delivery_token(job_id, token):
+        if not _is_local_request(request) and not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
         reports_dir = reports_dir_fn().resolve()
 
@@ -393,7 +401,7 @@ def main():
     try:
         import uvicorn
     except ImportError as exc:
-        raise RuntimeError("uvicorn required: pip install -r requirements-serve.txt") from exc
+        raise RuntimeError("uvicorn required: pip install -e \".[serve]\"") from exc
     app = create_app(seed_cents=int(args.seed * 100), fresh=not args.keep_balance)
     uvicorn.run(app, host=args.host, port=args.port)
 

@@ -36,7 +36,9 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
     }
 
     key = os.environ.get("STRIPE_API_KEY", "")
-    if not key or not _HAS_STRIPE or key.startswith("sk_live_"):
+    # Live keys (standard sk_live_ and restricted rk_live_) are refused unconditionally,
+    # matching SOLVENT's invariant that no code path may operate against a live Stripe account.
+    if not key or not _HAS_STRIPE or key.startswith("sk_live_") or key.startswith("rk_live_"):
         report["mode"] = "ledger_only"
         return report
 
@@ -49,6 +51,9 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
                 stripe_pis.add(pi.id)
     except Exception as exc:
         report["stripe_error"] = str(exc)
+        # A failed Stripe fetch is never a completed full reconcile: keep the
+        # report honest and always carry a mode so callers never KeyError.
+        report["mode"] = "ledger_only"
         return report
 
     unmatched_stripe = stripe_pis - ledger_refs
