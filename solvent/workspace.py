@@ -278,8 +278,8 @@ def build_system_prompt(
 
 
 def build_chat_system_prompt(channel: str = "cli") -> str:
-    """Gateway/chat entry — private channels get MEMORY.md."""
-    session_kind = "main" if channel in ("cli", "telegram", "interactive", "dashboard") else "shared"
+    """Gateway/chat entry — authenticated private channels get MEMORY.md."""
+    session_kind = "main" if channel in ("cli", "telegram", "interactive") else "shared"
     return build_system_prompt(session_kind=session_kind)
 
 
