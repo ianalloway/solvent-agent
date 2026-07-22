@@ -20,6 +20,15 @@ _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
 _BUDGET_RE = re.compile(r"(?:budget|pay|spend)\s*[:\$]?\s*\$?(\d+(?:\.\d{1,2})?)", re.I)
 
 
+def _new_chat_job_id(agent: Solvent) -> str:
+    """Generate a server-owned chat job ID that does not overwrite an existing job."""
+    for _ in range(10):
+        job_id = "T" + uuid.uuid4().hex[:8]
+        if not agent.t.get_job(job_id):
+            return job_id
+    return "T" + uuid.uuid4().hex
+
+
 def _make_executor(agent: Solvent, session_id: str, live_search: bool):
     ctx = tools.ToolContext()
 
@@ -64,7 +73,7 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
             topic = args.get("topic", "")
             budget = int(args.get("budget_cents", 0))
             email = args.get("customer_email", "client@example.com")
-            job_id = args.get("job_id") or ("T" + uuid.uuid4().hex[:8])
+            job_id = _new_chat_job_id(agent)
             job = {
                 "id": job_id,
                 "topic": topic,
@@ -76,7 +85,8 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
                 "context": f"Commissioned via chat session {session_id}",
             }
             result = agent.enqueue_job(job)
-            agent.t.update_chat_session(session_id, notify_job_id=job_id, pending_job_json="")
+            if result.get("stage") != "declined" and not result.get("error"):
+                agent.t.update_chat_session(session_id, notify_job_id=job_id, pending_job_json="")
             if result.get("url"):
                 return json.dumps({
                     "job_id": job_id,
