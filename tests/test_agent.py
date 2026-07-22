@@ -6,8 +6,6 @@ run() dispatcher when given an empty job list.
 
 from __future__ import annotations
 
-import pytest
-
 from solvent.agent import Solvent
 
 
