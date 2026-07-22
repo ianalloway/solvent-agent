@@ -96,15 +96,13 @@ def generate_svg_chart(points: list[int]) -> str:
 def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     s = snapshot
 
-    # 1. Read generated briefs from reports folder
+    # 1. List generated briefs without loading their private contents.
+    # Full reports are served only by token-protected delivery routes.
     briefs = {}
     reports_path = reports_dir()
     if reports_path.exists():
         for p in reports_path.glob("*.md"):
-            try:
-                briefs[p.stem] = p.read_text()
-            except Exception:
-                pass
+            briefs[p.stem] = ""
 
     # 2. Build cumulative running balance points
     running_balance = s["capital_cents"]
@@ -1375,7 +1373,10 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
 
       document.getElementById("drawer-metadata").innerHTML = metaHTML;
 
-      const reportText = briefs[jobId] || "_No report brief generated or found in data/reports._";
+      const hasBrief = Object.prototype.hasOwnProperty.call(briefs || {{}}, jobId);
+      const reportText = hasBrief
+        ? "_Brief generated. Use the hosted brief link with a delivery token to view full contents._"
+        : "_No report brief generated or found in data/reports._";
       document.getElementById("drawer-brief").innerHTML = renderMarkdown(reportText);
     }}
 
