@@ -1,5 +1,7 @@
-"""SOLVENT CLI entry point: python3 -m solvent
-[serve|worker|telegram|doctor|pairing|...]"""
+"""SOLVENT CLI entry point: python3 -m solvent.
+
+Commands: [serve|worker|telegram|doctor|pairing|...]
+"""
 
 import sys
 
