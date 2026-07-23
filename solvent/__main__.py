@@ -36,7 +36,7 @@ Run `solvent <command> --help` where supported for command-specific options.
 """
 
 
-def _print_version():
+def _print_version() -> None:
     from . import __version__
     print(f"solvent {__version__}")
 
