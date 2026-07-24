@@ -41,7 +41,7 @@ def _print_version() -> None:
     print(f"solvent {__version__}")
 
 
-def main():
+def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] in ("version", "--version", "-V"):
         _print_version()
         return
