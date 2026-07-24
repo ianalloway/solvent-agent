@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .treasury import Treasury
@@ -38,7 +38,7 @@ class SpendPolicy:
         daily_budget_cents: Maximum cumulative amount in cents permitted in a rolling 24h period.
         min_reserve_cents: Minimum cash reserve in cents that must be kept in the treasury.
     """
-    vendor_allowlist: Tuple[str, ...] = (
+    vendor_allowlist: tuple[str, ...] = (
         "nvidia-nemotron",      # inference / compute
         "market-data-api",      # data the analyst needs
         "web-search-api",

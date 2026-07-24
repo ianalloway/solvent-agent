@@ -12,12 +12,12 @@ structurally incapable of working at a loss.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Any
 
 
 # Estimated cost of each resource the analyst might consume, in cents.
 # These are the prices SOLVENT pays its own vendors (see stripe_client.spend).
-RESOURCE_COSTS_CENTS: Dict[str, int] = {
+RESOURCE_COSTS_CENTS: dict[str, int] = {
     "nemotron_tokens_per_1k": 30,    # NVIDIA Nemotron inference
     "market_data_call": 120,         # market-data-api per pull
     "web_search_call": 8,            # web-search-api per query
@@ -45,7 +45,7 @@ class Quote:
     margin_pct: float
     accept: bool
     reason: str
-    cost_breakdown: Dict[str, int]
+    cost_breakdown: dict[str, int]
 
 
 @dataclass
@@ -60,7 +60,7 @@ class PricingPolicy:
     min_price_cents: int = 1_500       # never sell a report under $15
 
 
-def get_resource_costs() -> Dict[str, int]:
+def get_resource_costs() -> dict[str, int]:
     """Return effective resource costs, applying overrides from .solvent/pricing_overrides.json if present."""
     from pathlib import Path
     import json
@@ -78,7 +78,7 @@ def get_resource_costs() -> Dict[str, int]:
     return costs
 
 
-def estimate_cost(job: Dict[str, Any]) -> Tuple[int, Dict[str, int]]:
+def estimate_cost(job: dict[str, Any]) -> tuple[int, dict[str, int]]:
     """Estimate fulfilment cost from the job's declared complexity."""
     costs = get_resource_costs()
     tokens_k = job.get("est_tokens", 8_000) / 1_000
@@ -92,7 +92,7 @@ def estimate_cost(job: Dict[str, Any]) -> Tuple[int, Dict[str, int]]:
     return sum(breakdown.values()), breakdown
 
 
-def quote(job: Dict[str, Any], policy: PricingPolicy | None = None) -> Quote:
+def quote(job: dict[str, Any], policy: PricingPolicy | None = None) -> Quote:
     """Evaluate if a job's budget is acceptable according to the pricing policy.
 
     The budget is treated as the target price. The function checks whether this price
