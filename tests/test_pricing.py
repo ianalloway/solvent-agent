@@ -1,5 +1,6 @@
 import unittest
-from solvent.pricing import estimate_cost, quote, PricingPolicy, RESOURCE_COSTS_CENTS
+
+from solvent.pricing import RESOURCE_COSTS_CENTS, PricingPolicy, estimate_cost, quote
 
 
 class TestPricing(unittest.TestCase):

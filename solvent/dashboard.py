@@ -17,9 +17,10 @@ import json
 import time
 from pathlib import Path
 from urllib.parse import urlparse
-from .treasury import fmt
+
 from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
-from .paths import data_dir, reports_dir, dashboard_html
+from .paths import dashboard_html, data_dir, reports_dir
+from .treasury import fmt
 
 OUT = dashboard_html()
 

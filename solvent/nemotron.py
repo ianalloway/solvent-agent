@@ -251,8 +251,7 @@ def _strip_code_fence(s: str) -> str:
         if nl != -1:
             s = s[nl + 1:]
         s = s.rstrip()
-        if s.endswith("```"):
-            s = s[:-3]
+        s = s.removesuffix("```")
     return s.strip()
 
 

@@ -1,7 +1,8 @@
-import unittest
 import time
+import unittest
 from unittest.mock import MagicMock
-from solvent.guardrails import Guardrails, SpendPolicy, GuardrailError, Decision
+
+from solvent.guardrails import Decision, GuardrailError, Guardrails, SpendPolicy
 from solvent.treasury import LedgerEntry
 
 
@@ -142,8 +143,8 @@ class TestGuardrailDecision(unittest.TestCase):
 
     def test_denied_decision_names_the_rule(self) -> None:
         cases = [
-            (dict(amount_cents=100, vendor="rogue-vendor"), "vendor_allowlist"),
-            (dict(amount_cents=9999, vendor="nvidia-nemotron"), "max_txn_cap"),
+            ({"amount_cents": 100, "vendor": "rogue-vendor"}, "vendor_allowlist"),
+            ({"amount_cents": 9999, "vendor": "nvidia-nemotron"}, "max_txn_cap"),
         ]
         for kwargs, rule in cases:
             d = self.guard.evaluate(**kwargs)

@@ -15,7 +15,6 @@ import sqlite3
 import time
 from pathlib import Path
 
-
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS rate_events (
     user_key TEXT NOT NULL,

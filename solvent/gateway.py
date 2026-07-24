@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import os
-from typing import Callable
+from collections.abc import Callable
 
-from .agent import Solvent
-from .chat import handle_message, format_job_notification
-from .memory import SessionMemory
 from . import pairing
-from .treasury import fmt
+from .agent import Solvent
+from .chat import format_job_notification, handle_message
+from .memory import SessionMemory
 from .rate_limit import RateLimiter
+from .treasury import fmt
 
 _outbound_handlers: dict[str, Callable[[str, str], None]] = {}
 _rate_limiter = RateLimiter()

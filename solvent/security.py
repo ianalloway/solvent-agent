@@ -45,7 +45,6 @@ import unicodedata
 from collections import OrderedDict
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # 1. AUTH — Stripe webhook signature verification
 # ---------------------------------------------------------------------------
@@ -200,16 +199,16 @@ def validate_email(email: str) -> str:
 
 # Patterns that attempt to override the system role or inject instructions
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.I),
-    re.compile(r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.I),
-    re.compile(r"new\s+instructions?\s*:", re.I),
-    re.compile(r"(system|user|assistant)\s*:\s*\[?INST\]?", re.I),
-    re.compile(r"<\s*(system|user|assistant|s|\/s)\s*>", re.I),
-    re.compile(r"\[INST\]|\[\/INST\]|<<SYS>>|<</SYS>>", re.I),
-    re.compile(r"(disregard|forget|override)\s+(your\s+)?(previous\s+)?(instructions?|rules?|constraints?)", re.I),
-    re.compile(r"prompt\s*injection", re.I),
-    re.compile(r"jailbreak", re.I),
-    re.compile(r"DAN\b", re.I),  # "Do Anything Now" jailbreak keyword
+    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.IGNORECASE),
+    re.compile(r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.IGNORECASE),
+    re.compile(r"new\s+instructions?\s*:", re.IGNORECASE),
+    re.compile(r"(system|user|assistant)\s*:\s*\[?INST\]?", re.IGNORECASE),
+    re.compile(r"<\s*(system|user|assistant|s|\/s)\s*>", re.IGNORECASE),
+    re.compile(r"\[INST\]|\[\/INST\]|<<SYS>>|<</SYS>>", re.IGNORECASE),
+    re.compile(r"(disregard|forget|override)\s+(your\s+)?(previous\s+)?(instructions?|rules?|constraints?)", re.IGNORECASE),
+    re.compile(r"prompt\s*injection", re.IGNORECASE),
+    re.compile(r"jailbreak", re.IGNORECASE),
+    re.compile(r"DAN\b", re.IGNORECASE),  # "Do Anything Now" jailbreak keyword
 ]
 
 # Unicode bidi override / invisible characters often used to hide injections

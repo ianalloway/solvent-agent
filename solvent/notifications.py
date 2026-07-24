@@ -37,9 +37,8 @@ def enqueue_chat(channel: str, external_id: str, text: str) -> None:
         "ts": time.time(),
     }
     _OUTBOX.parent.mkdir(parents=True, exist_ok=True)
-    with _LockCtx():
-        with _OUTBOX.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, separators=(",", ":")) + "\n")
+    with _LockCtx(), _OUTBOX.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, separators=(",", ":")) + "\n")
 
 
 def drain_chat_outbox() -> list[dict]:

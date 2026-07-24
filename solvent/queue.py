@@ -22,8 +22,6 @@ def resume_incomplete_jobs(treasury: Treasury) -> list[str]:
         if treasury.job_has_revenue(jid) and not treasury.stage_completed(jid, "fulfill"):
             treasury.upsert_job(jid, "paid_pending_fulfill")
             resumed.append(jid)
-        elif status == "in_progress" and not treasury.stage_completed(jid, "fulfill"):
-            resumed.append(jid)
-        elif status == "awaiting_payment" and treasury.get_checkout(jid):
+        elif status == "in_progress" and not treasury.stage_completed(jid, "fulfill") or status == "awaiting_payment" and treasury.get_checkout(jid):
             resumed.append(jid)
     return resumed

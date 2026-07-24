@@ -15,9 +15,9 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Optional
 
 from .paths import data_dir
 
@@ -100,7 +100,7 @@ def _parse(line: str) -> dict | None:
         return None
 
 
-def _matches(record: dict, *, job: Optional[str], stage: Optional[str]) -> bool:
+def _matches(record: dict, *, job: str | None, stage: str | None) -> bool:
     if job:
         if not str(record.get("job_id", "")).startswith(job):
             return False
@@ -113,8 +113,8 @@ def _matches(record: dict, *, job: Optional[str], stage: Optional[str]) -> bool:
 def show_logs(
     *,
     n: int = 20,
-    job: Optional[str] = None,
-    stage: Optional[str] = None,
+    job: str | None = None,
+    stage: str | None = None,
     as_json: bool = False,
     follow: bool = False,
 ) -> None:

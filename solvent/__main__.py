@@ -105,10 +105,10 @@ def main():
         if not job_id:
             print("Usage: python -m solvent retry <job_id>")
             sys.exit(1)
-        from .stages import StageRunner
-        from .treasury import Treasury
         from .guardrails import Guardrails
+        from .stages import StageRunner
         from .stripe_client import StripeClient
+        from .treasury import Treasury
         t = Treasury()
         s = StageRunner(treasury=t, guard=Guardrails(t), stripe=StripeClient())
         result = s.retry_job(job_id)
@@ -119,8 +119,9 @@ def main():
         from .finance import main as finance_main
         finance_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "webhooks":
-        from .webhook_log import WebhookLog
         import json
+
+        from .webhook_log import WebhookLog
         wl = WebhookLog()
         sub = sys.argv[2] if len(sys.argv) > 2 else "stats"
         if sub == "stats":

@@ -9,7 +9,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from solvent.status import gather, format_status, _time_ago, _fmt_cents
+from solvent.status import _fmt_cents, _time_ago, format_status, gather
 
 
 class TestHelpers(unittest.TestCase):

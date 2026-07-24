@@ -22,11 +22,11 @@ import uuid
 from pathlib import Path
 
 from .security import (
-    validate_stripe_key,
-    validate_catalog_schema,
-    verify_webhook_signature,
     check_event_replay,
+    validate_catalog_schema,
     validate_email,
+    validate_stripe_key,
+    verify_webhook_signature,
 )
 
 try:

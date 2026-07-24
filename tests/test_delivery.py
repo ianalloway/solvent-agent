@@ -3,14 +3,14 @@
 import os
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 from solvent.delivery import (
-    make_delivery_token,
-    verify_delivery_token,
-    send_brief_email,
     hosted_brief_url,
+    make_delivery_token,
+    send_brief_email,
+    verify_delivery_token,
 )
 
 

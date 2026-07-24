@@ -19,9 +19,10 @@ class TestInit(unittest.TestCase):
         env = {"SOLVENT_HOME": home_dir, "SOLVENT_WORKSPACE": workspace_dir}
         with mock.patch.dict(os.environ, env):
             import importlib
+
+            import solvent.init as _init
             import solvent.paths as _paths
             import solvent.workspace as _ws
-            import solvent.init as _init
             importlib.reload(_paths)
             importlib.reload(_ws)
             importlib.reload(_init)
@@ -90,6 +91,7 @@ class TestInit(unittest.TestCase):
             workspace_dir = str(Path(d) / "workspace")
             env = {"SOLVENT_HOME": d, "SOLVENT_WORKSPACE": workspace_dir}
             import importlib
+
             import solvent.paths as _paths
             import solvent.workspace as _ws
             with mock.patch.dict(os.environ, env):
@@ -112,9 +114,10 @@ class TestInitCLI(unittest.TestCase):
             env = {"SOLVENT_HOME": d, "SOLVENT_WORKSPACE": workspace_dir}
             with mock.patch.dict(os.environ, env):
                 import importlib
+
+                import solvent.init as _init
                 import solvent.paths as _paths
                 import solvent.workspace as _ws
-                import solvent.init as _init
                 importlib.reload(_paths)
                 importlib.reload(_ws)
                 importlib.reload(_init)

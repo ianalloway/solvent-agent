@@ -12,8 +12,7 @@ import sys
 from pathlib import Path
 
 from .paths import base_dir, data_dir, db_path, reports_dir
-from .workspace import seed_workspace, BOOTSTRAP_FILES
-
+from .workspace import BOOTSTRAP_FILES, seed_workspace
 
 _ENV_EXAMPLE = """\
 # SOLVENT environment variables (copy to .env and fill in)

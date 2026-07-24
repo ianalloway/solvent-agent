@@ -7,11 +7,17 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from solvent.treasury import Treasury
 from solvent.job_cmd import (
-    cmd_list, cmd_show, cmd_events, cmd_cancel,
-    _fmt_cents, _ago, _fmt_ts, _col,
+    _ago,
+    _col,
+    _fmt_cents,
+    _fmt_ts,
+    cmd_cancel,
+    cmd_events,
+    cmd_list,
+    cmd_show,
 )
+from solvent.treasury import Treasury
 
 
 def _fresh_treasury():

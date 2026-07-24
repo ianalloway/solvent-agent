@@ -14,7 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 # Estimated cost of each resource the analyst might consume, in cents.
 # These are the prices SOLVENT pays its own vendors (see stripe_client.spend).
 RESOURCE_COSTS_CENTS: dict[str, int] = {
@@ -62,8 +61,8 @@ class PricingPolicy:
 
 def get_resource_costs() -> dict[str, int]:
     """Return effective resource costs, applying overrides from .solvent/pricing_overrides.json if present."""
-    from pathlib import Path
     import json
+    from pathlib import Path
     costs = dict(RESOURCE_COSTS_CENTS)
     override_path = Path(".solvent/pricing_overrides.json")
     if override_path.is_file():

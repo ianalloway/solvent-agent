@@ -4,8 +4,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from solvent import gateway
-from solvent.gateway import Gateway
 from solvent.agent import Solvent
+from solvent.gateway import Gateway
 from solvent.rate_limit import RateLimiter
 from solvent.treasury import Treasury
 

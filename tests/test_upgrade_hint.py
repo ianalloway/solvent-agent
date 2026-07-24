@@ -8,9 +8,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-
 from solvent.upgrade import background_update_hint
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,15 +43,14 @@ def test_prints_hint_when_outdated(tmp_path: Path) -> None:
         "os.environ",
         {"SOLVENT_NO_UPDATE_CHECK": "", "SOLVENT_HOME": str(tmp_path)},
         clear=False,
-    ):
-        with mock.patch("solvent.upgrade.latest_pypi_version", return_value="999.0.0"):
-            with mock.patch("solvent.upgrade.current_version", return_value="0.1.0"):
-                with mock.patch("solvent.paths.data_dir", return_value=tmp_path):
-                    stderr = StringIO()
-                    with mock.patch("sys.stderr", stderr):
-                        background_update_hint()
-                        _join_threads()
-                    output = stderr.getvalue()
+    ), mock.patch("solvent.upgrade.latest_pypi_version", return_value="999.0.0"):
+        with mock.patch("solvent.upgrade.current_version", return_value="0.1.0"):
+            with mock.patch("solvent.paths.data_dir", return_value=tmp_path):
+                stderr = StringIO()
+                with mock.patch("sys.stderr", stderr):
+                    background_update_hint()
+                    _join_threads()
+                output = stderr.getvalue()
     assert "999.0.0" in output
     assert "0.1.0" in output
     assert "pip install" in output

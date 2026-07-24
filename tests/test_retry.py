@@ -8,12 +8,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from solvent.stages import StageRunner
-from solvent.treasury import Treasury
 from solvent.guardrails import Guardrails
-from solvent.stripe_client import StripeClient
 from solvent.pricing import PricingPolicy
-
+from solvent.stages import StageRunner
+from solvent.stripe_client import StripeClient
+from solvent.treasury import Treasury
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -122,6 +121,7 @@ class TestRetryPostPaymentFailed(unittest.TestCase):
             job = _sample_job("J-post-fail")
 
             from dataclasses import asdict
+
             from solvent.pricing import quote as _quote
             q = _quote(job, runner.pricing)
 
@@ -202,12 +202,10 @@ class TestRetryMaxLimit(unittest.TestCase):
             runner.t.upsert_job("J-cap", "failed", error_reason="simulated failure")
 
             # Manually set retry_count to 3 (already at cap)
-            with runner.t.lock():
-                with runner.t._conn() as conn:
-                    with conn:
-                        conn.execute(
-                            "UPDATE jobs SET retry_count = 3 WHERE id = ?", ("J-cap",)
-                        )
+            with runner.t.lock(), runner.t._conn() as conn, conn:
+                conn.execute(
+                    "UPDATE jobs SET retry_count = 3 WHERE id = ?", ("J-cap",)
+                )
 
             with self.assertRaises(ValueError) as ctx:
                 runner.retry_job("J-cap")
@@ -220,6 +218,7 @@ class TestRetryMaxLimit(unittest.TestCase):
             job = _sample_job("J-limit")
 
             from dataclasses import asdict
+
             from solvent.pricing import quote as _quote
             q = _quote(job, runner.pricing)
 
@@ -269,6 +268,7 @@ class TestRetryCountIncrements(unittest.TestCase):
             job = _sample_job("J-cnt")
 
             from dataclasses import asdict
+
             from solvent.pricing import quote as _quote
             q = _quote(job, runner.pricing)
 

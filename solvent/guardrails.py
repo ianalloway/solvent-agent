@@ -52,7 +52,6 @@ class SpendPolicy:
 
 class GuardrailError(Exception):
     """Raised when an outbound spend request violates the spend policy."""
-    pass
 
 
 @dataclass
@@ -125,12 +124,12 @@ class Guardrails:
         """
         spent_24h = self._spent_last_24h()
         balance = self.t.balance_cents()
-        ctx = dict(
-            amount_cents=amount_cents,
-            vendor=vendor,
-            spent_24h_cents=spent_24h,
-            balance_cents=balance,
-        )
+        ctx = {
+            "amount_cents": amount_cents,
+            "vendor": vendor,
+            "spent_24h_cents": spent_24h,
+            "balance_cents": balance,
+        }
 
         if vendor not in self.policy.vendor_allowlist:
             return Decision(False, "vendor_allowlist", f"vendor '{vendor}' not on allowlist", **ctx)

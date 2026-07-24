@@ -19,8 +19,6 @@ import json
 import sys
 import time
 from datetime import datetime
-from typing import Optional
-
 
 _STATUS_EMOJI = {
     "awaiting_payment": "⏳",
@@ -81,7 +79,7 @@ def _col(s: str, width: int) -> str:
 # Sub-commands
 # ---------------------------------------------------------------------------
 
-def cmd_list(treasury, *, status_filter: Optional[str] = None, limit: int = 20, as_json: bool = False):
+def cmd_list(treasury, *, status_filter: str | None = None, limit: int = 20, as_json: bool = False):
     jobs = treasury.list_jobs()
     if status_filter:
         jobs = [j for j in jobs if j.get("status") == status_filter]

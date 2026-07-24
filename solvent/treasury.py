@@ -11,16 +11,16 @@ Storage is a SQLite database so it is thread-safe, concurrent, and survives rest
 
 from __future__ import annotations
 
+import fcntl
 import json
 import sqlite3
+import threading
 import time
 import uuid
-from dataclasses import dataclass, asdict, field
-from pathlib import Path
-from typing import Literal, Optional
-import fcntl
-import threading
 from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Literal
 
 from .paths import db_path as _db_path
 
@@ -34,11 +34,11 @@ class LedgerEntry:
     kind: EntryKind            # revenue (money in), expense (money out), capital (seed)
     amount_cents: int          # always positive; `kind` carries the sign
     memo: str                  # human-readable description
-    job_id: Optional[str] = None
-    vendor: Optional[str] = None
-    stripe_ref: Optional[str] = None           # PaymentIntent / issuing card / refund id
-    stripe_session_id: Optional[str] = None    # Checkout Session (cs_...)
-    stripe_link_id: Optional[str] = None       # Payment Link (plink_...)
+    job_id: str | None = None
+    vendor: str | None = None
+    stripe_ref: str | None = None           # PaymentIntent / issuing card / refund id
+    stripe_session_id: str | None = None    # Checkout Session (cs_...)
+    stripe_link_id: str | None = None       # Payment Link (plink_...)
     ts: float = field(default_factory=time.time)
     id: str = field(default_factory=lambda: "le_" + uuid.uuid4().hex[:12])
 
@@ -80,9 +80,8 @@ class Treasury:
 
     def _init_db(self) -> None:
         """Create the ledger and job queue tables if they do not exist."""
-        with self._conn() as conn:
-            with conn:
-                conn.execute("""
+        with self._conn() as conn, conn:
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS ledger (
                         id TEXT PRIMARY KEY,
                         kind TEXT NOT NULL,
@@ -96,9 +95,9 @@ class Treasury:
                         ts REAL NOT NULL
                     )
                 """)
-                self._ensure_column(conn, "ledger", "stripe_session_id", "TEXT")
-                self._ensure_column(conn, "ledger", "stripe_link_id", "TEXT")
-                conn.execute("""
+            self._ensure_column(conn, "ledger", "stripe_session_id", "TEXT")
+            self._ensure_column(conn, "ledger", "stripe_link_id", "TEXT")
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS jobs (
                         id TEXT PRIMARY KEY,
                         topic TEXT,
@@ -113,18 +112,18 @@ class Treasury:
                         error_reason TEXT
                     )
                 """)
-                for col, ctype in (
-                    ("checkout_session_id", "TEXT"),
-                    ("checkout_url", "TEXT"),
-                    ("deliverable_url", "TEXT"),
-                    ("current_stage", "TEXT"),
-                    ("quote_json", "TEXT"),
-                    ("locked_until", "REAL"),
-                    ("job_payload_json", "TEXT"),
-                    ("retry_count", "INTEGER DEFAULT 0"),
-                ):
-                    self._ensure_column(conn, "jobs", col, ctype)
-                conn.execute("""
+            for col, ctype in (
+                ("checkout_session_id", "TEXT"),
+                ("checkout_url", "TEXT"),
+                ("deliverable_url", "TEXT"),
+                ("current_stage", "TEXT"),
+                ("quote_json", "TEXT"),
+                ("locked_until", "REAL"),
+                ("job_payload_json", "TEXT"),
+                ("retry_count", "INTEGER DEFAULT 0"),
+            ):
+                self._ensure_column(conn, "jobs", col, ctype)
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS job_stages (
                         id TEXT PRIMARY KEY,
                         job_id TEXT NOT NULL,
@@ -136,7 +135,7 @@ class Treasury:
                         ts REAL NOT NULL
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS job_metrics (
                         job_id TEXT PRIMARY KEY,
                         est_cost_cents INTEGER,
@@ -153,9 +152,9 @@ class Treasury:
                         ts REAL NOT NULL
                     )
                 """)
-                self._ensure_column(conn, "job_metrics", "block_rule", "TEXT")
-                self._ensure_column(conn, "job_metrics", "block_reason", "TEXT")
-                conn.execute("""
+            self._ensure_column(conn, "job_metrics", "block_rule", "TEXT")
+            self._ensure_column(conn, "job_metrics", "block_reason", "TEXT")
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS stripe_checkout (
                         job_id TEXT PRIMARY KEY,
                         session_id TEXT,
@@ -164,7 +163,7 @@ class Treasury:
                         ts REAL NOT NULL
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS events (
                         id TEXT PRIMARY KEY,
                         job_id TEXT,
@@ -173,7 +172,7 @@ class Treasury:
                         ts REAL NOT NULL
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS chat_sessions (
                         id TEXT PRIMARY KEY,
                         channel TEXT NOT NULL,
@@ -187,7 +186,7 @@ class Treasury:
                         UNIQUE(channel, external_id)
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS chat_messages (
                         id TEXT PRIMARY KEY,
                         session_id TEXT NOT NULL,
@@ -196,7 +195,7 @@ class Treasury:
                         ts REAL NOT NULL
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS telegram_pairing (
                         code TEXT PRIMARY KEY,
                         user_id TEXT NOT NULL,
@@ -206,7 +205,7 @@ class Treasury:
                         created_at REAL NOT NULL
                     )
                 """)
-                conn.execute("""
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS openclaw_tokens (
                         token TEXT PRIMARY KEY,
                         expires_at REAL NOT NULL,
@@ -214,8 +213,8 @@ class Treasury:
                         created_at REAL NOT NULL
                     )
                 """)
-                self._ensure_column(conn, "chat_sessions", "pending_job_json", "TEXT")
-                self._ensure_column(conn, "chat_sessions", "notify_job_id", "TEXT")
+            self._ensure_column(conn, "chat_sessions", "pending_job_json", "TEXT")
+            self._ensure_column(conn, "chat_sessions", "notify_job_id", "TEXT")
 
     @contextmanager
     def lock(self):
@@ -283,43 +282,40 @@ class Treasury:
 
     def reset(self) -> None:
         """Clear the ledger and jobs table."""
-        with self.lock():
-            with self._conn() as conn:
-                with conn:
-                    conn.execute("DELETE FROM ledger")
-                    conn.execute("DELETE FROM jobs")
-                    conn.execute("DELETE FROM job_stages")
-                    conn.execute("DELETE FROM job_metrics")
-                    conn.execute("DELETE FROM stripe_checkout")
-                    conn.execute("DELETE FROM events")
-                    conn.execute("DELETE FROM chat_messages")
-                    conn.execute("DELETE FROM chat_sessions")
-                    conn.execute("DELETE FROM telegram_pairing")
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute("DELETE FROM ledger")
+            conn.execute("DELETE FROM jobs")
+            conn.execute("DELETE FROM job_stages")
+            conn.execute("DELETE FROM job_metrics")
+            conn.execute("DELETE FROM stripe_checkout")
+            conn.execute("DELETE FROM events")
+            conn.execute("DELETE FROM chat_messages")
+            conn.execute("DELETE FROM chat_sessions")
+            conn.execute("DELETE FROM telegram_pairing")
 
     # ---- writes ------------------------------------------------------
     def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
         with self.lock():
             entry = LedgerEntry(kind=kind, amount_cents=int(amount_cents), memo=memo, **kw)
-            with self._conn() as conn:
-                with conn:
-                    conn.execute("""
+            with self._conn() as conn, conn:
+                conn.execute("""
                         INSERT INTO ledger (
                             id, kind, amount_cents, memo, job_id, vendor,
                             stripe_ref, stripe_session_id, stripe_link_id, ts
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        entry.id,
-                        entry.kind,
-                        entry.amount_cents,
-                        entry.memo,
-                        entry.job_id,
-                        entry.vendor,
-                        entry.stripe_ref,
-                        entry.stripe_session_id,
-                        entry.stripe_link_id,
-                        entry.ts,
-                    ))
+                    entry.id,
+                    entry.kind,
+                    entry.amount_cents,
+                    entry.memo,
+                    entry.job_id,
+                    entry.vendor,
+                    entry.stripe_ref,
+                    entry.stripe_session_id,
+                    entry.stripe_link_id,
+                    entry.ts,
+                ))
             return entry
 
     def seed(self, amount_cents: int, memo: str = "Initial operating capital") -> LedgerEntry:
@@ -333,9 +329,8 @@ class Treasury:
 
     # ---- reads -------------------------------------------------------
     def balance_cents(self) -> int:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute("""
+        with self.lock(), self._conn() as conn:
+            row = conn.execute("""
                     SELECT SUM(
                         CASE WHEN kind IN ('revenue', 'capital') THEN amount_cents
                              ELSE -amount_cents
@@ -343,7 +338,7 @@ class Treasury:
                     ) as bal
                     FROM ledger
                 """).fetchone()
-                return row["bal"] or 0
+            return row["bal"] or 0
 
     def revenue_cents(self) -> int:
         with self.lock():
@@ -436,17 +431,15 @@ class Treasury:
                         placeholders = ", ".join(["?"] * len(cols))
                         conn.execute(f"INSERT INTO jobs ({', '.join(cols)}) VALUES ({placeholders})", vals)
 
-    def get_job(self, job_id: str) -> Optional[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-                return dict(row) if row else None
+    def get_job(self, job_id: str) -> dict | None:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            return dict(row) if row else None
 
     def list_jobs(self) -> list[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                rows = conn.execute("SELECT * FROM jobs ORDER BY created_at ASC").fetchall()
-                return [dict(row) for row in rows]
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute("SELECT * FROM jobs ORDER BY created_at ASC").fetchall()
+            return [dict(row) for row in rows]
 
     def list_jobs_by_status(self, statuses: list[str]) -> list[dict]:
         if not statuses:
@@ -464,40 +457,35 @@ class Treasury:
         """Acquire a short lease on a job for worker processing."""
         now = time.time()
         until = now + lease_seconds
-        with self.lock():
-            with self._conn() as conn:
-                with conn:
-                    row = conn.execute(
-                        "SELECT locked_until FROM jobs WHERE id = ?", (job_id,)
-                    ).fetchone()
-                    if not row:
-                        return False
-                    locked = row["locked_until"]
-                    if locked and locked > now:
-                        return False
-                    conn.execute(
-                        "UPDATE jobs SET locked_until = ?, updated_at = ? WHERE id = ?",
-                        (until, now, job_id),
-                    )
-                    return True
+        with self.lock(), self._conn() as conn, conn:
+            row = conn.execute(
+                "SELECT locked_until FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+            if not row:
+                return False
+            locked = row["locked_until"]
+            if locked and locked > now:
+                return False
+            conn.execute(
+                "UPDATE jobs SET locked_until = ?, updated_at = ? WHERE id = ?",
+                (until, now, job_id),
+            )
+            return True
 
     def release_job(self, job_id: str) -> None:
-        with self.lock():
-            with self._conn() as conn:
-                with conn:
-                    conn.execute(
-                        "UPDATE jobs SET locked_until = NULL, updated_at = ? WHERE id = ?",
-                        (time.time(), job_id),
-                    )
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute(
+                "UPDATE jobs SET locked_until = NULL, updated_at = ? WHERE id = ?",
+                (time.time(), job_id),
+            )
 
-    def get_stage(self, idempotency_key: str) -> Optional[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT * FROM job_stages WHERE idempotency_key = ?",
-                    (idempotency_key,),
-                ).fetchone()
-                return dict(row) if row else None
+    def get_stage(self, idempotency_key: str) -> dict | None:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM job_stages WHERE idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            return dict(row) if row else None
 
     def complete_stage(
         self,
@@ -540,18 +528,17 @@ class Treasury:
                     )
 
     def list_events(self, job_id: str | None = None, limit: int = 500) -> list[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                if job_id:
-                    rows = conn.execute(
-                        "SELECT * FROM events WHERE job_id = ? ORDER BY ts DESC LIMIT ?",
-                        (job_id, limit),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
-                    ).fetchall()
-                return [dict(r) for r in rows]
+        with self.lock(), self._conn() as conn:
+            if job_id:
+                rows = conn.execute(
+                    "SELECT * FROM events WHERE job_id = ? ORDER BY ts DESC LIMIT ?",
+                    (job_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
+                ).fetchall()
+            return [dict(r) for r in rows]
 
     def upsert_metrics(self, job_id: str, **kwargs) -> None:
         with self.lock():
@@ -596,37 +583,32 @@ class Treasury:
                             vals,
                         )
 
-    def get_metrics(self, job_id: str) -> Optional[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT * FROM job_metrics WHERE job_id = ?", (job_id,)
-                ).fetchone()
-                return dict(row) if row else None
+    def get_metrics(self, job_id: str) -> dict | None:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM job_metrics WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            return dict(row) if row else None
 
     def list_metrics(self) -> list[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                rows = conn.execute("SELECT * FROM job_metrics ORDER BY ts ASC").fetchall()
-                return [dict(r) for r in rows]
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute("SELECT * FROM job_metrics ORDER BY ts ASC").fetchall()
+            return [dict(r) for r in rows]
 
     def upsert_checkout(self, job_id: str, session_id: str, checkout_url: str, status: str) -> None:
-        with self.lock():
-            with self._conn() as conn:
-                with conn:
-                    conn.execute("""
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute("""
                         INSERT OR REPLACE INTO stripe_checkout
                         (job_id, session_id, checkout_url, status, ts)
                         VALUES (?, ?, ?, ?, ?)
                     """, (job_id, session_id, checkout_url, status, time.time()))
 
-    def get_checkout(self, job_id: str) -> Optional[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT * FROM stripe_checkout WHERE job_id = ?", (job_id,)
-                ).fetchone()
-                return dict(row) if row else None
+    def get_checkout(self, job_id: str) -> dict | None:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM stripe_checkout WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            return dict(row) if row else None
 
     def job_has_revenue(self, job_id: str) -> bool:
         with self.lock():
@@ -709,13 +691,12 @@ class Treasury:
                         params,
                     )
 
-    def get_chat_session(self, session_id: str) -> Optional[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT * FROM chat_sessions WHERE id = ?", (session_id,)
-                ).fetchone()
-                return dict(row) if row else None
+    def get_chat_session(self, session_id: str) -> dict | None:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM chat_sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            return dict(row) if row else None
 
     def list_chat_sessions_by_channel(self, channel: str) -> list[dict]:
         with self.lock():
@@ -736,14 +717,13 @@ class Treasury:
                     )
 
     def get_chat_messages(self, session_id: str, limit: int = 20) -> list[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                rows = conn.execute(
-                    "SELECT role, content, ts FROM chat_messages WHERE session_id = ? "
-                    "ORDER BY ts DESC LIMIT ?",
-                    (session_id, limit),
-                ).fetchall()
-                return [dict(r) for r in reversed(rows)]
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute(
+                "SELECT role, content, ts FROM chat_messages WHERE session_id = ? "
+                "ORDER BY ts DESC LIMIT ?",
+                (session_id, limit),
+            ).fetchall()
+            return [dict(r) for r in reversed(rows)]
 
     def create_pairing_code(self, user_id: str, username: str | None = None, ttl: float = 3600) -> str:
         code = "TG-" + uuid.uuid4().hex[:6].upper()
@@ -757,27 +737,25 @@ class Treasury:
                     """, (code, user_id, username, now + ttl, now))
         return code
 
-    def approve_pairing(self, code: str) -> Optional[dict]:
-        with self.lock():
-            with self._conn() as conn:
-                with conn:
-                    row = conn.execute(
-                        "SELECT * FROM telegram_pairing WHERE code = ?", (code.upper(),)
-                    ).fetchone()
-                    if not row:
-                        return None
-                    if row["expires_at"] < time.time():
-                        return None
-                    conn.execute(
-                        "UPDATE telegram_pairing SET approved = 1 WHERE code = ?",
-                        (code.upper(),),
-                    )
-                    conn.execute(
-                        "UPDATE chat_sessions SET paired = 1, updated_at = ? "
-                        "WHERE channel = 'telegram' AND external_id = ?",
-                        (time.time(), row["user_id"]),
-                    )
-                    return dict(row)
+    def approve_pairing(self, code: str) -> dict | None:
+        with self.lock(), self._conn() as conn, conn:
+            row = conn.execute(
+                "SELECT * FROM telegram_pairing WHERE code = ?", (code.upper(),)
+            ).fetchone()
+            if not row:
+                return None
+            if row["expires_at"] < time.time():
+                return None
+            conn.execute(
+                "UPDATE telegram_pairing SET approved = 1 WHERE code = ?",
+                (code.upper(),),
+            )
+            conn.execute(
+                "UPDATE chat_sessions SET paired = 1, updated_at = ? "
+                "WHERE channel = 'telegram' AND external_id = ?",
+                (time.time(), row["user_id"]),
+            )
+            return dict(row)
 
     def list_pending_pairings(self) -> list[dict]:
         now = time.time()
@@ -820,19 +798,18 @@ class Treasury:
     def verify_openclaw_token(self, token: str) -> bool:
         """Return True and mark used if the token is valid and unexpired."""
         now = time.time()
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT expires_at, used FROM openclaw_tokens WHERE token = ?",
-                    (token,),
-                ).fetchone()
-                if not row or row["used"] or row["expires_at"] < now:
-                    return False
-                with conn:
-                    conn.execute(
-                        "UPDATE openclaw_tokens SET used = 1 WHERE token = ?", (token,)
-                    )
-                return True
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT expires_at, used FROM openclaw_tokens WHERE token = ?",
+                (token,),
+            ).fetchone()
+            if not row or row["used"] or row["expires_at"] < now:
+                return False
+            with conn:
+                conn.execute(
+                    "UPDATE openclaw_tokens SET used = 1 WHERE token = ?", (token,)
+                )
+            return True
 
 
 def fmt(cents: int) -> str:

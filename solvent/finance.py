@@ -20,7 +20,7 @@ from __future__ import annotations
 import datetime
 import json
 import sys
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from .treasury import LedgerEntry, Treasury, fmt
 
@@ -104,7 +104,7 @@ def runway(
     entries: Iterable[LedgerEntry],
     *,
     reserve_cents: int = 0,
-    now: Optional[float] = None,
+    now: float | None = None,
 ) -> dict:
     """Cash runway from the operating burn/gain rate.
 

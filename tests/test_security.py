@@ -10,11 +10,11 @@ Covers:
 
 import hashlib
 import hmac
-import time
-import sys
 import os
-import unittest
+import sys
 import tempfile
+import time
+import unittest
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -56,20 +56,29 @@ except ImportError:
     pytest = _PytestCompat()  # type: ignore[misc,assignment]
 
 from solvent.security import (
-    # Auth
-    validate_stripe_key, verify_webhook_signature,
-    # Account takeover
-    check_event_replay, validate_email, _SEEN_EVENTS,
-    # Prompt injection
-    sanitise_prompt_input, sanitise_job,
-    # Data protection
-    safe_report_path, validate_catalog_schema, validate_vendor_exact,
-    # Exceptions
-    WebhookAuthError, AuthBypassError, ReplayAttackError,
-    PromptInjectionError, InputValidationError, PathTraversalError,
+    _SEEN_EVENTS,
+    AuthBypassError,
     GuardrailBypassError,
+    InputValidationError,
+    PathTraversalError,
+    PromptInjectionError,
+    ReplayAttackError,
+    # Exceptions
+    WebhookAuthError,
+    # Account takeover
+    check_event_replay,
+    # Data protection
+    safe_report_path,
+    sanitise_job,
+    # Prompt injection
+    sanitise_prompt_input,
+    validate_catalog_schema,
+    validate_email,
+    # Auth
+    validate_stripe_key,
+    validate_vendor_exact,
+    verify_webhook_signature,
 )
-
 
 # ============================================================
 # 1. AUTH BYPASS

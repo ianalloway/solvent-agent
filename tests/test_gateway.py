@@ -5,9 +5,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from solvent import gateway
+from solvent.agent import Solvent
 from solvent.gateway import Gateway, notify, register_outbound
 from solvent.rate_limit import RateLimiter
-from solvent.agent import Solvent
 from solvent.treasury import Treasury
 
 

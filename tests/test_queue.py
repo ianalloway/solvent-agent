@@ -10,7 +10,6 @@ from pathlib import Path
 from solvent.queue import list_claimable, resume_incomplete_jobs
 from solvent.treasury import Treasury
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

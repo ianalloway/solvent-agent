@@ -8,8 +8,7 @@ from unittest import mock
 import pytest
 
 from solvent.config import SolventConfig, save_config
-from solvent.config_cmd import cmd_get, cmd_reset, cmd_set, cmd_show, _coerce
-
+from solvent.config_cmd import _coerce, cmd_get, cmd_reset, cmd_set, cmd_show
 
 # ---------------------------------------------------------------------------
 # _coerce

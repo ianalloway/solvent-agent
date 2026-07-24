@@ -3,15 +3,15 @@
 import unittest
 
 from solvent.finance import (
-    income_statement,
-    unit_economics,
-    runway,
     balance_series,
-    sparkline,
-    period_pnl,
-    forecast,
     build_report,
+    forecast,
     format_report,
+    income_statement,
+    period_pnl,
+    runway,
+    sparkline,
+    unit_economics,
 )
 from solvent.treasury import LedgerEntry
 

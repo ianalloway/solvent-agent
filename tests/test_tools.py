@@ -2,7 +2,7 @@
 
 import unittest
 
-from solvent.tools import ToolContext, dispatch, MAX_TOOL_CALLS, ALLOWED_TOOLS
+from solvent.tools import ALLOWED_TOOLS, MAX_TOOL_CALLS, ToolContext, dispatch
 
 
 class TestTools(unittest.TestCase):
@@ -37,8 +37,9 @@ class TestTools(unittest.TestCase):
 
     def test_market_data_live_falls_back_to_stub_on_error(self):
         """live=True must degrade gracefully to the stub if the fetch fails."""
-        import solvent.tools as t
         from unittest.mock import patch
+
+        import solvent.tools as t
         with patch.object(t.urllib.request, "urlopen", side_effect=OSError("no net")):
             out = t.market_data("NVDA", live=True)
         self.assertIn("NVDA", out)

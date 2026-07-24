@@ -42,6 +42,7 @@ class TestCliRouting(unittest.TestCase):
     def test_version_prints_and_does_not_run_demo(self):
         import io
         from contextlib import redirect_stdout
+
         from solvent import __version__
 
         for argv in (["solvent", "version"], ["solvent", "--version"], ["solvent", "-V"]):

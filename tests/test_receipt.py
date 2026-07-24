@@ -163,6 +163,7 @@ class TestReceiptEndpoint(unittest.TestCase):
         """Build a minimal FastAPI app that exposes only the receipt endpoint."""
         from fastapi import FastAPI, HTTPException, Request
         from starlette.responses import PlainTextResponse
+
         from solvent.delivery import verify_delivery_token
         from solvent.receipt import build_receipt
 

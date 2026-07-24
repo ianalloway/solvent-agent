@@ -26,7 +26,13 @@ def send_telegram_message(external_id: str, text: str) -> None:
 def _require_ptb():
     try:
         from telegram import Update
-        from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+        from telegram.ext import (
+            Application,
+            CommandHandler,
+            ContextTypes,
+            MessageHandler,
+            filters,
+        )
         return Update, Application, CommandHandler, MessageHandler, filters, ContextTypes
     except ImportError as exc:
         raise RuntimeError(

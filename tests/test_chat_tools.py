@@ -4,10 +4,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from solvent.agent import Solvent
-from solvent.chat import handle_message, format_job_notification, _merge_commission_slots
-from solvent.memory import SessionMemory
 from solvent import nemotron
+from solvent.agent import Solvent
+from solvent.chat import (
+    _merge_commission_slots,
+    format_job_notification,
+    handle_message,
+)
+from solvent.memory import SessionMemory
 from solvent.treasury import Treasury
 
 

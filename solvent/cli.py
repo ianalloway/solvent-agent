@@ -12,16 +12,15 @@ Skip wizard: --no-onboard or SOLVENT_SKIP_ONBOARD=1
 Reconfigure: --onboard
 """
 
+import argparse
 import os
 import secrets
 import sys
 import time
-import argparse
 from pathlib import Path
-from solvent.agent import Solvent
-from solvent.jobs import SAMPLE_JOBS
-from solvent.treasury import fmt
+
 from solvent import dashboard
+from solvent.agent import Solvent
 from solvent.config import (
     SolventConfig,
     apply_config,
@@ -29,7 +28,9 @@ from solvent.config import (
     default_config,
     load_config,
 )
+from solvent.jobs import SAMPLE_JOBS
 from solvent.onboarding import run_wizard, should_skip_onboarding, wants_reconfigure
+from solvent.treasury import fmt
 
 # ANSI terminal colors (zero dependencies)
 C_RESET = "\033[0m"

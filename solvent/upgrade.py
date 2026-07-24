@@ -20,7 +20,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Optional
 
 _CHECK_INTERVAL = 86400  # 24 hours in seconds
 
@@ -44,7 +43,7 @@ def current_version() -> str:
     return __version__
 
 
-def latest_pypi_version() -> Optional[str]:
+def latest_pypi_version() -> str | None:
     """Fetch the latest release version from PyPI. Returns None on any error."""
     try:
         req = urllib.request.Request(

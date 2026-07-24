@@ -13,7 +13,6 @@ import pytest
 from solvent.config import SolventConfig
 from solvent.onboarding import _doctor_notes, should_skip_onboarding, wants_reconfigure
 
-
 # ---------------------------------------------------------------------------
 # should_skip_onboarding
 # ---------------------------------------------------------------------------

@@ -10,13 +10,13 @@ from solvent.rate_limit import RateLimiter
 
 def _limiter(**kwargs) -> RateLimiter:
     """Return a RateLimiter backed by an in-memory SQLite DB."""
-    defaults = dict(
-        db_path=":memory:",
-        burst_limit=5,
-        burst_window=60,
-        hourly_limit=30,
-        daily_limit=200,
-    )
+    defaults = {
+        "db_path": ":memory:",
+        "burst_limit": 5,
+        "burst_window": 60,
+        "hourly_limit": 30,
+        "daily_limit": 200,
+    }
     defaults.update(kwargs)
     return RateLimiter(**defaults)
 
@@ -186,8 +186,8 @@ class TestCleanup(unittest.TestCase):
 class TestPersistence(unittest.TestCase):
     def test_db_persists_across_restarts(self):
         """State written by one RateLimiter instance must be visible to the next."""
-        import tempfile
         import os
+        import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "rl.db")
@@ -204,8 +204,8 @@ class TestPersistence(unittest.TestCase):
             self.assertEqual(s["hourly_count"], 3)
 
     def test_ban_persists_across_restarts(self):
-        import tempfile
         import os
+        import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "rl2.db")

@@ -10,10 +10,11 @@ import time
 from contextlib import asynccontextmanager
 
 from .agent import Solvent
-from .gateway import Gateway, register_outbound
-from .delivery import verify_delivery_token, markdown_to_html, is_safe_job_id
+from .delivery import is_safe_job_id, markdown_to_html, verify_delivery_token
 from .event_hub import EventHub
-from .paths import data_dir, reports_dir as reports_dir_fn
+from .gateway import Gateway, register_outbound
+from .paths import data_dir
+from .paths import reports_dir as reports_dir_fn
 from .stripe_client import StripeClient
 from .webhook_log import WebhookLog
 

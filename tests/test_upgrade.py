@@ -148,9 +148,8 @@ class TestUpgradeCLI(unittest.TestCase):
         buf = io.StringIO()
         with self._fake_pypi(current), \
              mock.patch.object(sys, "argv", ["solvent-upgrade", "--json"]), \
-             redirect_stdout(buf):
-            with self.assertRaises(SystemExit):
-                main()
+             redirect_stdout(buf), self.assertRaises(SystemExit):
+            main()
         data = json.loads(buf.getvalue())
         self.assertIn("current", data)
         self.assertIn("up_to_date", data)

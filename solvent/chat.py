@@ -7,17 +7,16 @@ import os
 import re
 import uuid
 
+from . import nemotron, tools
 from .agent import Solvent
 from .memory import SessionMemory
-from . import nemotron
-from . import tools
 from .pricing import quote
-from .security import sanitise_prompt_input, PromptInjectionError, InputValidationError
+from .security import InputValidationError, PromptInjectionError, sanitise_prompt_input
 from .treasury import fmt
 from .workspace import build_chat_system_prompt, ensure_workspace
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
-_BUDGET_RE = re.compile(r"(?:budget|pay|spend)\s*[:\$]?\s*\$?(\d+(?:\.\d{1,2})?)", re.I)
+_BUDGET_RE = re.compile(r"(?:budget|pay|spend)\s*[:\$]?\s*\$?(\d+(?:\.\d{1,2})?)", re.IGNORECASE)
 
 
 def _new_chat_job_id(agent: Solvent) -> str:

@@ -14,7 +14,12 @@ import time
 from . import nemotron
 from .paths import reports_dir
 from .pricing import get_resource_costs
-from .security import sanitise_prompt_input, safe_report_path, PromptInjectionError, InputValidationError
+from .security import (
+    InputValidationError,
+    PromptInjectionError,
+    safe_report_path,
+    sanitise_prompt_input,
+)
 
 OUTPUT_DIR = reports_dir()
 
