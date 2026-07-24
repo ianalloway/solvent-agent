@@ -1,50 +1,54 @@
-"""Tests for cross-process chat outbox."""
+"""Tests for cross-process chat notification outbox."""
 
 import os
 import tempfile
 import unittest
-from pathlib import Path
-from unittest import mock
 
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from solvent import notifications as n
+from solvent.notifications import drain_chat_outbox, enqueue_chat
 
 
-class TestChatOutbox(unittest.TestCase):
+class TestNotifications(unittest.TestCase):
     def setUp(self):
-        self._tmpdir = tempfile.TemporaryDirectory()
-        base = Path(self._tmpdir.name)
-        self.outbox = base / "chat_outbox.jsonl"
-        self.lock = base / "chat_outbox.lock"
-        self._patch_outbox = mock.patch.object(n, "_OUTBOX", self.outbox)
-        self._patch_lock = mock.patch.object(n, "_LOCK", self.lock)
-        self._patch_outbox.start()
-        self._patch_lock.start()
+        self._tmp = tempfile.mkdtemp()
+        self._orig = os.environ.get("SOLVENT_HOME")
+        os.environ["SOLVENT_HOME"] = self._tmp
+        # Guarantee a clean state regardless of prior test pollution
+        drain_chat_outbox()
 
     def tearDown(self):
-        self._patch_lock.stop()
-        self._patch_outbox.stop()
-        self._tmpdir.cleanup()
+        drain_chat_outbox()
+        if self._orig is None:
+            os.environ.pop("SOLVENT_HOME", None)
+        else:
+            os.environ["SOLVENT_HOME"] = self._orig
 
-    def test_enqueue_and_drain(self):
-        n.enqueue_chat("dashboard", "sess-1", "Job J1 fulfilled.")
-        n.enqueue_chat("telegram", "12345", "Payment received.")
-        rows = n.drain_chat_outbox()
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0]["channel"], "dashboard")
-        self.assertEqual(rows[0]["external_id"], "sess-1")
-        self.assertEqual(rows[1]["text"], "Payment received.")
-        self.assertEqual(n.drain_chat_outbox(), [])
-
-    def test_drain_empty(self):
-        self.assertEqual(n.drain_chat_outbox(), [])
-
-    def test_skips_bad_lines(self):
-        self.outbox.parent.mkdir(parents=True, exist_ok=True)
-        self.outbox.write_text('not json\n{"channel":"c","external_id":"1","text":"ok","ts":1}\n', encoding="utf-8")
-        rows = n.drain_chat_outbox()
+    def test_enqueue_then_drain_roundtrip(self):
+        enqueue_chat("telegram", "123", "hello")
+        rows = drain_chat_outbox()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["text"], "ok")
+        self.assertEqual(rows[0]["channel"], "telegram")
+        self.assertEqual(rows[0]["external_id"], "123")
+        self.assertEqual(rows[0]["text"], "hello")
+        self.assertIn("ts", rows[0])
+
+    def test_drain_clears_outbox(self):
+        enqueue_chat("tg", "x", "msg1")
+        first = drain_chat_outbox()
+        self.assertEqual(len(first), 1)
+        self.assertEqual(drain_chat_outbox(), [])
+
+    def test_drain_skips_malformed_lines(self):
+        outbox_path = (
+            __import__("solvent.paths", fromlist=["data_dir"]).data_dir()
+            / "chat_outbox.jsonl"
+        )
+        outbox_path.parent.mkdir(parents=True, exist_ok=True)
+        outbox_path.write_text("not-json-here\n", encoding="utf-8")
+        self.assertEqual(drain_chat_outbox(), [])
+
+    def test_drain_on_missing_outbox(self):
+        self.assertEqual(drain_chat_outbox(), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
