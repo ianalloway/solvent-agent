@@ -173,18 +173,19 @@ Shows five spend attempts and which ones the NemoClaw-style policy blocks — wi
 
 ```bash
 pip install -r requirements.txt -r requirements-serve.txt
+export SOLVENT_DASHBOARD_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 
 python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
 python3 -m solvent worker              # resume incomplete jobs, process queue
 
 # Interactive voice dashboard (chat + live SSE updates):
-open http://127.0.0.1:8787/
+open "http://127.0.0.1:8787/?token=$SOLVENT_DASHBOARD_TOKEN"
 
 # Or dev convenience:
 python3 run_demo.py --serve --no-onboard
 ```
 
-The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Chat hits `/api/chat`, which routes through the Nemotron agent loop.
+The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Dashboard/control routes require `SOLVENT_DASHBOARD_TOKEN` via `?token=...` or the `X-Solvent-Dashboard-Token` header before they expose status data or route chat through the Nemotron agent loop.
 
 See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, reconciliation, and auto-tuning.
 
@@ -229,6 +230,7 @@ With both keys set:
 | `STRIPE_PAYMENT_POLL_TIMEOUT` | Seconds to wait for payment (default `120`) |
 | `STRIPE_PAYMENT_POLL_INTERVAL` | Poll interval in seconds (default `2`) |
 | `SOLVENT_FORCE_STRIPE_SIMULATE` | Force offline simulate mode even with a key |
+| `SOLVENT_DASHBOARD_TOKEN` | Shared secret required for hosted dashboard/control routes |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
 | `SOLVENT_TELEGRAM_DM_POLICY` | `pairing` · `allowlist` · `open` (default `pairing`) |
 | `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |

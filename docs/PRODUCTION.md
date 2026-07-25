@@ -16,10 +16,11 @@ pip install -r requirements-serve.txt
 
 export SOLVENT_BASE_URL=http://127.0.0.1:8787
 export SOLVENT_DELIVERY_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+export SOLVENT_DASHBOARD_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 
 # Terminal 1 — API + webhooks + interactive dashboard
 python3 -m solvent serve --port 8787
-open http://127.0.0.1:8787/
+open "http://127.0.0.1:8787/?token=$SOLVENT_DASHBOARD_TOKEN"
 
 # Terminal 2 — async job processor
 python3 -m solvent worker
@@ -30,7 +31,7 @@ python3 run_demo.py --serve --no-onboard
 
 ### Interactive dashboard + voice
 
-`python3 -m solvent serve` serves a live dashboard at `/` with:
+`python3 -m solvent serve` serves a live dashboard at `/` protected by `SOLVENT_DASHBOARD_TOKEN`. Pass it as `?token=...` in a browser URL or as `X-Solvent-Dashboard-Token` for API clients. The protected dashboard includes:
 
 - **SSE** (`GET /api/events`) — treasury metrics, job cards, and console log update in real time
 - **Chat** (`POST /api/chat`) — talk to the agent; supports `/status`, `/jobs`, `/quote topic | 50`
@@ -93,6 +94,7 @@ python3 -m solvent tune --apply
 | `STRIPE_WEBHOOK_SECRET` | Webhook signature verification |
 | `SOLVENT_BASE_URL` | Checkout success URLs + hosted briefs |
 | `SOLVENT_DELIVERY_SECRET` | HMAC token for `/briefs/{id}`; required, at least 32 characters, high entropy, and not a placeholder |
+| `SOLVENT_DASHBOARD_TOKEN` | Bearer-style shared secret for `/`, `/api/status`, `/api/events`, `/api/chat`, and `/api/job`; set to a high-entropy value before serving the dashboard |
 | `SOLVENT_ASYNC` | Non-blocking payment (worker resumes jobs) |
 | `SOLVENT_ALLOW_POLL` | Legacy payment polling |
 | `SOLVENT_LOG_JSON` | JSON lines to stderr + `data/solvent.log` |
