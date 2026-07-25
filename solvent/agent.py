@@ -80,8 +80,7 @@ class Solvent:
         q = self._runner._stage_quote(job)
         if q.get("stage") == "declined" or not q.get("accept"):
             return q
-        checkout = self._runner._stage_checkout(job, q)
-        return checkout
+        return self._runner._stage_checkout(job, q)
 
     def run(self, jobs: list[dict]) -> dict:
         for job in jobs:
