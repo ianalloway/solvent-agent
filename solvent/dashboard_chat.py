@@ -290,12 +290,12 @@ LIVE_CLIENT_JS = """
     }
 
     if (typeof EventSource !== 'undefined') {
-      const es = new EventSource('/api/events');
+      const es = new EventSource('/api/events?session_id=' + encodeURIComponent(chatSessionId));
       es.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
           if (msg.type === 'status' && msg.data) applyStatus(msg.data);
-          if (msg.type === 'chat' && msg.role === 'assistant') {
+          if (msg.type === 'chat' && msg.role === 'assistant' && msg.channel === 'dashboard' && (!msg.session_id || msg.session_id === chatSessionId)) {
             appendChat('assistant', msg.text);
             speak(msg.text);
           }

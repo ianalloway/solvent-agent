@@ -89,7 +89,15 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     agent.on_event = _on_agent_event
 
     def _dashboard_outbound(external_id: str, text: str) -> None:
-        hub.publish("chat", {"role": "assistant", "text": text, "session_id": external_id})
+        hub.publish(
+            "chat",
+            {
+                "role": "assistant",
+                "text": text,
+                "session_id": external_id,
+                "channel": "dashboard",
+            },
+        )
 
     register_outbound("dashboard", _dashboard_outbound)
 
@@ -114,13 +122,15 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                             hub.publish("status", {"data": data})
                     from .notifications import drain_chat_outbox
                     for row in drain_chat_outbox():
+                        if row.get("channel") != "dashboard":
+                            continue
                         hub.publish(
                             "chat",
                             {
                                 "role": "assistant",
                                 "text": row.get("text", ""),
                                 "session_id": row.get("external_id", ""),
-                                "channel": row.get("channel", ""),
+                                "channel": "dashboard",
                             },
                         )
                 except Exception:
@@ -144,7 +154,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return JSONResponse(_refresh_status())
 
     @app.get("/api/events")
-    async def api_events():
+    async def api_events(request: Request):
+        session_id = request.query_params.get("session_id", "")
         q = hub.subscribe()
 
         async def stream():
@@ -153,6 +164,12 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 while True:
                     try:
                         msg = await asyncio.wait_for(q.get(), timeout=15.0)
+                        if msg.get("type") == "chat":
+                            if msg.get("channel") != "dashboard":
+                                continue
+                            target_session = msg.get("session_id", "")
+                            if target_session and target_session != session_id:
+                                continue
                         yield EventHub.sse_format(msg)
                     except asyncio.TimeoutError:
                         yield EventHub.sse_format({"type": "ping", "ts": time.time()})

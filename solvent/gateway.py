@@ -25,11 +25,12 @@ def notify(channel: str, external_id: str, text: str) -> None:
     handler = _outbound_handlers.get(channel)
     if handler:
         handler(external_id, text)
-    try:
-        from .notifications import enqueue_chat
-        enqueue_chat(channel, external_id, text)
-    except Exception:
-        pass
+    if channel == "dashboard":
+        try:
+            from .notifications import enqueue_chat
+            enqueue_chat(channel, external_id, text)
+        except Exception:
+            pass
 
 
 def _rate_ok(user_key: str) -> bool:
