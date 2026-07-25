@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.request
 
@@ -20,8 +21,8 @@ def send_telegram_message(external_id: str, text: str) -> None:
     req = urllib.request.Request(url, data=payload, headers=headers)
     try:
         urllib.request.urlopen(req, timeout=15)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).warning("telegram send failed: %s", exc)
 
 
 def _require_ptb():

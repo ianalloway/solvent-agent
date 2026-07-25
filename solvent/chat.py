@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import uuid
@@ -253,8 +254,10 @@ def format_job_notification(event: dict) -> str | None:
         from .workspace import append_daily_memory
         if stage in ("paid", "fulfilled", "delivered", "declined"):
             append_daily_memory(f"job {jid}: {stage}")
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "format_job_notification memory append failed: %s", exc
+        )
     if stage == "paid":
         return (
             f"Payment received for job {jid} ({fmt(event.get('amount', 0))}). "
