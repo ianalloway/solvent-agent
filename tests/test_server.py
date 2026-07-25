@@ -38,6 +38,32 @@ class TestHostedBriefs(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Private brief", response.text)
 
+    def test_brief_api_requires_delivery_token(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("FastAPI test client is not installed")
+
+        client = TestClient(create_app())
+        response = client.get("/api/briefs/victim-job")
+        self.assertEqual(response.status_code, 403)
+
+        token = make_delivery_token("victim-job")
+        response = client.get(f"/api/briefs/victim-job?token={token}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Private brief", response.text)
+
+    def test_brief_api_does_not_enumerate_report_ids(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("FastAPI test client is not installed")
+
+        client = TestClient(create_app())
+        response = client.get("/api/briefs")
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("victim-job", response.text)
+
     def test_interactive_dashboard_routes(self):
         try:
             from fastapi.testclient import TestClient

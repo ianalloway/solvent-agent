@@ -232,35 +232,19 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
-            
-        if reports_dir.is_dir():
-            for p in reports_dir.glob("*"):
-                if job_id in p.stem and p.suffix in (".html", ".md"):
-                    try:
-                        resolved_p = p.resolve()
-                        resolved_p.relative_to(reports_dir)
-                        if resolved_p.suffix == ".html":
-                            return HTMLResponse(resolved_p.read_text(encoding="utf-8"))
-                        else:
-                            return HTMLResponse(markdown_to_html(resolved_p.read_text(encoding="utf-8")))
-                    except ValueError:
-                        pass
-                        
+
         raise HTTPException(404, "brief not found")
 
     @app.get("/api/briefs")
     def list_briefs():
-        reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
-        if not reports_dir.is_dir():
-            return []
-        stems = set()
-        for p in reports_dir.glob("*"):
-            if p.suffix in (".md", ".html") and p.stem != ".gitkeep":
-                stems.add(p.stem)
-        return sorted(list(stems))
+        raise HTTPException(403, "brief listing is not available")
 
     @app.get("/api/briefs/{job_id}")
-    def get_brief_api(job_id: str):
+    def get_brief_api(job_id: str, token: str = ""):
+        if not is_safe_job_id(job_id):
+            raise HTTPException(404, "brief not found")
+        if not verify_delivery_token(job_id, token):
+            raise HTTPException(403, "invalid or expired delivery token")
         reports_dir = (Path(__file__).resolve().parent.parent / "data" / "reports").resolve()
         
         path_html = (reports_dir / f"{job_id}.html").resolve()
@@ -278,20 +262,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
-            
-        if reports_dir.is_dir():
-            for p in reports_dir.glob("*"):
-                if job_id in p.stem and p.suffix in (".html", ".md"):
-                    try:
-                        resolved_p = p.resolve()
-                        resolved_p.relative_to(reports_dir)
-                        if resolved_p.suffix == ".html":
-                            return HTMLResponse(resolved_p.read_text(encoding="utf-8"))
-                        else:
-                            return HTMLResponse(markdown_to_html(resolved_p.read_text(encoding="utf-8")))
-                    except ValueError:
-                        pass
-                        
+
         raise HTTPException(404, "brief not found")
 
     return app

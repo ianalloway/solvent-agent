@@ -1210,13 +1210,17 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     function openBriefModal(jobId) {{
       document.getElementById("modal-title").innerText = "Research Brief Preview: " + jobId;
       const iframe = document.getElementById("brief-iframe");
-      iframe.src = `http://localhost:8787/api/briefs/${{jobId}}`;
+      const reportText = briefs[jobId] || "_No report brief generated or found in data/reports._";
+      iframe.removeAttribute("src");
+      iframe.srcdoc = renderMarkdown(reportText);
       document.getElementById("brief-modal").classList.add("open");
     }}
 
     function closeBriefModal() {{
       document.getElementById("brief-modal").classList.remove("open");
-      document.getElementById("brief-iframe").src = "about:blank";
+      const iframe = document.getElementById("brief-iframe");
+      iframe.removeAttribute("srcdoc");
+      iframe.src = "about:blank";
     }}
 
     function updateBriefsList() {{
