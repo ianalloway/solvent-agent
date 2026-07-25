@@ -52,3 +52,11 @@ class TestGateway(unittest.TestCase):
         register_outbound("testchan", handler)
         notify("testchan", "42", "hello")
         self.assertEqual(sent, [("42", "hello")])
+
+    def test_notify_only_enqueues_dashboard_notifications(self):
+        with patch("solvent.notifications.enqueue_chat") as enqueue_chat:
+            notify("telegram", "42", "private")
+            enqueue_chat.assert_not_called()
+
+            notify("dashboard", "web-1", "hello")
+            enqueue_chat.assert_called_once_with("dashboard", "web-1", "hello")
