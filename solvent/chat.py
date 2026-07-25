@@ -16,7 +16,10 @@ from .treasury import fmt
 from .workspace import build_chat_system_prompt, ensure_workspace
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
-_BUDGET_RE = re.compile(r"(?:budget|pay|spend)\s*[:\$]?\s*\$?(\d+(?:\.\d{1,2})?)", re.IGNORECASE)
+_BUDGET_RE = re.compile(
+    r"(?:budget|pay|spend)\s*[:\\$]?\s*\$?(\d+(?:\.\d{1,2})?)",
+    re.IGNORECASE,
+)
 
 
 def _new_chat_job_id(agent: Solvent) -> str:
@@ -85,7 +88,9 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
             }
             result = agent.enqueue_job(job)
             if result.get("stage") != "declined" and not result.get("error"):
-                agent.t.update_chat_session(session_id, notify_job_id=job_id, pending_job_json="")
+                agent.t.update_chat_session(
+                    session_id, notify_job_id=job_id, pending_job_json=""
+                )
             if result.get("url"):
                 return json.dumps({
                     "job_id": job_id,
@@ -95,7 +100,11 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
             return json.dumps(result)
         if name in tools.ALLOWED_TOOLS:
             return tools.dispatch(
-                name, args, ctx, lambda s, u: nemotron.complete(s, u)[0], live_search=live_search
+                name,
+                args,
+                ctx,
+                lambda s, u: nemotron.complete(s, u)[0],
+                live_search=live_search,
             )
         return json.dumps({"error": f"unknown tool {name!r}"})
 
@@ -187,11 +196,16 @@ def handle_message(
     memory.append(session_id, "user", text)
     pending = _merge_commission_slots(agent, session_id, text)
     history = memory.format_for_prompt(session_id, limit=20)
-    live_search = os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes")
+    live_search = (
+        os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes")
+    )
 
     catalog = {**tools.TOOL_REGISTRY, **tools.BUSINESS_TOOL_REGISTRY}
     executor = _make_executor(agent, session_id, live_search)
-    tool_lines = "\n".join(f"- {name}: {meta.get('description', '')}" for name, meta in catalog.items())
+    tool_lines = "\n".join(
+        f"- {name}: {meta.get('description', '')}"
+        for name, meta in catalog.items()
+    )
 
     slot_hint = _pending_prompt(pending)
     user = (
@@ -224,7 +238,10 @@ def handle_message(
             notes.append(f"[{name}] {result}")
         user = user + f"\n\nAssistant: {reply}\n\nTool results:\n" + "\n".join(notes)
 
-    fallback = "I'm having trouble completing that request. Try /status or ask for a quote with topic and budget."
+    fallback = (
+        "I'm having trouble completing that request. "
+        "Try /status or ask for a quote with topic and budget."
+    )
     memory.append(session_id, "assistant", fallback)
     return fallback
 
@@ -239,7 +256,10 @@ def format_job_notification(event: dict) -> str | None:
     except Exception:
         pass
     if stage == "paid":
-        return f"Payment received for job {jid} ({fmt(event.get('amount', 0))}). Fulfillment starting."
+        return (
+            f"Payment received for job {jid} ({fmt(event.get('amount', 0))}). "
+            "Fulfillment starting."
+        )
     if stage == "fulfilled":
         return f"Job {jid} fulfilled. Report saved."
     if stage == "delivered":
