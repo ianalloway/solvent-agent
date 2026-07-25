@@ -49,7 +49,7 @@ class LedgerEntry:
 class Treasury:
     _thread_local = threading.local()
 
-    def __init__(self, path: Path = None):
+    def __init__(self, path: Path | None = None):
         if path is None:
             self.path = DB_PATH
         else:

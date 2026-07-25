@@ -64,7 +64,7 @@ def run_checks() -> list[dict]:
     stripe = os.environ.get("STRIPE_API_KEY", "")
     if stripe.startswith("sk_live_"):
         add("stripe_key", False, "live keys refused")
-    elif stripe.startswith("sk_test_") or stripe.startswith("rk_test_"):
+    elif stripe.startswith(("sk_test_", "rk_test_")):
         add("stripe_key", True, "test key present")
     else:
         add("stripe_key", True, "simulate mode (no key)")
