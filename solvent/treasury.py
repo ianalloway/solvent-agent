@@ -119,6 +119,7 @@ class Treasury:
                     ("quote_json", "TEXT"),
                     ("locked_until", "REAL"),
                     ("job_payload_json", "TEXT"),
+                    ("job_owner_session_id", "TEXT"),
                 ):
                     self._ensure_column(conn, "jobs", col, ctype)
                 conn.execute("""
@@ -387,6 +388,7 @@ class Treasury:
         "topic", "budget_cents", "customer_email", "est_tokens", "market_data_calls",
         "web_search_calls", "error_reason", "checkout_session_id", "checkout_url",
         "deliverable_url", "current_stage", "quote_json", "locked_until", "job_payload_json",
+        "job_owner_session_id",
     )
 
     def upsert_job(self, job_id: str, status: str, **kwargs) -> None:
@@ -431,6 +433,24 @@ class Treasury:
             with self._conn() as conn:
                 rows = conn.execute("SELECT * FROM jobs ORDER BY created_at ASC").fetchall()
                 return [dict(row) for row in rows]
+
+    def list_jobs_for_session(self, session_id: str) -> list[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM jobs WHERE job_owner_session_id = ? ORDER BY created_at ASC",
+                    (session_id,),
+                ).fetchall()
+                return [dict(row) for row in rows]
+
+    def get_job_for_session(self, job_id: str, session_id: str) -> Optional[dict]:
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM jobs WHERE id = ? AND job_owner_session_id = ?",
+                    (job_id, session_id),
+                ).fetchone()
+                return dict(row) if row else None
 
     def list_jobs_by_status(self, statuses: list[str]) -> list[dict]:
         if not statuses:

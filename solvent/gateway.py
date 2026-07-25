@@ -92,7 +92,7 @@ class Gateway:
                 f"Margin: {s['margin_pct']}%"
             )
         if cmd == "/jobs":
-            jobs = self.agent.t.list_jobs()[-5:]
+            jobs = self.agent.t.list_jobs_for_session(session["id"])[-5:]
             if not jobs:
                 return "No jobs yet."
             return "\n".join(

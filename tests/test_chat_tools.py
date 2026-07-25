@@ -1,14 +1,16 @@
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from solvent.agent import Solvent
-from solvent.chat import handle_message, format_job_notification, _merge_commission_slots
+from solvent.chat import handle_message, format_job_notification, _merge_commission_slots, _make_executor
 from solvent.memory import SessionMemory
 from solvent import nemotron
 from solvent.treasury import Treasury
+from solvent.gateway import Gateway
 
 
 class TestChatTools(unittest.TestCase):
@@ -37,6 +39,48 @@ class TestChatTools(unittest.TestCase):
         )
         self.assertEqual(pending.get("budget_cents"), 5000)
         self.assertEqual(pending.get("customer_email"), "alice@example.com")
+
+    def test_job_tools_are_scoped_to_session(self):
+        owner = self.session["id"]
+        other = self.memory.get_or_create("cli", "other-user")["id"]
+        self.t.upsert_job(
+            "J-owner",
+            "completed",
+            topic="Owner topic",
+            customer_email="owner@example.com",
+            checkout_url="https://checkout.example/owner",
+            deliverable_url="https://deliver.example/owner?token=secret",
+            job_owner_session_id=owner,
+        )
+        self.t.upsert_job(
+            "J-other",
+            "completed",
+            topic="Other topic",
+            customer_email="other@example.com",
+            checkout_url="https://checkout.example/other",
+            deliverable_url="https://deliver.example/other?token=secret",
+            job_owner_session_id=other,
+        )
+
+        owner_tool = _make_executor(self.agent, owner, live_search=False)
+        self.assertIn("J-owner", owner_tool("list_jobs", {}))
+        self.assertNotIn("J-other", owner_tool("list_jobs", {}))
+        self.assertIn("owner@example.com", owner_tool("job_status", {"job_id": "J-owner"}))
+        self.assertEqual(
+            {"error": "job not found"},
+            json.loads(owner_tool("job_status", {"job_id": "J-other"})),
+        )
+
+    def test_gateway_jobs_command_is_scoped_to_session(self):
+        other = self.memory.get_or_create("telegram", "other-user")["id"]
+        self.t.upsert_job("J-test", "completed", topic="Visible topic", job_owner_session_id=self.session["id"])
+        self.t.upsert_job("J-other", "completed", topic="Hidden topic", job_owner_session_id=other)
+        gateway = Gateway(agent=self.agent)
+
+        output = gateway._handle_command("cli", "test-user", "/jobs", self.session)
+
+        self.assertIn("J-test", output)
+        self.assertNotIn("J-other", output)
 
     @patch.object(nemotron, "complete")
     def test_handle_message_treasury_tool(self, mock_complete):
