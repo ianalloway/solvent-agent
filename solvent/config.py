@@ -27,7 +27,6 @@ class SolventConfig:
     interaction_mode: str = "batch"
     stripe_test_mode: bool = False
     base_url: str = "http://127.0.0.1:8787"
-    worker_enabled: bool = False
     async_mode: bool = False
 
     telegram_enabled: bool = False
