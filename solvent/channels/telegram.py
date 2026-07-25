@@ -16,7 +16,8 @@ def send_telegram_message(external_id: str, text: str) -> None:
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = json.dumps({"chat_id": int(external_id), "text": text[:4000]}).encode()
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    req = urllib.request.Request(url, data=payload, headers=headers)
     try:
         urllib.request.urlopen(req, timeout=15)
     except Exception:
@@ -33,7 +34,14 @@ def _require_ptb():
             MessageHandler,
             filters,
         )
-        return Update, Application, CommandHandler, MessageHandler, filters, ContextTypes
+        return (
+            Update,
+            Application,
+            CommandHandler,
+            MessageHandler,
+            filters,
+            ContextTypes,
+        )
     except ImportError as exc:
         raise RuntimeError(
             "python-telegram-bot required. Install: pip install -e \".[telegram]\""
@@ -46,7 +54,14 @@ async def _reply(update, text: str) -> None:
 
 
 def build_application(gateway: Gateway | None = None) -> object:
-    Update, Application, CommandHandler, MessageHandler, filters, ContextTypes = _require_ptb()
+    (
+        Update,
+        Application,
+        CommandHandler,
+        MessageHandler,
+        filters,
+        ContextTypes,
+    ) = _require_ptb()
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN not set")

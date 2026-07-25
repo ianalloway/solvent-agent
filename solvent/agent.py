@@ -41,7 +41,8 @@ class Solvent:
         self.log: list[dict] = []
         self.on_event = on_event
         if sync_payment is None:
-            sync_payment = os.environ.get("SOLVENT_ASYNC", "").strip() not in ("1", "true", "yes")
+            async_flag = os.environ.get("SOLVENT_ASYNC", "").strip()
+            sync_payment = async_flag not in ("1", "true", "yes")
         self._runner = StageRunner(
             self.t,
             self.guard,
@@ -74,7 +75,8 @@ class Solvent:
         """Validate and persist a job for async worker processing."""
         job, err = validate_and_coerce_job(job, self.t)
         if err:
-            return self._emit(stage="declined", job_id=job.get("id", "unknown") if job else "unknown", reason=err)
+            job_id = job.get("id", "unknown") if job else "unknown"
+            return self._emit(stage="declined", job_id=job_id, reason=err)
         q = self._runner._stage_quote(job)
         if q.get("stage") == "declined" or not q.get("accept"):
             return q
