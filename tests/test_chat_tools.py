@@ -17,7 +17,9 @@ from solvent.treasury import Treasury
 
 class TestChatTools(unittest.TestCase):
     def setUp(self):
-        self._env = patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
+        self._env = patch.dict(
+            os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
+        )
         self._env.start()
         self.tmp = tempfile.TemporaryDirectory()
         self.db = Path(self.tmp.name) / "t.db"
@@ -34,13 +36,17 @@ class TestChatTools(unittest.TestCase):
         self._env.stop()
 
     def test_format_job_notification(self):
-        msg = format_job_notification({"stage": "delivered", "job_id": "J1", "url": "https://x"})
+        msg = format_job_notification(
+            {"stage": "delivered", "job_id": "J1", "url": "https://x"}
+        )
         self.assertIn("J1", msg)
         self.assertIn("https://x", msg)
 
     def test_slot_filling(self):
         pending = _merge_commission_slots(
-            self.agent, self.session["id"], "Commission a brief on AI chips budget $50 alice@example.com"
+            self.agent,
+            self.session["id"],
+            "Commission a brief on AI chips budget $50 alice@example.com",
         )
         self.assertEqual(pending.get("budget_cents"), 5000)
         self.assertEqual(pending.get("customer_email"), "alice@example.com")
@@ -51,7 +57,9 @@ class TestChatTools(unittest.TestCase):
             ('<tool_call>{"name": "treasury_status", "arguments": {}}</tool_call>', {}),
             ("Balance looks healthy.", {}),
         ]
-        reply = handle_message(self.session["id"], "How is treasury?", agent=self.agent, memory=self.memory)
+        reply = handle_message(
+            self.session["id"], "How is treasury?", agent=self.agent, memory=self.memory
+        )
         self.assertIn("healthy", reply.lower())
 
     @patch.object(nemotron, "complete")
@@ -77,8 +85,10 @@ class TestChatTools(unittest.TestCase):
 
             return counting_run
 
-        with patch.object(chatmod, "_make_executor", counting_executor), \
-             patch.object(chatmod.tools, "MAX_TOOL_CALLS", 5):
+        with (
+            patch.object(chatmod, "_make_executor", counting_executor),
+            patch.object(chatmod.tools, "MAX_TOOL_CALLS", 5),
+        ):
             reply = handle_message(
                 self.session["id"], "spam tools", agent=self.agent, memory=self.memory
             )
@@ -139,4 +149,6 @@ class TestChatTools(unittest.TestCase):
                 agent=self.agent,
                 memory=self.memory,
             )
-        self.assertTrue("Checkout" in reply or "invoice" in reply.lower() or len(reply) > 0)
+        self.assertTrue(
+            "Checkout" in reply or "invoice" in reply.lower() or len(reply) > 0
+        )

@@ -19,6 +19,7 @@ from typing import Any
 
 def _load_or_default():
     from .config import SolventConfig, load_config
+
     return load_config() or SolventConfig()
 
 
@@ -88,7 +89,10 @@ def cmd_set(key: str, value: str) -> int:
     try:
         coerced = _coerce(type_name, value)
     except (ValueError, TypeError) as e:
-        print(f"[solvent config] bad value for {key!r} ({type_name}): {e}", file=sys.stderr)
+        print(
+            f"[solvent config] bad value for {key!r} ({type_name}): {e}",
+            file=sys.stderr,
+        )
         return 1
 
     setattr(cfg, key, coerced)
@@ -105,6 +109,7 @@ def cmd_set(key: str, value: str) -> int:
 
 def cmd_reset() -> int:
     from .config import SolventConfig, save_config
+
     cfg = SolventConfig()
     save_config(cfg)
     print("[solvent config] reset to defaults")
@@ -118,8 +123,7 @@ def main() -> None:
         description="View and edit SOLVENT configuration.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--json", dest="as_json", action="store_true",
-                   help="output as JSON")
+    p.add_argument("--json", dest="as_json", action="store_true", help="output as JSON")
     sub = p.add_subparsers(dest="cmd")
 
     sub.add_parser("show", help="show all config values (default)")

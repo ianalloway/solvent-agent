@@ -89,9 +89,7 @@ class RateLimiter:
                 f"Hourly limit exceeded ({hourly_count}/{self.hourly_limit})"
             )
         if daily_count >= self.daily_limit:
-            return False, (
-                f"Daily limit exceeded ({daily_count}/{self.daily_limit})"
-            )
+            return False, (f"Daily limit exceeded ({daily_count}/{self.daily_limit})")
 
         # 3. Record the event
         self._conn.execute(
@@ -123,9 +121,7 @@ class RateLimiter:
 
     def unban(self, user_key: str) -> None:
         """Remove an active ban for *user_key*."""
-        self._conn.execute(
-            "DELETE FROM rate_bans WHERE user_key = ?", (user_key,)
-        )
+        self._conn.execute("DELETE FROM rate_bans WHERE user_key = ?", (user_key,))
         self._conn.commit()
 
     def is_banned(self, user_key: str) -> bool:
@@ -159,13 +155,9 @@ class RateLimiter:
     def cleanup(self) -> None:
         """Delete rate_events older than 24 hours and expired bans."""
         cutoff = time.time() - 86400
-        self._conn.execute(
-            "DELETE FROM rate_events WHERE ts < ?", (cutoff,)
-        )
+        self._conn.execute("DELETE FROM rate_events WHERE ts < ?", (cutoff,))
         now = time.time()
-        self._conn.execute(
-            "DELETE FROM rate_bans WHERE expires_at <= ?", (now,)
-        )
+        self._conn.execute("DELETE FROM rate_bans WHERE expires_at <= ?", (now,))
         self._conn.commit()
 
     # ------------------------------------------------------------------

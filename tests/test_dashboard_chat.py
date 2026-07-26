@@ -20,7 +20,9 @@ class TestDashboardGateway(unittest.TestCase):
         self.agent = Solvent(seed_cents=10_000, fresh=False, sync_payment=False)
         self.agent.t = self.t
         self.gw = Gateway(agent=self.agent)
-        self._limiter_patch = patch.object(gateway, "_rate_limiter", RateLimiter(db_path=":memory:"))
+        self._limiter_patch = patch.object(
+            gateway, "_rate_limiter", RateLimiter(db_path=":memory:")
+        )
         self._limiter_patch.start()
 
     def tearDown(self):

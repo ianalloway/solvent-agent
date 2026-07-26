@@ -35,6 +35,7 @@ def _require_ptb():
             MessageHandler,
             filters,
         )
+
         return (
             Update,
             Application,
@@ -45,7 +46,7 @@ def _require_ptb():
         )
     except ImportError as exc:
         raise RuntimeError(
-            "python-telegram-bot required. Install: pip install -e \".[telegram]\""
+            'python-telegram-bot required. Install: pip install -e ".[telegram]"'
         ) from exc
 
 

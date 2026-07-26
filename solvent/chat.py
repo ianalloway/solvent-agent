@@ -38,18 +38,22 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
     def run(name: str, args: dict) -> str:
         if name == "treasury_status":
             s = agent.t.snapshot()
-            return json.dumps({
-                "balance_cents": s["balance_cents"],
-                "revenue_cents": s["revenue_cents"],
-                "expense_cents": s["expense_cents"],
-                "margin_pct": s["margin_pct"],
-            })
+            return json.dumps(
+                {
+                    "balance_cents": s["balance_cents"],
+                    "revenue_cents": s["revenue_cents"],
+                    "expense_cents": s["expense_cents"],
+                    "margin_pct": s["margin_pct"],
+                }
+            )
         if name == "list_jobs":
             jobs = agent.t.list_jobs()[-10:]
-            return json.dumps([
-                {"id": j["id"], "status": j.get("status"), "topic": j.get("topic")}
-                for j in jobs
-            ])
+            return json.dumps(
+                [
+                    {"id": j["id"], "status": j.get("status"), "topic": j.get("topic")}
+                    for j in jobs
+                ]
+            )
         if name == "job_status":
             jid = args.get("job_id", "")
             row = agent.t.get_job(jid)
@@ -65,13 +69,15 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
                 "web_search_calls": 6,
             }
             q = quote(job, agent.pricing)
-            return json.dumps({
-                "accept": q.accept,
-                "price_cents": q.price_cents,
-                "est_cost_cents": q.est_cost_cents,
-                "margin_pct": q.margin_pct,
-                "reason": q.reason,
-            })
+            return json.dumps(
+                {
+                    "accept": q.accept,
+                    "price_cents": q.price_cents,
+                    "est_cost_cents": q.est_cost_cents,
+                    "margin_pct": q.margin_pct,
+                    "reason": q.reason,
+                }
+            )
         if name == "submit_brief":
             topic = args.get("topic", "")
             budget = int(args.get("budget_cents", 0))
@@ -93,11 +99,13 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
                     session_id, notify_job_id=job_id, pending_job_json=""
                 )
             if result.get("url"):
-                return json.dumps({
-                    "job_id": job_id,
-                    "checkout_url": result.get("url"),
-                    "stage": result.get("stage", "invoice"),
-                })
+                return json.dumps(
+                    {
+                        "job_id": job_id,
+                        "checkout_url": result.get("url"),
+                        "stage": result.get("stage", "invoice"),
+                    }
+                )
             return json.dumps(result)
         if name in tools.ALLOWED_TOOLS:
             return tools.dispatch(
@@ -197,15 +205,16 @@ def handle_message(
     memory.append(session_id, "user", text)
     pending = _merge_commission_slots(agent, session_id, text)
     history = memory.format_for_prompt(session_id, limit=20)
-    live_search = (
-        os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes")
+    live_search = os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in (
+        "1",
+        "true",
+        "yes",
     )
 
     catalog = {**tools.TOOL_REGISTRY, **tools.BUSINESS_TOOL_REGISTRY}
     executor = _make_executor(agent, session_id, live_search)
     tool_lines = "\n".join(
-        f"- {name}: {meta.get('description', '')}"
-        for name, meta in catalog.items()
+        f"- {name}: {meta.get('description', '')}" for name, meta in catalog.items()
     )
 
     slot_hint = _pending_prompt(pending)
@@ -252,6 +261,7 @@ def format_job_notification(event: dict) -> str | None:
     jid = event.get("job_id", "")
     try:
         from .workspace import append_daily_memory
+
         if stage in ("paid", "fulfilled", "delivered", "declined"):
             append_daily_memory(f"job {jid}: {stage}")
     except Exception as exc:

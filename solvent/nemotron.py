@@ -42,6 +42,7 @@ def _is_transient(exc: Exception) -> bool:
         return True  # DNS / connection reset / TLS hiccup
     return isinstance(exc, (TimeoutError, ConnectionError))
 
+
 _force_offline = False
 
 
@@ -66,17 +67,20 @@ def _estimate_tokens(system: str, user: str, text: str) -> dict:
 def _live_request(system: str, user: str) -> dict:
     """Single HTTP round-trip to the Nemotron endpoint. Raises on failure."""
     key = os.environ["NVIDIA_API_KEY"]
-    body = json.dumps({
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "temperature": 0.4,
-        "max_tokens": 1200,
-    }).encode()
+    body = json.dumps(
+        {
+            "model": MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.4,
+            "max_tokens": 1200,
+        }
+    ).encode()
     req = urllib.request.Request(
-        ENDPOINT, data=body,
+        ENDPOINT,
+        data=body,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=60) as r:
@@ -95,7 +99,7 @@ def _live_complete(system: str, user: str) -> tuple[str, dict]:
         except Exception as exc:
             if attempt >= MAX_RETRIES or not _is_transient(exc):
                 raise
-            time.sleep(RETRY_BASE_DELAY * (2 ** attempt))
+            time.sleep(RETRY_BASE_DELAY * (2**attempt))
             attempt += 1
     text = data["choices"][0]["message"]["content"]
     usage = data.get("usage") or {}
@@ -111,7 +115,9 @@ def _live_complete(system: str, user: str) -> tuple[str, dict]:
 
 def _stub_complete(system: str, user: str) -> str:
     """Deterministic offline analyst. Good enough to demo the money loop."""
-    topic = user.strip().splitlines()[0][:120] if user.strip() else "the requested topic"
+    topic = (
+        user.strip().splitlines()[0][:120] if user.strip() else "the requested topic"
+    )
     return (
         f"# Research Brief: {topic}\n\n"
         "## Executive summary\n"
@@ -249,7 +255,7 @@ def _strip_code_fence(s: str) -> str:
     if s.startswith("```"):
         nl = s.find("\n")
         if nl != -1:
-            s = s[nl + 1:]
+            s = s[nl + 1 :]
         s = s.rstrip()
         s = s.removesuffix("```")
     return s.strip()
@@ -341,15 +347,19 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
     return [(name, args) for _, name, args in results]
 
 
-def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.ToolContext]:
+def research_brief(
+    topic: str, context: str = "n/a"
+) -> tuple[str, dict, tools.ToolContext]:
     """Bounded tool-calling loop: plan → tools → final brief."""
     ctx = tools.ToolContext()
-    live_search = bool(os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes"))
+    live_search = bool(
+        os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes")
+    )
     notes: list[str] = []
     system = (
         "You are SOLVENT, a disciplined sell-side research analyst. "
         "To call a tool, emit a Hermes tool call: "
-        "<tool_call>{\"name\": \"tool_name\", \"arguments\": {\"arg\": \"value\"}}</tool_call>. "
+        '<tool_call>{"name": "tool_name", "arguments": {"arg": "value"}}</tool_call>. '
         "Allowed tools: web_search, market_data, summarize. "
         "Do not request payment or treasury actions. "
         "After gathering evidence, write the final brief with markdown headings "
@@ -358,7 +368,9 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
     # The transcript carries the running conversation (the model's own plan
     # text plus each tool observation) so reasoning stays coherent across
     # rounds; `notes` is the deduplicated evidence handed to the final synth.
-    transcript = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
+    transcript = (
+        f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
+    )
 
     for _round in range(tools.MAX_TOOL_ROUNDS):
         text, usage = complete(system, transcript)
@@ -383,7 +395,11 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
                 break
             try:
                 result = tools.dispatch(
-                    name, args, ctx, lambda s, u: complete(s, u)[0], live_search=live_search
+                    name,
+                    args,
+                    ctx,
+                    lambda s, u: complete(s, u)[0],
+                    live_search=live_search,
                 )
             except (ValueError, RuntimeError):
                 continue
@@ -391,7 +407,9 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
             observations.append(f"[{name}] {result}")
 
         # Preserve the model's plan and the new observations for the next round.
-        transcript += f"\n\nAssistant: {text}\n\nTool results:\n" + "\n".join(observations)
+        transcript += f"\n\nAssistant: {text}\n\nTool results:\n" + "\n".join(
+            observations
+        )
 
         # Once the tool budget is spent there is nothing more to gather — stop
         # spinning and go straight to synthesis.
@@ -401,7 +419,8 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
     # Synthesize: one final pass, tools explicitly closed.
     final_user = (
         transcript
-        + "\n\nResearch notes:\n" + "\n\n".join(notes)
+        + "\n\nResearch notes:\n"
+        + "\n\n".join(notes)
         + f"\n\nNo more tools. Write the final decision-ready research brief for: {topic} "
         "with markdown headings."
     )

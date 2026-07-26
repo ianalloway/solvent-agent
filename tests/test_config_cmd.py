@@ -14,6 +14,7 @@ from solvent.config_cmd import _coerce, cmd_get, cmd_reset, cmd_set, cmd_show
 # _coerce
 # ---------------------------------------------------------------------------
 
+
 def test_coerce_bool_true():
     assert _coerce("bool", "true") is True
     assert _coerce("bool", "1") is True
@@ -47,6 +48,7 @@ def test_coerce_str():
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def isolate_config(tmp_path, monkeypatch):
     """Redirect config reads/writes to tmp_path."""
@@ -62,6 +64,7 @@ def isolate_config(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # cmd_show
 # ---------------------------------------------------------------------------
+
 
 def test_cmd_show_prints_keys(capsys):
     cmd_show()
@@ -90,6 +93,7 @@ def test_cmd_show_reflects_saved_config(isolate_config, capsys):
 # cmd_get
 # ---------------------------------------------------------------------------
 
+
 def test_cmd_get_known_key(capsys):
     rc = cmd_get("model")
     assert rc == 0
@@ -116,10 +120,12 @@ def test_cmd_get_json_mode(capsys):
 # cmd_set
 # ---------------------------------------------------------------------------
 
+
 def test_cmd_set_string_field(isolate_config, capsys):
     rc = cmd_set("model", "nemotron")
     assert rc == 0
     from solvent.config import load_config
+
     cfg = load_config()
     assert cfg.model == "nemotron"
 
@@ -128,6 +134,7 @@ def test_cmd_set_bool_field(isolate_config):
     rc = cmd_set("stripe_test_mode", "true")
     assert rc == 0
     from solvent.config import load_config
+
     cfg = load_config()
     assert cfg.stripe_test_mode is True
 
@@ -136,6 +143,7 @@ def test_cmd_set_int_field(isolate_config):
     rc = cmd_set("rate_burst_limit", "10")
     assert rc == 0
     from solvent.config import load_config
+
     cfg = load_config()
     assert cfg.rate_burst_limit == 10
 
@@ -163,11 +171,13 @@ def test_cmd_set_validation_failure_returns_1(capsys):
 # cmd_reset
 # ---------------------------------------------------------------------------
 
+
 def test_cmd_reset_restores_defaults(isolate_config, capsys):
     cmd_set("model", "nemotron")
     rc = cmd_reset()
     assert rc == 0
     from solvent.config import load_config
+
     cfg = load_config()
     assert cfg.model == "offline"
     captured = capsys.readouterr()
@@ -178,10 +188,12 @@ def test_cmd_reset_restores_defaults(isolate_config, capsys):
 # CLI main dispatch
 # ---------------------------------------------------------------------------
 
+
 def test_main_show(isolate_config, capsys):
     with mock.patch("sys.argv", ["solvent", "show"]):
         with pytest.raises(SystemExit) as exc:
             from solvent.config_cmd import main
+
             main()
         assert exc.value.code == 0
     captured = capsys.readouterr()
@@ -192,6 +204,7 @@ def test_main_no_subcommand_shows_all(isolate_config, capsys):
     with mock.patch("sys.argv", ["solvent"]):
         with pytest.raises(SystemExit) as exc:
             from solvent.config_cmd import main
+
             main()
         assert exc.value.code == 0
     captured = capsys.readouterr()
@@ -202,12 +215,14 @@ def test_main_set_and_get(isolate_config, capsys):
     with mock.patch("sys.argv", ["solvent", "set", "model", "nemotron"]):
         with pytest.raises(SystemExit) as exc:
             from solvent.config_cmd import main
+
             main()
         assert exc.value.code == 0
 
     with mock.patch("sys.argv", ["solvent", "get", "model"]):
         with pytest.raises(SystemExit) as exc:
             from solvent.config_cmd import main
+
             main()
         assert exc.value.code == 0
     captured = capsys.readouterr()

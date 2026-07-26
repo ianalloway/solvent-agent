@@ -14,9 +14,11 @@ from solvent.treasury import Treasury
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _fresh_treasury() -> Treasury:
     fd, path = tempfile.mkstemp(suffix=".db", prefix="solvent_queue_")
     import os
+
     os.close(fd)
     return Treasury(path=Path(path))
 
@@ -50,13 +52,22 @@ def _set_checkout(t: Treasury, job_id: str, url: str = "https://pay.example/x") 
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestListClaimable(unittest.TestCase):
     """Only jobs in worker-relevant statuses should be returned."""
 
     def test_returns_all_worker_statuses(self):
         t = _fresh_treasury()
         ids = ["j_await", "j_progress", "j_paid", "j_pending_q"]
-        for jid, status in zip(ids, ("awaiting_payment", "in_progress", "paid_pending_fulfill", "pending_quote")):
+        for jid, status in zip(
+            ids,
+            (
+                "awaiting_payment",
+                "in_progress",
+                "paid_pending_fulfill",
+                "pending_quote",
+            ),
+        ):
             t.upsert_job(jid, status)
 
         claimable = list_claimable(t)

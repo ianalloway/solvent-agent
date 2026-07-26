@@ -20,7 +20,9 @@ def _base_url() -> str:
     return os.environ.get("SOLVENT_BASE_URL", "http://127.0.0.1:8787").rstrip("/")
 
 
-def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None, str | None]:
+def validate_and_coerce_job(
+    job: dict, treasury: Treasury
+) -> tuple[dict | None, str | None]:
     """Return (coerced_job, error_reason)."""
     if not isinstance(job, dict):
         return None, "job must be a dictionary"
@@ -50,10 +52,16 @@ def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None,
             return None, "invalid budget"
         job["budget_cents"] = budget_cents
     except (ValueError, TypeError):
-        treasury.upsert_job(job_id, "failed", error_reason="budget_cents must be numeric")
+        treasury.upsert_job(
+            job_id, "failed", error_reason="budget_cents must be numeric"
+        )
         return None, "budget_cents must be a valid numeric value"
 
-    for param, default_val in [("est_tokens", 8_000), ("market_data_calls", 2), ("web_search_calls", 6)]:
+    for param, default_val in [
+        ("est_tokens", 8_000),
+        ("market_data_calls", 2),
+        ("web_search_calls", 6),
+    ]:
         val = job.get(param)
         if val is None:
             val = default_val
@@ -111,6 +119,7 @@ class StageRunner:
             self.on_event(event)
         try:
             from .gateway import handle_job_event
+
             handle_job_event(event)
         except Exception:
             pass
@@ -122,10 +131,24 @@ class StageRunner:
             margin_est=event.get("margin_pct"),
             margin_actual=event.get("actual_margin_pct"),
             simulated=event.get("simulated"),
-            **{k: v for k, v in event.items() if k not in ("job_id", "stage", "simulated", "payment_intent", "stripe_ref", "margin_pct", "actual_margin_pct")},
+            **{
+                k: v
+                for k, v in event.items()
+                if k
+                not in (
+                    "job_id",
+                    "stage",
+                    "simulated",
+                    "payment_intent",
+                    "stripe_ref",
+                    "margin_pct",
+                    "actual_margin_pct",
+                )
+            },
         )
         try:
             from . import dashboard
+
             dashboard.render(self.t.snapshot(), [])
         except Exception:
             pass
@@ -134,7 +157,11 @@ class StageRunner:
     def run_job(self, job: dict) -> dict:
         job, err = validate_and_coerce_job(job, self.t)
         if err:
-            return self._emit(stage="declined", job_id=job.get("id", "unknown") if job else "unknown", reason=err)
+            return self._emit(
+                stage="declined",
+                job_id=job.get("id", "unknown") if job else "unknown",
+                reason=err,
+            )
 
         q = self._stage_quote(job)
         if q.get("stage") == "declined" or not q.get("accept"):
@@ -171,7 +198,12 @@ class StageRunner:
             }
         status = row.get("status", "")
         if status in ("completed", "failed"):
-            return self._emit(stage="booked", job_id=job_id, status=status, job_pnl=self.t.job_pnl_cents(job_id))
+            return self._emit(
+                stage="booked",
+                job_id=job_id,
+                status=status,
+                job_pnl=self.t.job_pnl_cents(job_id),
+            )
         if status == "pending_quote" or not row.get("quote_json"):
             return self.run_job(job)
         q_data = json.loads(row["quote_json"])
@@ -182,14 +214,20 @@ class StageRunner:
                 "amount_cents": q_data.get("price_cents"),
             }
             from .pricing import Quote
-            quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
+
+            quote_obj = Quote(
+                **{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__}
+            )
             paid = self._stage_paid(job, checkout, quote_obj)
             if paid.get("stage") == "payment_pending":
                 return paid
             return self._stage_fulfill_and_book(job, quote_obj, paid)
         if status in ("in_progress", "paid_pending_fulfill"):
             from .pricing import Quote
-            quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
+
+            quote_obj = Quote(
+                **{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__}
+            )
             paid = {"stripe_ref": None, "amount_cents": q_data.get("price_cents")}
             rev = self.t.entries
             for e in rev:
@@ -217,15 +255,24 @@ class StageRunner:
             "reason": q.reason,
         }
         self.t.complete_stage(job_id, "quote", key, result, payload={"job_id": job_id})
-        self.t.upsert_job(job_id, "pending_quote" if q.accept else "failed", quote_json=json.dumps(asdict(q)))
+        self.t.upsert_job(
+            job_id,
+            "pending_quote" if q.accept else "failed",
+            quote_json=json.dumps(asdict(q)),
+        )
         self._emit(stage="quote", job_id=job_id, title=job["topic"], **result)
         if not q.accept:
             self.t.upsert_job(job_id, "failed", error_reason=q.reason)
-            self.t.upsert_metrics(job_id, decline_reason=q.reason, est_cost_cents=q.est_cost_cents)
+            self.t.upsert_metrics(
+                job_id, decline_reason=q.reason, est_cost_cents=q.est_cost_cents
+            )
             return self._emit(stage="declined", job_id=job_id, reason=q.reason)
 
         with self.t.lock():
-            if self.guard._spent_last_24h() + q.est_cost_cents > self.guard.policy.daily_budget_cents:
+            if (
+                self.guard._spent_last_24h() + q.est_cost_cents
+                > self.guard.policy.daily_budget_cents
+            ):
                 reason = "fulfilment cost would exceed 24h spend budget limit"
                 self.t.upsert_job(job_id, "failed", error_reason=reason)
                 return self._emit(stage="declined", job_id=job_id, reason=reason)
@@ -272,7 +319,13 @@ class StageRunner:
             checkout_url=session["url"],
             current_stage="awaiting_payment",
         )
-        self._emit(stage="invoice", job_id=job_id, url=session["url"], amount=q.price_cents, simulated=result["simulated"])
+        self._emit(
+            stage="invoice",
+            job_id=job_id,
+            url=session["url"],
+            amount=q.price_cents,
+            simulated=result["simulated"],
+        )
         return result
 
     def _stage_paid(self, job: dict, checkout: dict, q) -> dict:
@@ -304,7 +357,10 @@ class StageRunner:
         if self.sync_payment:
             payment = self.stripe.confirm_payment(link, job_id=job_id)
         else:
-            payment = self.stripe.get_cached_payment(job_id) or {"paid": False, "reason": "awaiting webhook"}
+            payment = self.stripe.get_cached_payment(job_id) or {
+                "paid": False,
+                "reason": "awaiting webhook",
+            }
 
         if not payment.get("paid"):
             reason = payment.get("reason", "payment not received")
@@ -351,19 +407,31 @@ class StageRunner:
 
         try:
             fulfill_key = f"fulfill:{job_id}"
-            if self.t.get_stage(fulfill_key) and self.t.get_stage(fulfill_key)["status"] == "completed":
-                result = json.loads(self.t.get_stage(fulfill_key)["result_json"] or "{}")
+            if (
+                self.t.get_stage(fulfill_key)
+                and self.t.get_stage(fulfill_key)["status"] == "completed"
+            ):
+                result = json.loads(
+                    self.t.get_stage(fulfill_key)["result_json"] or "{}"
+                )
             else:
                 result = service.fulfill(job)
-                self.t.complete_stage(job_id, "fulfill", fulfill_key, {
-                    "deliverable_path": result["deliverable_path"],
-                    "tokens": result["tokens"],
-                })
+                self.t.complete_stage(
+                    job_id,
+                    "fulfill",
+                    fulfill_key,
+                    {
+                        "deliverable_path": result["deliverable_path"],
+                        "tokens": result["tokens"],
+                    },
+                )
                 _tctx = result.get("tool_ctx")
                 if getattr(_tctx, "budget_exhausted", False):
                     self._emit(
-                        stage="tool_budget_exhausted", job_id=job_id,
-                        tool_calls=_tctx.total_calls, limit=tools.MAX_TOOL_CALLS,
+                        stage="tool_budget_exhausted",
+                        job_id=job_id,
+                        tool_calls=_tctx.total_calls,
+                        limit=tools.MAX_TOOL_CALLS,
                     )
             self._emit(
                 stage="fulfilled",
@@ -387,17 +455,28 @@ class StageRunner:
             self._emit(stage="cogs_reconciled", job_id=job_id, **cogs)
 
             deliver_key = f"deliver:{job_id}"
-            if not (self.t.get_stage(deliver_key) and self.t.get_stage(deliver_key)["status"] == "completed"):
+            if not (
+                self.t.get_stage(deliver_key)
+                and self.t.get_stage(deliver_key)["status"] == "completed"
+            ):
                 hosted = delivery.hosted_brief_url(_base_url(), job_id)
                 from pathlib import Path
+
                 delivery.send_brief_email(
                     job.get("customer_email", "client@example.com"),
                     job_id,
                     Path(result["deliverable_path"]),
                     hosted,
                 )
-                self.t.complete_stage(job_id, "deliver", deliver_key, {"hosted_url": hosted})
-                self.t.upsert_job(job_id, "in_progress", deliverable_url=hosted, current_stage="deliver")
+                self.t.complete_stage(
+                    job_id, "deliver", deliver_key, {"hosted_url": hosted}
+                )
+                self.t.upsert_job(
+                    job_id,
+                    "in_progress",
+                    deliverable_url=hosted,
+                    current_stage="deliver",
+                )
                 self._emit(stage="delivered", job_id=job_id, url=hosted)
 
             job_margin = getattr(q, "margin_cents", q.price_cents - q.est_cost_cents)
@@ -414,23 +493,41 @@ class StageRunner:
                     locked = self.t.get_stage(spend_key)
                     if locked and locked["status"] == "completed":
                         continue
-                    decision = self.guard.evaluate(amount, vendor, projected_job_margin_cents=job_margin)
+                    decision = self.guard.evaluate(
+                        amount, vendor, projected_job_margin_cents=job_margin
+                    )
                     if not decision.allowed:
                         self.t.upsert_metrics(
-                            job_id, block_rule=decision.rule, block_reason=decision.reason
+                            job_id,
+                            block_rule=decision.rule,
+                            block_reason=decision.reason,
                         )
                         self._emit(
-                            stage="spend_blocked", job_id=job_id, vendor=vendor,
-                            amount=amount, memo=memo,
-                            rule=decision.rule, reason=decision.reason,
+                            stage="spend_blocked",
+                            job_id=job_id,
+                            vendor=vendor,
+                            amount=amount,
+                            memo=memo,
+                            rule=decision.rule,
+                            reason=decision.reason,
                         )
                         raise GuardrailError(
                             f"spend to {vendor} of {amount}c rejected by guardrails: {decision.reason}"
                         )
                     pay = self.stripe.pay_vendor(vendor, amount, memo, job_id=job_id)
-                    self.t.spend(amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"])
-                    self.t.complete_stage(job_id, "spend", spend_key, {"vendor": vendor, "amount": amount})
-                    self._emit(stage="spend", job_id=job_id, vendor=vendor, amount=amount, memo=memo)
+                    self.t.spend(
+                        amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"]
+                    )
+                    self.t.complete_stage(
+                        job_id, "spend", spend_key, {"vendor": vendor, "amount": amount}
+                    )
+                    self._emit(
+                        stage="spend",
+                        job_id=job_id,
+                        vendor=vendor,
+                        amount=amount,
+                        memo=memo,
+                    )
 
             self.t.upsert_job(job_id, "completed", current_stage="booked")
             pnl = self.t.job_pnl_cents(job_id)
@@ -444,6 +541,7 @@ class StageRunner:
             )
             try:
                 from .receipt import build_receipt
+
                 _job_row = self.t.get_job(job_id) or {}
                 _full_job = {**_job_row, **job}
                 receipt_text = build_receipt(_full_job, pnl, self.t.balance_cents())
@@ -455,19 +553,28 @@ class StageRunner:
             reason = str(e)
             refund_key = f"refund:{job_id}:{payment_intent_id}"
             if payment_intent_id and not (
-                self.t.get_stage(refund_key) and self.t.get_stage(refund_key)["status"] == "completed"
+                self.t.get_stage(refund_key)
+                and self.t.get_stage(refund_key)["status"] == "completed"
             ):
-                refund = self.stripe.refund_payment(payment_intent_id, paid_amount, job_id=job_id)
+                refund = self.stripe.refund_payment(
+                    payment_intent_id, paid_amount, job_id=job_id
+                )
                 self.t.spend(
                     amount_cents=paid_amount,
                     memo=f"Refund for job {job_id} due to block/failure: {reason}",
                     job_id=job_id,
                     stripe_ref=refund["id"],
                 )
-                self.t.complete_stage(job_id, "refund", refund_key, {"refund_id": refund["id"]})
+                self.t.complete_stage(
+                    job_id, "refund", refund_key, {"refund_id": refund["id"]}
+                )
             self.t.upsert_metrics(job_id, refunded=1)
-            self._emit(stage="refunded", job_id=job_id, amount=paid_amount, reason=reason)
-            self.t.upsert_job(job_id, "failed", error_reason=reason, current_stage="failed")
+            self._emit(
+                stage="refunded", job_id=job_id, amount=paid_amount, reason=reason
+            )
+            self.t.upsert_job(
+                job_id, "failed", error_reason=reason, current_stage="failed"
+            )
             pnl = self.t.job_pnl_cents(job_id)
             booked_event = self._emit(
                 stage="booked",
@@ -478,10 +585,15 @@ class StageRunner:
             )
             try:
                 from .receipt import build_refund_receipt
+
                 _job_row = self.t.get_job(job_id) or {}
                 _full_job = {**_job_row, **job, "error_reason": reason}
                 refund_receipt_text = build_refund_receipt(_full_job, paid_amount)
-                self._emit(stage="refund_receipt_ready", job_id=job_id, receipt=refund_receipt_text)
+                self._emit(
+                    stage="refund_receipt_ready",
+                    job_id=job_id,
+                    receipt=refund_receipt_text,
+                )
             except Exception:
                 pass
             return booked_event
@@ -529,7 +641,12 @@ class StageRunner:
                 f"Job {job_id!r} has exceeded the maximum retry limit ({MAX_RETRIES})"
             )
 
-        self._emit(stage="retry_started", job_id=job_id, retry_count=new_count, previous_status=status)
+        self._emit(
+            stage="retry_started",
+            job_id=job_id,
+            retry_count=new_count,
+            previous_status=status,
+        )
 
         # Reconstruct the job payload
         payload = row.get("job_payload_json")
@@ -555,14 +672,23 @@ class StageRunner:
             }
             q_data = json.loads(row["quote_json"]) if row.get("quote_json") else {}
             if q_data:
-                checkout["amount_cents"] = q_data.get("price_cents", checkout["amount_cents"])
+                checkout["amount_cents"] = q_data.get(
+                    "price_cents", checkout["amount_cents"]
+                )
             from .pricing import Quote
+
             if q_data and all(k in q_data for k in Quote.__dataclass_fields__):
-                quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
+                quote_obj = Quote(
+                    **{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__}
+                )
             else:
                 quote_obj = self._stage_quote(job).get("_quote")
                 if quote_obj is None:
-                    return self._emit(stage="declined", job_id=job_id, reason="quote failed during retry")
+                    return self._emit(
+                        stage="declined",
+                        job_id=job_id,
+                        reason="quote failed during retry",
+                    )
             paid = self._stage_paid(job, checkout, quote_obj)
             if paid.get("stage") == "payment_pending":
                 return paid
@@ -575,10 +701,14 @@ class StageRunner:
             # Payment already collected — only re-run fulfillment (no re-charge)
             q_data = json.loads(row["quote_json"]) if row.get("quote_json") else {}
             from .pricing import Quote
+
             if q_data and all(k in q_data for k in Quote.__dataclass_fields__):
-                quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
+                quote_obj = Quote(
+                    **{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__}
+                )
             else:
                 from .pricing import quote as _quote
+
                 quote_obj = _quote(job, self.pricing)
             paid = {"stripe_ref": None, "amount_cents": q_data.get("price_cents", 0)}
             for e in self.t.entries:

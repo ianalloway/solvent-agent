@@ -114,6 +114,7 @@ def apply_config(config: SolventConfig) -> None:
     try:
         from . import gateway as _gw
         from .rate_limit import RateLimiter as _RL
+
         _gw._rate_limiter = _RL(
             burst_limit=config.rate_burst_limit,
             hourly_limit=config.rate_hourly_limit,

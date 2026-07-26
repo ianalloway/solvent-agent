@@ -8,6 +8,7 @@ import io
 def _ascii_qr(data: str) -> str:
     try:
         import qrcode
+
         qr = qrcode.QRCode(border=1)
         qr.add_data(data)
         qr.make(fit=True)
@@ -21,6 +22,7 @@ def _ascii_qr(data: str) -> str:
 def _png_bytes(data: str) -> bytes | None:
     try:
         import qrcode
+
         img = qrcode.make(data)
         buf = io.BytesIO()
         img.save(buf, format="PNG")

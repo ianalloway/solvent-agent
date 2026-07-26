@@ -19,7 +19,11 @@ class TestBlockMetrics(unittest.TestCase):
     def test_block_reason_round_trips(self):
         t = Treasury(path=self.db)
         t.upsert_metrics("J1", est_cost_cents=100)
-        t.upsert_metrics("J1", block_rule="min_reserve", block_reason="would breach minimum cash reserve")
+        t.upsert_metrics(
+            "J1",
+            block_rule="min_reserve",
+            block_reason="would breach minimum cash reserve",
+        )
         m = t.get_metrics("J1")
         self.assertEqual(m["block_rule"], "min_reserve")
         self.assertEqual(m["block_reason"], "would breach minimum cash reserve")
@@ -39,7 +43,10 @@ class TestBlockMetrics(unittest.TestCase):
 
         # Opening the Treasury should migrate the schema in place.
         t = Treasury(path=self.db)
-        cols = {r[1] for r in sqlite3.connect(self.db).execute("PRAGMA table_info(job_metrics)")}
+        cols = {
+            r[1]
+            for r in sqlite3.connect(self.db).execute("PRAGMA table_info(job_metrics)")
+        }
         self.assertIn("block_rule", cols)
         self.assertIn("block_reason", cols)
 

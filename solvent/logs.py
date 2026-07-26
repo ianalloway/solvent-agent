@@ -21,7 +21,14 @@ from pathlib import Path
 
 from .paths import data_dir
 
-_LOG_FIELDS_ORDER = ("ts", "job_id", "stage", "stripe_ref", "margin_actual", "duration_ms")
+_LOG_FIELDS_ORDER = (
+    "ts",
+    "job_id",
+    "stage",
+    "stripe_ref",
+    "margin_actual",
+    "duration_ms",
+)
 
 
 def log_path() -> Path:
@@ -57,8 +64,16 @@ def _human_line(record: dict) -> str:
     stripe = record.get("stripe_ref")
     if stripe:
         parts.append(f"stripe={stripe[:12]}")
-    extra_skip = {"ts", "job_id", "stage", "duration_ms", "margin_actual", "stripe_ref",
-                  "margin_est", "simulated"}
+    extra_skip = {
+        "ts",
+        "job_id",
+        "stage",
+        "duration_ms",
+        "margin_actual",
+        "stripe_ref",
+        "margin_est",
+        "simulated",
+    }
     for k, v in record.items():
         if k not in extra_skip:
             parts.append(f"{k}={v}")
@@ -176,18 +191,27 @@ def main() -> None:
         description="Tail the SOLVENT structured event log.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("-n", "--lines", type=int, default=20, metavar="N",
-                   help="number of recent lines to show (default 20)")
-    p.add_argument("-f", "--follow", action="store_true",
-                   help="follow the log live (like tail -f)")
-    p.add_argument("--job", metavar="ID",
-                   help="filter to job ID (prefix match)")
-    p.add_argument("--stage", metavar="STAGE",
-                   help="filter to a specific pipeline stage")
-    p.add_argument("--json", dest="as_json", action="store_true",
-                   help="emit raw JSON lines")
-    p.add_argument("--path", action="store_true",
-                   help="print the log file path and exit")
+    p.add_argument(
+        "-n",
+        "--lines",
+        type=int,
+        default=20,
+        metavar="N",
+        help="number of recent lines to show (default 20)",
+    )
+    p.add_argument(
+        "-f", "--follow", action="store_true", help="follow the log live (like tail -f)"
+    )
+    p.add_argument("--job", metavar="ID", help="filter to job ID (prefix match)")
+    p.add_argument(
+        "--stage", metavar="STAGE", help="filter to a specific pipeline stage"
+    )
+    p.add_argument(
+        "--json", dest="as_json", action="store_true", help="emit raw JSON lines"
+    )
+    p.add_argument(
+        "--path", action="store_true", help="print the log file path and exit"
+    )
     args = p.parse_args()
 
     if args.path:

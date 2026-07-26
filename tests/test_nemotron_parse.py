@@ -111,7 +111,9 @@ class TestNemotronParse(unittest.TestCase):
         self.assertEqual(parse_tool_calls("no json here at all"), [])
 
     def test_malformed_json_is_skipped(self):
-        self.assertEqual(parse_tool_calls('<tool_call>{"name": "x", arguments:}</tool_call>'), [])
+        self.assertEqual(
+            parse_tool_calls('<tool_call>{"name": "x", arguments:}</tool_call>'), []
+        )
 
 
 class TestLiveRetry(unittest.TestCase):
@@ -126,12 +128,18 @@ class TestLiveRetry(unittest.TestCase):
                 raise urllib.error.URLError("connection reset")
             return {
                 "choices": [{"message": {"content": "ok"}}],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
             }
 
-        with patch.object(nemotron, "_live_request", side_effect=flaky), \
-             patch.object(nemotron, "MAX_RETRIES", 3), \
-             patch.object(nemotron.time, "sleep", lambda *_: None):
+        with (
+            patch.object(nemotron, "_live_request", side_effect=flaky),
+            patch.object(nemotron, "MAX_RETRIES", 3),
+            patch.object(nemotron.time, "sleep", lambda *_: None),
+        ):
             text, usage = nemotron._live_complete("sys", "usr")
 
         self.assertEqual(text, "ok")
@@ -145,11 +153,15 @@ class TestLiveRetry(unittest.TestCase):
 
         def bad_key(system, user):
             calls["n"] += 1
-            raise urllib.error.HTTPError(nemotron.ENDPOINT, 401, "Unauthorized", {}, None)
+            raise urllib.error.HTTPError(
+                nemotron.ENDPOINT, 401, "Unauthorized", {}, None
+            )
 
-        with patch.object(nemotron, "_live_request", side_effect=bad_key), \
-             patch.object(nemotron, "MAX_RETRIES", 3), \
-             patch.object(nemotron.time, "sleep", lambda *_: None):
+        with (
+            patch.object(nemotron, "_live_request", side_effect=bad_key),
+            patch.object(nemotron, "MAX_RETRIES", 3),
+            patch.object(nemotron.time, "sleep", lambda *_: None),
+        ):
             with self.assertRaises(urllib.error.HTTPError):
                 nemotron._live_complete("sys", "usr")
 

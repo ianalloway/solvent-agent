@@ -101,6 +101,7 @@ class WebhookLog:
         d = dict(row)
         # Add a human-readable timestamp field
         import datetime
+
         try:
             d["received_at_fmt"] = datetime.datetime.fromtimestamp(
                 d["received_at"]

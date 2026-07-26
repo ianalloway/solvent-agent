@@ -15,7 +15,13 @@ class TestWorkerResume(unittest.TestCase):
             t = Treasury(path=db)
             t.reset()
             t.seed(10_000)
-            t.upsert_job("J-stuck", "in_progress", topic="t", budget_cents=5000, job_payload_json={"id": "J-stuck"})
+            t.upsert_job(
+                "J-stuck",
+                "in_progress",
+                topic="t",
+                budget_cents=5000,
+                job_payload_json={"id": "J-stuck"},
+            )
             t.earn(5000, "paid", job_id="J-stuck", stripe_ref="pi_x")
             resumed = resume_incomplete_jobs(t)
             self.assertIn("J-stuck", resumed)

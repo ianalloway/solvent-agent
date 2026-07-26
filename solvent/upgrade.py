@@ -40,6 +40,7 @@ def _parse_version(v: str) -> tuple[int, ...]:
 
 def current_version() -> str:
     from . import __version__
+
     return __version__
 
 
@@ -81,7 +82,12 @@ def check_upgrade(*, quiet: bool = False) -> dict:
             print("  Upgrade with:  pip install --upgrade solvent-agent")
             print("  Or full extras: pip install --upgrade 'solvent-agent[all]'")
 
-    return {"current": current, "latest": latest, "up_to_date": up_to_date, "error": False}
+    return {
+        "current": current,
+        "latest": latest,
+        "up_to_date": up_to_date,
+        "error": False,
+    }
 
 
 def main():
@@ -117,7 +123,9 @@ def main():
 
     if not result["up_to_date"] and args.install:
         print("\nRunning: pip install --upgrade solvent-agent")
-        rc = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "solvent-agent"])
+        rc = subprocess.call(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "solvent-agent"]
+        )
         sys.exit(rc)
 
     if args.check and not result["up_to_date"]:
@@ -140,6 +148,7 @@ def background_update_hint() -> None:
     def _check() -> None:
         try:
             from .paths import data_dir
+
             stamp_path = data_dir() / ".upgrade_check"
             if stamp_path.exists():
                 last = float(stamp_path.read_text().strip())
@@ -147,7 +156,9 @@ def background_update_hint() -> None:
                     return
             latest = latest_pypi_version()
             stamp_path.write_text(str(time.time()))
-            if latest and not (_parse_version(current_version()) >= _parse_version(latest)):
+            if latest and not (
+                _parse_version(current_version()) >= _parse_version(latest)
+            ):
                 print(
                     f"\n[solvent] Update available: {current_version()} → {latest}"
                     f"  (pip install --upgrade solvent-agent)\n",

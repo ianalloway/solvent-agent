@@ -12,7 +12,9 @@ class TestPricing(unittest.TestCase):
         total_cost, breakdown = estimate_cost(job)
 
         # Defaults: 8000 tokens, 2 market data calls, 6 web search calls
-        expected_nemotron = round((8000 / 1000) * RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"])
+        expected_nemotron = round(
+            (8000 / 1000) * RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"]
+        )
         expected_market = 2 * RESOURCE_COSTS_CENTS["market_data_call"]
         expected_search = 6 * RESOURCE_COSTS_CENTS["web_search_call"]
         expected_pdf = RESOURCE_COSTS_CENTS["pdf_render"]
@@ -24,16 +26,18 @@ class TestPricing(unittest.TestCase):
         self.assertEqual(breakdown["pdf_render"], expected_pdf)
         self.assertEqual(breakdown["email_send"], expected_email)
 
-        expected_total = expected_nemotron + expected_market + expected_search + expected_pdf + expected_email
+        expected_total = (
+            expected_nemotron
+            + expected_market
+            + expected_search
+            + expected_pdf
+            + expected_email
+        )
         self.assertEqual(total_cost, expected_total)
 
     def test_estimate_cost_custom(self) -> None:
         """Test cost estimation with custom parameters."""
-        job = {
-            "est_tokens": 12_500,
-            "market_data_calls": 5,
-            "web_search_calls": 10
-        }
+        job = {"est_tokens": 12_500, "market_data_calls": 5, "web_search_calls": 10}
         total_cost, breakdown = estimate_cost(job)
 
         # Nemotron: 12.5 * 30 = 375 cents
@@ -55,7 +59,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 1000,  # $10 budget, less than $15 minimum
             "est_tokens": 2000,
             "market_data_calls": 1,
-            "web_search_calls": 2
+            "web_search_calls": 2,
         }
         q = quote(job, policy)
         self.assertFalse(q.accept)
@@ -75,7 +79,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 900,  # $9 budget, but cost is 965
             "est_tokens": 8000,
             "market_data_calls": 5,
-            "web_search_calls": 10
+            "web_search_calls": 10,
         }
         q = quote(job, policy)
         self.assertFalse(q.accept)
@@ -93,7 +97,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 1200,
             "est_tokens": 8000,
             "market_data_calls": 5,
-            "web_search_calls": 10
+            "web_search_calls": 10,
         }
         q = quote(job, policy)
         self.assertFalse(q.accept)
@@ -111,7 +115,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 2000,
             "est_tokens": 8000,
             "market_data_calls": 5,
-            "web_search_calls": 10
+            "web_search_calls": 10,
         }
         q = quote(job, policy)
         self.assertTrue(q.accept)

@@ -102,14 +102,19 @@ def seed_workspace(*, force: bool = False) -> Path:
         if src.is_file():
             shutil.copy2(src, dest)
         elif not dest.exists():
-            dest.write_text(f"# {name}\n\n(Edit this file to customize SOLVENT.)\n", encoding="utf-8")
+            dest.write_text(
+                f"# {name}\n\n(Edit this file to customize SOLVENT.)\n",
+                encoding="utf-8",
+            )
 
     return root
 
 
 def ensure_workspace() -> Path:
     root = workspace_path()
-    if not root.is_dir() or not any((root / f).exists() for f in ("SOUL.md", "AGENTS.md")):
+    if not root.is_dir() or not any(
+        (root / f).exists() for f in ("SOUL.md", "AGENTS.md")
+    ):
         return seed_workspace()
     return root
 
@@ -119,31 +124,39 @@ def list_workspace_files() -> list[dict]:
     out: list[dict] = []
     for name in BOOTSTRAP_FILES:
         p = root / name
-        out.append({
-            "name": name,
-            "path": str(p),
-            "exists": p.is_file(),
-            "bytes": p.stat().st_size if p.is_file() else 0,
-        })
+        out.append(
+            {
+                "name": name,
+                "path": str(p),
+                "exists": p.is_file(),
+                "bytes": p.stat().st_size if p.is_file() else 0,
+            }
+        )
     mem = root / "memory"
     if mem.is_dir():
         for p in sorted(mem.glob("*.md"))[-7:]:
-            out.append({
-                "name": f"memory/{p.name}",
-                "path": str(p),
-                "exists": True,
-                "bytes": p.stat().st_size,
-            })
+            out.append(
+                {
+                    "name": f"memory/{p.name}",
+                    "path": str(p),
+                    "exists": True,
+                    "bytes": p.stat().st_size,
+                }
+            )
     for skills_root in (root / "skills", SKILLS_DIR):
         if not skills_root.is_dir():
             continue
         for name, path in _iter_skills(skills_root):
-            out.append({
-                "name": f"skills/{name}/SKILL.md" if path.name == "SKILL.md" else f"skills/{path.name}",
-                "path": str(path),
-                "exists": True,
-                "bytes": path.stat().st_size,
-            })
+            out.append(
+                {
+                    "name": f"skills/{name}/SKILL.md"
+                    if path.name == "SKILL.md"
+                    else f"skills/{path.name}",
+                    "path": str(path),
+                    "exists": True,
+                    "bytes": path.stat().st_size,
+                }
+            )
     return out
 
 

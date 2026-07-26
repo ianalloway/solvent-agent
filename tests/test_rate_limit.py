@@ -193,12 +193,16 @@ class TestPersistence(unittest.TestCase):
             db_path = os.path.join(tmpdir, "rl.db")
 
             # First instance — make 3 requests
-            rl1 = RateLimiter(db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000)
+            rl1 = RateLimiter(
+                db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000
+            )
             for _ in range(3):
                 rl1.check("user:persist")
 
             # Second instance pointing at the same DB
-            rl2 = RateLimiter(db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000)
+            rl2 = RateLimiter(
+                db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000
+            )
             s = rl2.stats("user:persist")
             self.assertEqual(s["burst_count"], 3)
             self.assertEqual(s["hourly_count"], 3)

@@ -25,7 +25,13 @@ class TestStagesIdempotency(unittest.TestCase):
                 "market_data_calls": 1,
                 "web_search_calls": 1,
             }
-            link = {"id": "cs_sim", "url": "http://x", "amount_cents": 5000, "simulated": True, "job_id": "J-idem"}
+            link = {
+                "id": "cs_sim",
+                "url": "http://x",
+                "amount_cents": 5000,
+                "simulated": True,
+                "job_id": "J-idem",
+            }
             payment = {
                 "paid": True,
                 "stripe_ref": "pi_idem",
@@ -38,20 +44,57 @@ class TestStagesIdempotency(unittest.TestCase):
                 "resources_used": [],
                 "actual_cost_cents": 0,
                 "fulfillment_seconds": 0.5,
-                "tool_ctx": type("C", (), {"total_calls": 0, "market_data_calls": 0, "web_search_calls": 0})(),
+                "tool_ctx": type(
+                    "C",
+                    (),
+                    {"total_calls": 0, "market_data_calls": 0, "web_search_calls": 0},
+                )(),
                 "usage": {"total_tokens": 50},
             }
             Path(fulfill["deliverable_path"]).write_text("# brief")
 
-            with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False):
-                with mock.patch.object(agent.stripe, "create_checkout_session", return_value=link):
-                    with mock.patch.object(agent.stripe, "confirm_payment", return_value=payment):
-                        with mock.patch("solvent.service.fulfill", return_value=fulfill):
-                            with mock.patch("solvent.delivery.send_brief_email", return_value={"simulated": True}):
+            with mock.patch.dict(
+                "os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
+            ):
+                with mock.patch.object(
+                    agent.stripe, "create_checkout_session", return_value=link
+                ):
+                    with mock.patch.object(
+                        agent.stripe, "confirm_payment", return_value=payment
+                    ):
+                        with mock.patch(
+                            "solvent.service.fulfill", return_value=fulfill
+                        ):
+                            with mock.patch(
+                                "solvent.delivery.send_brief_email",
+                                return_value={"simulated": True},
+                            ):
                                 agent.handle_job(job)
-                                rev1 = len([e for e in agent.t.entries if e.kind == "revenue" and e.job_id == "J-idem"])
-                                agent._runner._stage_paid(job, link, agent._runner._stage_quote(job).get("_quote") or mock.Mock(price_cents=5000, est_cost_cents=100, margin_cents=4900, margin_pct=90))
-                                rev2 = len([e for e in agent.t.entries if e.kind == "revenue" and e.job_id == "J-idem"])
+                                rev1 = len(
+                                    [
+                                        e
+                                        for e in agent.t.entries
+                                        if e.kind == "revenue" and e.job_id == "J-idem"
+                                    ]
+                                )
+                                agent._runner._stage_paid(
+                                    job,
+                                    link,
+                                    agent._runner._stage_quote(job).get("_quote")
+                                    or mock.Mock(
+                                        price_cents=5000,
+                                        est_cost_cents=100,
+                                        margin_cents=4900,
+                                        margin_pct=90,
+                                    ),
+                                )
+                                rev2 = len(
+                                    [
+                                        e
+                                        for e in agent.t.entries
+                                        if e.kind == "revenue" and e.job_id == "J-idem"
+                                    ]
+                                )
             self.assertEqual(rev1, 1)
             self.assertEqual(rev2, 1)
 

@@ -16,7 +16,9 @@ from solvent.delivery import (
 
 class TestDelivery(unittest.TestCase):
     def setUp(self):
-        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
+        self._env = mock.patch.dict(
+            os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
+        )
         self._env.start()
 
     def tearDown(self):
@@ -33,7 +35,11 @@ class TestDelivery(unittest.TestCase):
                 make_delivery_token("J1")
             self.assertFalse(verify_delivery_token("J1", "123.bad"))
 
-        with mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "change-me-in-production"}, clear=True):
+        with mock.patch.dict(
+            os.environ,
+            {"SOLVENT_DELIVERY_SECRET": "change-me-in-production"},
+            clear=True,
+        ):
             with self.assertRaises(RuntimeError):
                 make_delivery_token("J1")
             self.assertFalse(verify_delivery_token("J1", "123.bad"))
@@ -52,7 +58,9 @@ class TestDelivery(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             brief = Path(tmp) / "J1.md"
             brief.write_text("# Test brief")
-            result = send_brief_email("user@test.com", "J1", brief, "http://localhost/briefs/J1")
+            result = send_brief_email(
+                "user@test.com", "J1", brief, "http://localhost/briefs/J1"
+            )
             self.assertTrue(result["simulated"])
             self.assertTrue(Path(result["path"]).is_file())
 

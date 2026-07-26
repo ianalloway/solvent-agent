@@ -89,7 +89,9 @@ def _doctor_notes(cfg: SolventConfig) -> list[str]:
         notes.append(
             f"{C_YELLOW}STRIPE_API_KEY not set — Stripe will run in simulator mode.{C_RESET}"
         )
-    if cfg.stripe_test_mode and os.environ.get("STRIPE_API_KEY", "").startswith("sk_live_"):
+    if cfg.stripe_test_mode and os.environ.get("STRIPE_API_KEY", "").startswith(
+        "sk_live_"
+    ):
         notes.append(
             f"{C_RED}STRIPE_API_KEY is a live key — SOLVENT refuses sk_live_* keys.{C_RESET}"
         )
@@ -101,13 +103,17 @@ def _doctor_notes(cfg: SolventConfig) -> list[str]:
 
 
 def _print_summary(cfg: SolventConfig, path):
-    model_label = "Offline stub" if cfg.model == "offline" else f"Nemotron ({cfg.nemotron_model})"
+    model_label = (
+        "Offline stub" if cfg.model == "offline" else f"Nemotron ({cfg.nemotron_model})"
+    )
     mode_labels = {
         "batch": "Batch demo (4 sample jobs)",
         "interactive": "Interactive REPL",
         "programmatic": "Programmatic (library only)",
     }
-    stripe_label = "Test mode (real Payment Links)" if cfg.stripe_test_mode else "Simulated"
+    stripe_label = (
+        "Test mode (real Payment Links)" if cfg.stripe_test_mode else "Simulated"
+    )
 
     print(f"\n{C_GREEN}✓ Setup complete{C_RESET} — saved to {C_BLUE}{path}{C_RESET}")
     print(BAR)
@@ -137,8 +143,14 @@ def run_wizard() -> SolventConfig:
         "Step 1 — Choose reasoning model",
         [
             ("Offline stub", "Zero credentials · deterministic briefs (demo default)"),
-            ("NVIDIA Nemotron", "Live inference · set NVIDIA_API_KEY in your environment"),
-            ("Custom endpoint", "Future: OpenAI-compatible URL · uses offline stub for now"),
+            (
+                "NVIDIA Nemotron",
+                "Live inference · set NVIDIA_API_KEY in your environment",
+            ),
+            (
+                "Custom endpoint",
+                "Future: OpenAI-compatible URL · uses offline stub for now",
+            ),
         ],
         default=1,
     )
@@ -183,7 +195,9 @@ def run_wizard() -> SolventConfig:
 
     # --- Telegram (optional channel) ---------------------------------------
     print(f"\n{C_BOLD}Step 4 — Telegram bot (optional){C_RESET}")
-    print(f"  {C_GREY}Requires TELEGRAM_BOT_TOKEN in env · see docs/TELEGRAM.md{C_RESET}")
+    print(
+        f"  {C_GREY}Requires TELEGRAM_BOT_TOKEN in env · see docs/TELEGRAM.md{C_RESET}"
+    )
     telegram_enabled = _yes_no("Enable Telegram in config?", default=False)
     telegram_dm_policy = "pairing"
     telegram_allow_from = None

@@ -20,6 +20,7 @@ class TestReconcile(unittest.TestCase):
 class TestReconcileLiveKeyRefusal(unittest.TestCase):
     def _report_with_key(self, key):
         import os as _os
+
         old = _os.environ.get("STRIPE_API_KEY")
         _os.environ["STRIPE_API_KEY"] = key
         try:

@@ -10,6 +10,7 @@ from unittest import mock
 # Receipt builder unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildReceipt(unittest.TestCase):
     def _make_job(self, **overrides):
         base = {
@@ -23,24 +24,28 @@ class TestBuildReceipt(unittest.TestCase):
 
     def test_contains_job_id(self):
         from solvent.receipt import build_receipt
+
         job = self._make_job()
         receipt = build_receipt(job, pnl_cents=2000, balance_cents=12000)
         self.assertIn("Jabc1234", receipt)
 
     def test_contains_full_job_id_in_ref_line(self):
         from solvent.receipt import build_receipt
+
         job = self._make_job()
         receipt = build_receipt(job, pnl_cents=2000, balance_cents=12000)
         self.assertIn("Jabc12345678", receipt)
 
     def test_contains_topic(self):
         from solvent.receipt import build_receipt
+
         job = self._make_job()
         receipt = build_receipt(job, pnl_cents=2000, balance_cents=12000)
         self.assertIn("AI trends 2025", receipt)
 
     def test_formatted_dollar_amounts(self):
         from solvent.receipt import build_receipt
+
         job = self._make_job(revenue_cents=5000)
         receipt = build_receipt(job, pnl_cents=2000, balance_cents=12000)
         # Revenue
@@ -52,18 +57,21 @@ class TestBuildReceipt(unittest.TestCase):
 
     def test_status_present(self):
         from solvent.receipt import build_receipt
+
         job = self._make_job(status="completed")
         receipt = build_receipt(job, pnl_cents=500, balance_cents=8000)
         self.assertIn("completed", receipt)
 
     def test_zero_revenue_does_not_crash(self):
         from solvent.receipt import build_receipt
+
         job = self._make_job(revenue_cents=0, budget_cents=0)
         receipt = build_receipt(job, pnl_cents=0, balance_cents=0)
         self.assertIn("$0.00", receipt)
 
     def test_negative_pnl(self):
         from solvent.receipt import build_receipt
+
         job = self._make_job(revenue_cents=1000)
         receipt = build_receipt(job, pnl_cents=-200, balance_cents=5000)
         self.assertIn("$-2.00", receipt)
@@ -73,27 +81,32 @@ class TestBuildReceipt(unittest.TestCase):
 # Refund receipt tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildRefundReceipt(unittest.TestCase):
     def test_mentions_refund(self):
         from solvent.receipt import build_refund_receipt
+
         job = {"id": "Jrefund001", "topic": "Market analysis", "status": "failed"}
         receipt = build_refund_receipt(job, refund_cents=3000)
         self.assertIn("Refund", receipt)
 
     def test_refund_amount_formatted(self):
         from solvent.receipt import build_refund_receipt
+
         job = {"id": "Jrefund001", "topic": "Market analysis"}
         receipt = build_refund_receipt(job, refund_cents=3000)
         self.assertIn("$30.00", receipt)
 
     def test_contains_job_id(self):
         from solvent.receipt import build_refund_receipt
+
         job = {"id": "Jrefund001", "topic": "Market analysis"}
         receipt = build_refund_receipt(job, refund_cents=3000)
         self.assertIn("Jrefund001", receipt)
 
     def test_contains_reason_if_present(self):
         from solvent.receipt import build_refund_receipt
+
         job = {"id": "J001", "topic": "T", "error_reason": "guardrail triggered"}
         receipt = build_refund_receipt(job, refund_cents=500)
         self.assertIn("guardrail triggered", receipt)
@@ -103,9 +116,11 @@ class TestBuildRefundReceipt(unittest.TestCase):
 # HTML receipt tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildHtmlReceipt(unittest.TestCase):
     def test_is_html(self):
         from solvent.receipt import build_html_receipt
+
         job = {
             "id": "Jhtml001234",
             "topic": "Quantum computing",
@@ -117,6 +132,7 @@ class TestBuildHtmlReceipt(unittest.TestCase):
 
     def test_contains_dollar_amounts(self):
         from solvent.receipt import build_html_receipt
+
         job = {
             "id": "Jhtml001234",
             "topic": "Quantum computing",
@@ -130,7 +146,13 @@ class TestBuildHtmlReceipt(unittest.TestCase):
 
     def test_contains_job_id(self):
         from solvent.receipt import build_html_receipt
-        job = {"id": "JhtmlABC", "topic": "Topic", "status": "completed", "revenue_cents": 0}
+
+        job = {
+            "id": "JhtmlABC",
+            "topic": "Topic",
+            "status": "completed",
+            "revenue_cents": 0,
+        }
         html = build_html_receipt(job, pnl_cents=0, balance_cents=0)
         self.assertIn("JhtmlABC", html)
 
@@ -138,6 +160,7 @@ class TestBuildHtmlReceipt(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Server endpoint tests
 # ---------------------------------------------------------------------------
+
 
 class TestReceiptEndpoint(unittest.TestCase):
     """Tests for the /api/receipt/{job_id} GET endpoint.
@@ -182,7 +205,9 @@ class TestReceiptEndpoint(unittest.TestCase):
             if not row:
                 raise HTTPException(404, "job not found")
             client_host = (
-                getattr(request.client, "host", "") if (request and request.client) else ""
+                getattr(request.client, "host", "")
+                if (request and request.client)
+                else ""
             )
             is_local = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
             if not is_local and not verify_delivery_token(job_id, token):
@@ -195,6 +220,7 @@ class TestReceiptEndpoint(unittest.TestCase):
 
     def _make_agent_with_job(self, job_id: str, topic: str = "Test topic"):
         from solvent.agent import Solvent
+
         a = Solvent(seed_cents=10_000, fresh=True, sync_payment=False)
         a.t.upsert_job(
             job_id,
@@ -214,6 +240,7 @@ class TestReceiptEndpoint(unittest.TestCase):
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
         from solvent.agent import Solvent
+
         agent = Solvent(seed_cents=5_000, fresh=True, sync_payment=False)
         client = TestClient(self._make_receipt_app(agent))
         response = client.get("/api/receipt/NONEXISTENT-JOB-XYZ")

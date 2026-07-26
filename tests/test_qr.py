@@ -36,12 +36,13 @@ def test_render_token_uri_uses_tls_for_https_ports() -> None:
 def test_render_token_uri_omits_tls_for_other_ports() -> None:
     out = render_token("TOK123", host="pair.example.com", port=8080)
     assert (
-        "URI: solvent://pair?host=pair.example.com&port=8080&tls=0&token=TOK123"
-        in out
+        "URI: solvent://pair?host=pair.example.com&port=8080&tls=0&token=TOK123" in out
     )
 
 
-@pytest.mark.skipif(_QRCODE_AVAILABLE, reason="qrcode installed: PNG path covered below")
+@pytest.mark.skipif(
+    _QRCODE_AVAILABLE, reason="qrcode installed: PNG path covered below"
+)
 def test_png_bytes_returns_none_when_qrcode_absent() -> None:
     assert png_bytes("TOK123") is None
     assert png_bytes("TOK123", host="h", port=443) is None

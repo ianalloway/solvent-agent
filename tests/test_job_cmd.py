@@ -30,13 +30,17 @@ def _seed(t: Treasury, n: int = 3) -> list[str]:
     statuses = ["awaiting_payment", "in_progress", "completed", "failed"]
     for i in range(n):
         jid = f"job_{i:03d}"
-        t.upsert_job(jid, statuses[i % len(statuses)], topic=f"Topic {i}", budget_cents=(i + 1) * 1000)
+        t.upsert_job(
+            jid,
+            statuses[i % len(statuses)],
+            topic=f"Topic {i}",
+            budget_cents=(i + 1) * 1000,
+        )
         ids.append(jid)
     return ids
 
 
 class TestHelpers(unittest.TestCase):
-
     def test_fmt_cents_basic(self):
         self.assertEqual(_fmt_cents(500), "$5.00")
 
@@ -48,11 +52,13 @@ class TestHelpers(unittest.TestCase):
 
     def test_fmt_ts_valid(self):
         import time
+
         result = _fmt_ts(time.time())
         self.assertRegex(result, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 
     def test_ago_seconds(self):
         import time
+
         self.assertIn("s", _ago(time.time() - 10))
 
     def test_ago_none(self):
@@ -67,7 +73,6 @@ class TestHelpers(unittest.TestCase):
 
 
 class TestCmdList(unittest.TestCase):
-
     def test_empty_treasury_prints_no_jobs(self):
         t = _fresh_treasury()
         buf = io.StringIO()
@@ -125,7 +130,6 @@ class TestCmdList(unittest.TestCase):
 
 
 class TestCmdShow(unittest.TestCase):
-
     def test_show_missing_job_exits(self):
         t = _fresh_treasury()
         with self.assertRaises(SystemExit):
@@ -154,7 +158,6 @@ class TestCmdShow(unittest.TestCase):
 
 
 class TestCmdEvents(unittest.TestCase):
-
     def test_events_missing_job_exits(self):
         t = _fresh_treasury()
         with self.assertRaises(SystemExit):
@@ -193,7 +196,6 @@ class TestCmdEvents(unittest.TestCase):
 
 
 class TestCmdCancel(unittest.TestCase):
-
     def test_cancel_missing_exits(self):
         t = _fresh_treasury()
         with self.assertRaises(SystemExit):
@@ -221,12 +223,14 @@ class TestCmdCancel(unittest.TestCase):
 
 
 class TestJobsCLI(unittest.TestCase):
-
     def test_main_list_no_args(self):
         from solvent.job_cmd import main
+
         buf = io.StringIO()
-        with mock.patch("solvent.job_cmd.cmd_list") as mock_list, \
-             mock.patch.object(sys, "argv", ["solvent-jobs"]):
+        with (
+            mock.patch("solvent.job_cmd.cmd_list") as mock_list,
+            mock.patch.object(sys, "argv", ["solvent-jobs"]),
+        ):
             # cmd_list is called; it should receive a Treasury and no filter
             mock_list.side_effect = lambda t, **kw: print("No jobs", file=sys.stdout)
             with redirect_stdout(buf):
@@ -235,9 +239,12 @@ class TestJobsCLI(unittest.TestCase):
 
     def test_main_list_subcommand(self):
         from solvent.job_cmd import main
+
         buf = io.StringIO()
-        with mock.patch("solvent.job_cmd.cmd_list") as mock_list, \
-             mock.patch.object(sys, "argv", ["solvent-jobs", "list"]):
+        with (
+            mock.patch("solvent.job_cmd.cmd_list") as mock_list,
+            mock.patch.object(sys, "argv", ["solvent-jobs", "list"]),
+        ):
             mock_list.side_effect = lambda t, **kw: print("No jobs", file=sys.stdout)
             with redirect_stdout(buf):
                 main()

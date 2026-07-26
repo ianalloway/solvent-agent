@@ -23,11 +23,13 @@ class TestConfig(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         self._orig_path = CONFIG_PATH
         import solvent.config as cfg_mod
+
         cfg_mod.CONFIG_DIR = Path(self._tmpdir.name) / ".solvent"
         cfg_mod.CONFIG_PATH = cfg_mod.CONFIG_DIR / "config.json"
 
     def tearDown(self):
         import solvent.config as cfg_mod
+
         cfg_mod.CONFIG_DIR = self._orig_path.parent
         cfg_mod.CONFIG_PATH = self._orig_path
         self._tmpdir.cleanup()
@@ -89,6 +91,7 @@ class TestConfig(unittest.TestCase):
     def test_saved_json_shape(self):
         save_config(default_config())
         import solvent.config as cfg_mod
+
         data = json.loads(cfg_mod.CONFIG_PATH.read_text())
         self.assertIn("onboarded", data)
         self.assertIn("interaction_mode", data)

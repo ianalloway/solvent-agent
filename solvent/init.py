@@ -60,6 +60,7 @@ def run(*, force: bool = False) -> int:
     db_new = not db.exists()
     try:
         from .treasury import Treasury
+
         t = Treasury(path=str(db))
         # Touch the DB by running the lightest possible query
         with t._conn() as conn:
@@ -125,6 +126,7 @@ Documentation: https://github.com/ianalloway/solvent-agent
 
 def main():
     import argparse
+
     p = argparse.ArgumentParser(
         description="Initialise SOLVENT — create data dir, treasury DB, and workspace files.",
         formatter_class=argparse.RawDescriptionHelpFormatter,

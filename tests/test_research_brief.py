@@ -7,7 +7,9 @@ from solvent import nemotron
 
 
 def _tool(name="web_search", query="q"):
-    return f'<tool_call>{{"name":"{name}","arguments":{{"query":"{query}"}}}}</tool_call>'
+    return (
+        f'<tool_call>{{"name":"{name}","arguments":{{"query":"{query}"}}}}</tool_call>'
+    )
 
 
 class TestResearchBrief(unittest.TestCase):
@@ -44,7 +46,7 @@ class TestResearchBrief(unittest.TestCase):
         with patch.object(nemotron.tools, "MAX_TOOL_CALLS", 2):
             text, usage, ctx = nemotron.research_brief("topic")
         self.assertTrue(ctx.budget_exhausted)
-        self.assertEqual(ctx.total_calls, 2)        # capped, not 3
+        self.assertEqual(ctx.total_calls, 2)  # capped, not 3
         self.assertIn("Final", text)
         self.assertEqual(mock_complete.call_count, 2)  # one gather round + synth
 

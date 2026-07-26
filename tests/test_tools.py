@@ -8,7 +8,9 @@ from solvent.tools import ALLOWED_TOOLS, MAX_TOOL_CALLS, ToolContext, dispatch
 class TestTools(unittest.TestCase):
     def test_allowlist(self):
         ctx = ToolContext()
-        result = dispatch("web_search", {"query": "AI chips"}, ctx, lambda s, u: ("ok", {}))
+        result = dispatch(
+            "web_search", {"query": "AI chips"}, ctx, lambda s, u: ("ok", {})
+        )
         self.assertIn("offline web_search", result)
         self.assertEqual(ctx.web_search_calls, 1)
 
@@ -32,6 +34,7 @@ class TestTools(unittest.TestCase):
 
     def test_market_data_offline_is_stub(self):
         from solvent.tools import market_data
+
         out = market_data("NVDA", live=False)
         self.assertIn("offline stub", out)
 
@@ -40,6 +43,7 @@ class TestTools(unittest.TestCase):
         from unittest.mock import patch
 
         import solvent.tools as t
+
         with patch.object(t.urllib.request, "urlopen", side_effect=OSError("no net")):
             out = t.market_data("NVDA", live=True)
         self.assertIn("NVDA", out)

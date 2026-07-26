@@ -17,6 +17,7 @@ from solvent.onboarding import _doctor_notes, should_skip_onboarding, wants_reco
 # should_skip_onboarding
 # ---------------------------------------------------------------------------
 
+
 class TestShouldSkipOnboarding:
     def test_skips_on_no_onboard_flag(self) -> None:
         assert should_skip_onboarding(["--no-onboard"])
@@ -38,6 +39,7 @@ class TestShouldSkipOnboarding:
 # wants_reconfigure
 # ---------------------------------------------------------------------------
 
+
 class TestWantsReconfigure:
     def test_true_on_onboard_flag(self) -> None:
         assert wants_reconfigure(["--onboard"])
@@ -52,6 +54,7 @@ class TestWantsReconfigure:
 # ---------------------------------------------------------------------------
 # _doctor_notes — safety / readiness assertions
 # ---------------------------------------------------------------------------
+
 
 class TestDoctorNotes:
     def test_all_clear_with_defaults(self) -> None:
@@ -82,17 +85,13 @@ class TestDoctorNotes:
         notes = _doctor_notes(cfg)
         assert any("STRIPE_API_KEY" in n for n in notes)
 
-    def test_live_stripe_key_is_rejected(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_live_stripe_key_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("STRIPE_API_KEY", "sk_live_abc123fake")
         cfg = SolventConfig(stripe_test_mode=True)
         notes = _doctor_notes(cfg)
         assert any("sk_live_" in n for n in notes)
 
-    def test_test_mode_key_is_accepted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_test_mode_key_is_accepted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("STRIPE_API_KEY", "sk_test_abc123fake")
         cfg = SolventConfig(stripe_test_mode=True)
         notes = _doctor_notes(cfg)

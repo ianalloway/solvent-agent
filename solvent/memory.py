@@ -9,7 +9,9 @@ class SessionMemory:
     def __init__(self, treasury: Treasury | None = None):
         self.t = treasury or Treasury()
 
-    def get_or_create(self, channel: str, external_id: str, user_label: str | None = None) -> dict:
+    def get_or_create(
+        self, channel: str, external_id: str, user_label: str | None = None
+    ) -> dict:
         return self.t.get_or_create_chat_session(channel, external_id, user_label)
 
     def append(self, session_id: str, role: str, content: str) -> None:

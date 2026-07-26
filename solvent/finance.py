@@ -96,7 +96,9 @@ def unit_economics(entries: Iterable[LedgerEntry]) -> dict:
         "avg_revenue_cents": avg_rev,
         "avg_cost_cents": avg_exp,
         "avg_profit_cents": avg_profit,
-        "contribution_margin_pct": round(100 * avg_profit / avg_rev, 1) if avg_rev else 0.0,
+        "contribution_margin_pct": round(100 * avg_profit / avg_rev, 1)
+        if avg_rev
+        else 0.0,
     }
 
 
@@ -172,7 +174,9 @@ def sparkline(values: list[int]) -> str:
         return _SPARK_TICKS[0] * len(values)
     span = hi - lo
     return "".join(
-        _SPARK_TICKS[min(len(_SPARK_TICKS) - 1, (v - lo) * (len(_SPARK_TICKS) - 1) // span)]
+        _SPARK_TICKS[
+            min(len(_SPARK_TICKS) - 1, (v - lo) * (len(_SPARK_TICKS) - 1) // span)
+        ]
         for v in values
     )
 
@@ -204,8 +208,11 @@ def period_pnl(entries: Iterable[LedgerEntry], period: str = "day") -> list[dict
         key = _period_key(e.ts, period)
         if key not in buckets:
             buckets[key] = {
-                "period": key, "revenue_cents": 0, "operating_cost_cents": 0,
-                "net_cents": 0, "capital_cents": 0,
+                "period": key,
+                "revenue_cents": 0,
+                "operating_cost_cents": 0,
+                "net_cents": 0,
+                "capital_cents": 0,
             }
             order.append(key)
         b = buckets[key]
@@ -256,8 +263,8 @@ def forecast(entries: Iterable[LedgerEntry], *, horizon_days: int = 30) -> dict:
 
     mean = sum(nets) / len(nets)
     variance = sum((n - mean) ** 2 for n in nets) / (len(nets) - 1)
-    std = variance ** 0.5
-    band = std * (horizon_days ** 0.5)
+    std = variance**0.5
+    band = std * (horizon_days**0.5)
     projected = balance + mean * horizon_days
 
     base.update(

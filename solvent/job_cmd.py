@@ -51,16 +51,16 @@ def _ago(ts) -> str:
     if delta < 60:
         return f"{int(delta)}s"
     if delta < 3600:
-        return f"{int(delta/60)}m"
+        return f"{int(delta / 60)}m"
     if delta < 86400:
-        return f"{int(delta/3600)}h"
-    return f"{int(delta/86400)}d"
+        return f"{int(delta / 3600)}h"
+    return f"{int(delta / 86400)}d"
 
 
 def _fmt_cents(cents) -> str:
     if cents is None:
         return "—"
-    return f"${int(cents)/100:,.2f}"
+    return f"${int(cents) / 100:,.2f}"
 
 
 def _status_label(status: str) -> str:
@@ -79,7 +79,14 @@ def _col(s: str, width: int) -> str:
 # Sub-commands
 # ---------------------------------------------------------------------------
 
-def cmd_list(treasury, *, status_filter: str | None = None, limit: int = 20, as_json: bool = False):
+
+def cmd_list(
+    treasury,
+    *,
+    status_filter: str | None = None,
+    limit: int = 20,
+    as_json: bool = False,
+):
     jobs = treasury.list_jobs()
     if status_filter:
         jobs = [j for j in jobs if j.get("status") == status_filter]
@@ -172,7 +179,7 @@ def cmd_events(treasury, job_id: str, *, limit: int = 20, as_json: bool = False)
 
     print(f"Events for {job_id}:")
     print(f"  {'TIME':17} {'STAGE':20}")
-    print(f"  {'─'*17} {'─'*20}")
+    print(f"  {'─' * 17} {'─' * 20}")
     for ev in events:
         ts = _fmt_ts(ev.get("ts"))
         stage = ev.get("stage", "")
@@ -198,6 +205,7 @@ def cmd_cancel(treasury, job_id: str):
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main():
     import argparse
@@ -228,6 +236,7 @@ def main():
     cmd = args.cmd or "list"
 
     from .treasury import Treasury
+
     treasury = Treasury()
 
     if cmd == "list":

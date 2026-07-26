@@ -25,6 +25,7 @@ from solvent.logs import (
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
+
 def test_fmt_ts_returns_string():
     result = _fmt_ts(time.time())
     assert ":" in result and len(result) == 8  # HH:MM:SS
@@ -47,6 +48,7 @@ def test_fmt_margin():
 # _parse
 # ---------------------------------------------------------------------------
 
+
 def test_parse_valid_json():
     r = _parse('{"ts": 1.0, "stage": "fulfill"}')
     assert r == {"ts": 1.0, "stage": "fulfill"}
@@ -63,6 +65,7 @@ def test_parse_empty_string():
 # ---------------------------------------------------------------------------
 # _matches
 # ---------------------------------------------------------------------------
+
 
 def test_matches_no_filter():
     assert _matches({"job_id": "abc", "stage": "x"}, job=None, stage=None)
@@ -88,6 +91,7 @@ def test_matches_both_filters():
 # _human_line
 # ---------------------------------------------------------------------------
 
+
 def test_human_line_basic():
     r = {"ts": time.time(), "job_id": "deadbeef", "stage": "quote"}
     line = _human_line(r)
@@ -108,7 +112,12 @@ def test_human_line_with_margin():
 
 
 def test_human_line_with_stripe():
-    r = {"ts": time.time(), "job_id": "abc", "stage": "charge", "stripe_ref": "pi_123456789012345"}
+    r = {
+        "ts": time.time(),
+        "job_id": "abc",
+        "stage": "charge",
+        "stripe_ref": "pi_123456789012345",
+    }
     line = _human_line(r)
     assert "pi_123456789" in line
 
@@ -122,6 +131,7 @@ def test_human_line_extra_fields():
 # ---------------------------------------------------------------------------
 # _tail_lines
 # ---------------------------------------------------------------------------
+
 
 def test_tail_lines_nonexistent(tmp_path):
     assert _tail_lines(tmp_path / "missing.log", 10) == []
@@ -150,6 +160,7 @@ def test_tail_lines_fewer_than_n(tmp_path):
 # ---------------------------------------------------------------------------
 # show_logs
 # ---------------------------------------------------------------------------
+
 
 def _make_log(tmp_path: Path, records: list[dict]) -> Path:
     p = tmp_path / "solvent.log"
@@ -227,11 +238,13 @@ def test_show_logs_n_limits_output(tmp_path):
 # CLI main
 # ---------------------------------------------------------------------------
 
+
 def test_main_path_flag(tmp_path, capsys):
     with mock.patch("solvent.logs.log_path", return_value=tmp_path / "solvent.log"):
         with mock.patch("sys.argv", ["solvent", "--path"]):
             with pytest.raises(SystemExit) as exc:
                 from solvent.logs import main
+
                 main()
             assert exc.value.code == 0
     captured = capsys.readouterr()
@@ -245,5 +258,6 @@ def test_main_default_runs(tmp_path):
             buf = StringIO()
             with mock.patch("sys.stdout", buf):
                 from solvent.logs import main
+
                 main()
     assert "b" in buf.getvalue()

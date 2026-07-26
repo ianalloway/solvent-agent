@@ -60,10 +60,16 @@ def _resources_from_usage(
 def fulfill(job: dict) -> dict:
     """Produce the report and return deliverable metadata + resources_used."""
     try:
-        topic = sanitise_prompt_input(job.get("topic", ""), field_name="topic", max_len=500)
-        context = sanitise_prompt_input(
-            job.get("context", "n/a") or "n/a", field_name="context", max_len=2_000
-        ) if job.get("context") else "n/a"
+        topic = sanitise_prompt_input(
+            job.get("topic", ""), field_name="topic", max_len=500
+        )
+        context = (
+            sanitise_prompt_input(
+                job.get("context", "n/a") or "n/a", field_name="context", max_len=2_000
+            )
+            if job.get("context")
+            else "n/a"
+        )
     except (PromptInjectionError, InputValidationError) as exc:
         raise ValueError(f"job input rejected by security layer: {exc}") from exc
 
@@ -79,6 +85,7 @@ def fulfill(job: dict) -> dict:
     path.write_text(text)
 
     from .delivery import markdown_to_html
+
     html_content = markdown_to_html(text, job_id=job["id"], topic=job.get("topic"))
     html_path = path.with_suffix(".html")
     html_path.write_text(html_content, encoding="utf-8")
@@ -112,5 +119,7 @@ def reconcile_cogs(quote, result: dict) -> dict:
         "margin_drift_cents": drift,
         "cost_warning": warning,
         "fulfillment_seconds": result.get("fulfillment_seconds", 0),
-        "tool_calls": result.get("tool_ctx").total_calls if result.get("tool_ctx") else 0,
+        "tool_calls": result.get("tool_ctx").total_calls
+        if result.get("tool_ctx")
+        else 0,
     }

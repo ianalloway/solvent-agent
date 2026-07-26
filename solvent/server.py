@@ -51,16 +51,19 @@ def _require_fastapi():
     try:
         from fastapi import FastAPI, HTTPException
         from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+
         return FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse
     except ImportError as exc:
         raise RuntimeError(
             "FastAPI is required for `solvent serve`. "
-            "Install with: pip install -e \".[serve]\""
+            'Install with: pip install -e ".[serve]"'
         ) from exc
 
 
 def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
-    FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse = _require_fastapi()
+    FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse = (
+        _require_fastapi()
+    )
     hub = EventHub()
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, sync_payment=False)
     gateway = Gateway(agent=agent)
@@ -77,7 +80,10 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     def _refresh_status() -> dict:
         from . import dashboard
-        return _sanitize_status_data(dashboard.build_status_data(agent.t.snapshot(), agent.log))
+
+        return _sanitize_status_data(
+            dashboard.build_status_data(agent.t.snapshot(), agent.log)
+        )
 
     def _publish_status() -> None:
         nonlocal last_status_json
@@ -114,6 +120,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     async def _app_lifespan(app: object):
         hub.bind_loop(asyncio.get_running_loop())
         from . import dashboard
+
         dashboard.render(agent.t.snapshot(), agent.log, live=True)
 
         async def _poll_external_status():
@@ -125,9 +132,12 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                         mtime = status_path.stat().st_mtime
                         if mtime > last_mtime:
                             last_mtime = mtime
-                            data = _sanitize_status_data(json.loads(status_path.read_text(encoding="utf-8")))
+                            data = _sanitize_status_data(
+                                json.loads(status_path.read_text(encoding="utf-8"))
+                            )
                             hub.publish("status", {"data": data})
                     from .notifications import drain_chat_outbox
+
                     for row in drain_chat_outbox():
                         if row.get("channel") != "dashboard":
                             continue
@@ -161,6 +171,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     def api_pair_qr():
         """Generate an OpenClaw pairing token and return a QR code PNG (or JSON fallback)."""
         import os
+
         token = agent.t.create_openclaw_token(ttl=600)
         base_url = os.environ.get("SOLVENT_BASE_URL", "")
         host = base_url.replace("https://", "").replace("http://", "").split("/")[0]
@@ -171,11 +182,15 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             port = 443
             host_name = host
         from . import qr as _qr
+
         png = _qr.png_bytes(token, host=host_name, port=port)
         if png:
             from starlette.responses import Response
+
             return Response(content=png, media_type="image/png")
-        return JSONResponse({"token": token, "note": "install qrcode[pil] for PNG output"})
+        return JSONResponse(
+            {"token": token, "note": "install qrcode[pil] for PNG output"}
+        )
 
     @app.post("/api/pair/verify")
     async def api_pair_verify(req: Request):
@@ -191,6 +206,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     @app.get("/")
     def dashboard_page():
         from . import dashboard
+
         path = dashboard.render(agent.t.snapshot(), agent.log, live=True)
         return HTMLResponse(path.read_text(encoding="utf-8"))
 
@@ -229,7 +245,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         if not message:
             raise HTTPException(400, "message required")
         session_id = body.session_id or "dashboard-default"
-        reply = gateway.handle_inbound("dashboard", session_id, message, user_label="dashboard")
+        reply = gateway.handle_inbound(
+            "dashboard", session_id, message, user_label="dashboard"
+        )
         _publish_status()
         return {"reply": reply, "session_id": session_id}
 
@@ -238,6 +256,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         payload = body.model_dump(exclude_none=True)
         if not payload.get("id"):
             import uuid
+
             payload["id"] = "J" + uuid.uuid4().hex[:8]
         result = agent.enqueue_job(payload)
         _publish_status()
@@ -248,6 +267,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         payload = body.model_dump(exclude_none=True)
         if not payload.get("id"):
             import uuid
+
             payload["id"] = "J" + uuid.uuid4().hex[:8]
         result = agent.enqueue_job(payload)
         _publish_status()
@@ -286,12 +306,14 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 raise HTTPException(403, "invalid or expired delivery token")
 
         from .receipt import build_receipt
+
         job_dict = dict(row)
         pnl = agent.t.job_pnl_cents(job_id)
         balance = agent.t.balance_cents()
         text = build_receipt(job_dict, pnl, balance)
 
         from starlette.responses import PlainTextResponse
+
         return PlainTextResponse(text)
 
     @app.post("/webhooks/stripe")
@@ -332,7 +354,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         try:
             path_md.relative_to(reports_dir)
             if path_md.is_file():
-                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
+                return HTMLResponse(
+                    markdown_to_html(path_md.read_text(encoding="utf-8"))
+                )
         except ValueError:
             raise HTTPException(404, "brief not found") from None
 
@@ -371,7 +395,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         try:
             path_md.relative_to(reports_dir)
             if path_md.is_file():
-                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
+                return HTMLResponse(
+                    markdown_to_html(path_md.read_text(encoding="utf-8"))
+                )
         except ValueError:
             raise HTTPException(404, "brief not found") from None
 
@@ -410,8 +436,11 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="SOLVENT HTTP server")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("SOLVENT_PORT", "8787")))
+    parser.add_argument(
+        "--port", type=int, default=int(os.environ.get("SOLVENT_PORT", "8787"))
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--seed", type=float, default=100.0)
     parser.add_argument("--keep-balance", action="store_true")
@@ -419,7 +448,7 @@ def main():
     try:
         import uvicorn
     except ImportError as exc:
-        raise RuntimeError("uvicorn required: pip install -e \".[serve]\"") from exc
+        raise RuntimeError('uvicorn required: pip install -e ".[serve]"') from exc
     app = create_app(seed_cents=int(args.seed * 100), fresh=not args.keep_balance)
     uvicorn.run(app, host=args.host, port=args.port)
 

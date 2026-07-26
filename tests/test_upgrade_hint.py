@@ -14,6 +14,7 @@ from solvent.upgrade import background_update_hint
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _join_threads(timeout: float = 2.0) -> None:
     """Wait for all non-main daemon threads to finish."""
     for t in threading.enumerate():
@@ -24,6 +25,7 @@ def _join_threads(timeout: float = 2.0) -> None:
 # ---------------------------------------------------------------------------
 # Env-var guard
 # ---------------------------------------------------------------------------
+
 
 def test_env_var_suppresses_hint(tmp_path: Path) -> None:
     """SOLVENT_NO_UPDATE_CHECK=1 must prevent any thread from starting."""
@@ -38,12 +40,16 @@ def test_env_var_suppresses_hint(tmp_path: Path) -> None:
 # Happy-path: outdated version prints to stderr
 # ---------------------------------------------------------------------------
 
+
 def test_prints_hint_when_outdated(tmp_path: Path) -> None:
-    with mock.patch.dict(
-        "os.environ",
-        {"SOLVENT_NO_UPDATE_CHECK": "", "SOLVENT_HOME": str(tmp_path)},
-        clear=False,
-    ), mock.patch("solvent.upgrade.latest_pypi_version", return_value="999.0.0"):
+    with (
+        mock.patch.dict(
+            "os.environ",
+            {"SOLVENT_NO_UPDATE_CHECK": "", "SOLVENT_HOME": str(tmp_path)},
+            clear=False,
+        ),
+        mock.patch("solvent.upgrade.latest_pypi_version", return_value="999.0.0"),
+    ):
         with mock.patch("solvent.upgrade.current_version", return_value="0.1.0"):
             with mock.patch("solvent.paths.data_dir", return_value=tmp_path):
                 stderr = StringIO()
@@ -59,6 +65,7 @@ def test_prints_hint_when_outdated(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Up-to-date: no output
 # ---------------------------------------------------------------------------
+
 
 def test_no_hint_when_up_to_date(tmp_path: Path) -> None:
     with mock.patch.dict("os.environ", {"SOLVENT_NO_UPDATE_CHECK": ""}, clear=False):
@@ -77,6 +84,7 @@ def test_no_hint_when_up_to_date(tmp_path: Path) -> None:
 # PyPI unreachable: no crash, no output
 # ---------------------------------------------------------------------------
 
+
 def test_no_hint_when_pypi_unreachable(tmp_path: Path) -> None:
     with mock.patch.dict("os.environ", {"SOLVENT_NO_UPDATE_CHECK": ""}, clear=False):
         with mock.patch("solvent.upgrade.latest_pypi_version", return_value=None):
@@ -92,6 +100,7 @@ def test_no_hint_when_pypi_unreachable(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Rate-limiting: second call within interval is suppressed
 # ---------------------------------------------------------------------------
+
 
 def test_rate_limit_suppresses_second_call(tmp_path: Path) -> None:
     stamp = tmp_path / ".upgrade_check"
@@ -126,6 +135,7 @@ def test_rate_limit_allows_call_after_interval(tmp_path: Path) -> None:
 # Stamp file is written after a successful check
 # ---------------------------------------------------------------------------
 
+
 def test_stamp_written_after_check(tmp_path: Path) -> None:
     stamp = tmp_path / ".upgrade_check"
     assert not stamp.exists()
@@ -145,6 +155,7 @@ def test_stamp_written_after_check(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Exceptions inside thread must not propagate
 # ---------------------------------------------------------------------------
+
 
 def test_exception_in_thread_does_not_raise(tmp_path: Path) -> None:
     with mock.patch.dict("os.environ", {"SOLVENT_NO_UPDATE_CHECK": ""}, clear=False):

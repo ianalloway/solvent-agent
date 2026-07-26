@@ -22,7 +22,9 @@ T_JAN2 = T_JAN1 + DAY
 
 
 def _e(kind, cents, *, job_id=None, vendor=None, ts=0.0):
-    return LedgerEntry(kind=kind, amount_cents=cents, memo="x", job_id=job_id, vendor=vendor, ts=ts)
+    return LedgerEntry(
+        kind=kind, amount_cents=cents, memo="x", job_id=job_id, vendor=vendor, ts=ts
+    )
 
 
 class TestIncomeStatement(unittest.TestCase):
@@ -51,8 +53,10 @@ class TestIncomeStatement(unittest.TestCase):
 class TestUnitEconomics(unittest.TestCase):
     def test_per_job_averages(self):
         entries = [
-            _e("revenue", 6000, job_id="J1"), _e("expense", 1000, job_id="J1"),
-            _e("revenue", 4000, job_id="J2"), _e("expense", 1000, job_id="J2"),
+            _e("revenue", 6000, job_id="J1"),
+            _e("expense", 1000, job_id="J1"),
+            _e("revenue", 4000, job_id="J2"),
+            _e("expense", 1000, job_id="J2"),
         ]
         ue = unit_economics(entries)
         self.assertEqual(ue["completed_jobs"], 2)
@@ -129,9 +133,9 @@ class TestPeriodPnl(unittest.TestCase):
         rows = period_pnl(entries, "day")
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["period"], "2021-01-01")
-        self.assertEqual(rows[0]["net_cents"], 4000)        # 5000 - 1000
+        self.assertEqual(rows[0]["net_cents"], 4000)  # 5000 - 1000
         self.assertEqual(rows[0]["ending_balance_cents"], 14000)  # +10000 capital
-        self.assertEqual(rows[1]["net_cents"], 1000)        # 3000 - 2000
+        self.assertEqual(rows[1]["net_cents"], 1000)  # 3000 - 2000
         self.assertEqual(rows[1]["ending_balance_cents"], 15000)
 
     def test_month_bucketing(self):
@@ -181,7 +185,9 @@ class TestForecast(unittest.TestCase):
 
     def test_nonpositive_horizon(self):
         entries = [_e("revenue", 100, ts=T_JAN1), _e("revenue", 100, ts=T_JAN2)]
-        self.assertEqual(forecast(entries, horizon_days=0)["status"], "insufficient_history")
+        self.assertEqual(
+            forecast(entries, horizon_days=0)["status"], "insufficient_history"
+        )
 
 
 class TestReport(unittest.TestCase):

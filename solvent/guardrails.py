@@ -38,16 +38,17 @@ class SpendPolicy:
         daily_budget_cents: Maximum cumulative amount in cents permitted in a rolling 24h period.
         min_reserve_cents: Minimum cash reserve in cents that must be kept in the treasury.
     """
+
     vendor_allowlist: tuple[str, ...] = (
-        "nvidia-nemotron",      # inference / compute
-        "market-data-api",      # data the analyst needs
+        "nvidia-nemotron",  # inference / compute
+        "market-data-api",  # data the analyst needs
         "web-search-api",
         "pdf-render-saas",
         "email-delivery-saas",
     )
-    max_txn_cents: int = 5_000          # $50 per single payment
-    daily_budget_cents: int = 25_000    # $250 / 24h
-    min_reserve_cents: int = 2_000      # keep at least $20 cash
+    max_txn_cents: int = 5_000  # $50 per single payment
+    daily_budget_cents: int = 25_000  # $250 / 24h
+    min_reserve_cents: int = 2_000  # keep at least $20 cash
 
 
 class GuardrailError(Exception):
@@ -65,8 +66,8 @@ class Decision:
     """
 
     allowed: bool
-    rule: str | None = None          # machine-readable rule id that denied
-    reason: str = "approved"         # human-readable explanation
+    rule: str | None = None  # machine-readable rule id that denied
+    reason: str = "approved"  # human-readable explanation
     amount_cents: int = 0
     vendor: str = ""
     spent_24h_cents: int = 0
@@ -87,7 +88,9 @@ class Decision:
 class Guardrails:
     """Enforces deterministic spend safety policies on all transaction requests."""
 
-    def __init__(self, treasury: Treasury | Any, policy: SpendPolicy | None = None) -> None:
+    def __init__(
+        self, treasury: Treasury | Any, policy: SpendPolicy | None = None
+    ) -> None:
         """Initialize the guardrails with a treasury instance and a spend policy.
 
         Args:
@@ -105,7 +108,8 @@ class Guardrails:
         """
         cutoff = time.time() - 86_400
         return sum(
-            e.amount_cents for e in self.t.entries
+            e.amount_cents
+            for e in self.t.entries
             if e.kind == "expense" and e.ts >= cutoff
         )
 
@@ -132,29 +136,44 @@ class Guardrails:
         }
 
         if vendor not in self.policy.vendor_allowlist:
-            return Decision(False, "vendor_allowlist", f"vendor '{vendor}' not on allowlist", **ctx)
+            return Decision(
+                False, "vendor_allowlist", f"vendor '{vendor}' not on allowlist", **ctx
+            )
 
         if amount_cents > self.policy.max_txn_cents:
             return Decision(
-                False, "max_txn_cap",
+                False,
+                "max_txn_cap",
                 f"txn {amount_cents}c exceeds per-transaction cap {self.policy.max_txn_cents}c",
                 **ctx,
             )
 
         if spent_24h + amount_cents > self.policy.daily_budget_cents:
-            return Decision(False, "daily_budget", "would exceed 24h spend budget", **ctx)
+            return Decision(
+                False, "daily_budget", "would exceed 24h spend budget", **ctx
+            )
 
         if balance - amount_cents < self.policy.min_reserve_cents:
-            return Decision(False, "min_reserve", "would breach minimum cash reserve", **ctx)
+            return Decision(
+                False, "min_reserve", "would breach minimum cash reserve", **ctx
+            )
 
         if projected_job_margin_cents is not None and projected_job_margin_cents <= 0:
             return Decision(
-                False, "roi", "job projected to be unprofitable; refusing to spend", **ctx
+                False,
+                "roi",
+                "job projected to be unprofitable; refusing to spend",
+                **ctx,
             )
 
         return Decision(True, None, "approved", **ctx)
 
-    def check_spend(self, amount_cents: int, vendor: str, projected_job_margin_cents: int | None = None) -> None:
+    def check_spend(
+        self,
+        amount_cents: int,
+        vendor: str,
+        projected_job_margin_cents: int | None = None,
+    ) -> None:
         """Raise GuardrailError if the spend violates policy. Returns None if OK.
 
         Args:
@@ -169,7 +188,12 @@ class Guardrails:
         if not decision.allowed:
             raise GuardrailError(decision.reason)
 
-    def approve(self, amount_cents: int, vendor: str, projected_job_margin_cents: int | None = None) -> bool:
+    def approve(
+        self,
+        amount_cents: int,
+        vendor: str,
+        projected_job_margin_cents: int | None = None,
+    ) -> bool:
         """Screen an outbound payment and return True if approved, False if blocked.
 
         Args:
@@ -181,4 +205,3 @@ class Guardrails:
             True if the payment is approved, False otherwise.
         """
         return self.evaluate(amount_cents, vendor, projected_job_margin_cents).allowed
-

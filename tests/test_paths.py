@@ -18,7 +18,9 @@ class TestPaths(unittest.TestCase):
                 self.assertEqual(paths.data_dir(), base / "data")
                 self.assertEqual(paths.db_path(), base / "data" / "solvent.db")
                 self.assertEqual(paths.reports_dir(), base / "data" / "reports")
-                self.assertEqual(paths.dashboard_html(), base / "treasury_dashboard.html")
+                self.assertEqual(
+                    paths.dashboard_html(), base / "treasury_dashboard.html"
+                )
                 self.assertTrue(paths.data_dir().is_dir())
 
     def test_source_checkout_uses_repo_root(self):
@@ -31,8 +33,10 @@ class TestPaths(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             env = {k: v for k, v in os.environ.items() if k != "SOLVENT_HOME"}
             env["HOME"] = home
-            with mock.patch.dict(os.environ, env, clear=True), \
-                 mock.patch.object(paths, "_is_source_checkout", return_value=False):
+            with (
+                mock.patch.dict(os.environ, env, clear=True),
+                mock.patch.object(paths, "_is_source_checkout", return_value=False),
+            ):
                 self.assertEqual(paths.base_dir(), Path(home) / ".solvent")
                 self.assertTrue((Path(home) / ".solvent").is_dir())
 
@@ -44,9 +48,11 @@ class TestTreasuryHonorsHome(unittest.TestCase):
                 # Treasury() with no explicit path should write under SOLVENT_HOME,
                 # not into the package/repo directory.
                 from solvent.paths import db_path
+
                 expected = Path(d).resolve() / "data" / "solvent.db"
                 self.assertEqual(db_path(), expected)
                 from solvent.treasury import Treasury
+
                 t = Treasury(path=db_path())
                 t.reset()
                 t.seed(5000)

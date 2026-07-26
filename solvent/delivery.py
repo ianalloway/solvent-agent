@@ -42,11 +42,15 @@ def make_delivery_token(job_id: str, ts: float | None = None) -> str:
         raise ValueError("unsafe job_id")
     ts = ts or time.time()
     payload = f"{job_id}:{int(ts)}"
-    sig = hmac.new(_delivery_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()
+    sig = hmac.new(
+        _delivery_secret().encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
     return f"{int(ts)}.{sig}"
 
 
-def verify_delivery_token(job_id: str, token: str, max_age_seconds: int = 7 * 86400) -> bool:
+def verify_delivery_token(
+    job_id: str, token: str, max_age_seconds: int = 7 * 86400
+) -> bool:
     if not is_safe_job_id(job_id) or not token or "." not in token:
         return False
     ts_str, sig = token.split(".", 1)
@@ -73,7 +77,7 @@ def hosted_brief_url(base_url: str, job_id: str) -> str:
 
 def _parse_bold(text: str) -> str:
     escaped = _esc(text)
-    return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', escaped)
+    return re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped)
 
 
 def markdown_to_html(
@@ -98,10 +102,16 @@ def markdown_to_html(
 
     rows = []
     if job_id:
-        rows.append(f"<div style='font-weight:600;'>Job ID:</div><div style='font-family:monospace;'>{_esc(job_id)}</div>")
+        rows.append(
+            f"<div style='font-weight:600;'>Job ID:</div><div style='font-family:monospace;'>{_esc(job_id)}</div>"
+        )
     if topic:
-        rows.append(f"<div style='font-weight:600;'>Topic:</div><div>{_esc(topic)}</div>")
-    rows.append(f"<div style='font-weight:600;'>Generated At:</div><div>{date_str}</div>")
+        rows.append(
+            f"<div style='font-weight:600;'>Topic:</div><div>{_esc(topic)}</div>"
+        )
+    rows.append(
+        f"<div style='font-weight:600;'>Generated At:</div><div>{date_str}</div>"
+    )
 
     metadata_rows = "\n".join(rows)
     metadata_html = f"""
@@ -131,10 +141,14 @@ def markdown_to_html(
                 html_lines.append("</table></div>")
                 in_table = False
             if not in_list:
-                html_lines.append("<ul style='list-style-type:disc; padding-left:1.5rem; margin-bottom:1.25rem;'>")
+                html_lines.append(
+                    "<ul style='list-style-type:disc; padding-left:1.5rem; margin-bottom:1.25rem;'>"
+                )
                 in_list = True
             content = _parse_bold(line_stripped[2:])
-            html_lines.append(f"<li style='margin-bottom:0.5rem; color:#9ca3af;'>{content}</li>")
+            html_lines.append(
+                f"<li style='margin-bottom:0.5rem; color:#9ca3af;'>{content}</li>"
+            )
             continue
         elif in_list:
             html_lines.append("</ul>")
@@ -149,7 +163,9 @@ def markdown_to_html(
                 in_list = False
 
             if not in_table:
-                html_lines.append("<div style='overflow-x:auto; margin:1.5rem 0;'><table style='width:100%; border-collapse:collapse; background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden;'>")
+                html_lines.append(
+                    "<div style='overflow-x:auto; margin:1.5rem 0;'><table style='width:100%; border-collapse:collapse; background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden;'>"
+                )
                 in_table = True
             cells = [c.strip() for c in line_stripped.split("|")[1:-1]]
 
@@ -158,7 +174,9 @@ def markdown_to_html(
                 continue
 
             # Determine if this is a header row
-            is_header = len(html_lines) > 0 and html_lines[-1].startswith("<div style='overflow-x:auto")
+            is_header = len(html_lines) > 0 and html_lines[-1].startswith(
+                "<div style='overflow-x:auto"
+            )
             tag = "th" if is_header else "td"
             style = "padding:0.75rem 1rem; border:1px solid rgba(255,255,255,0.08); text-align:left;"
             if is_header:
@@ -179,16 +197,24 @@ def markdown_to_html(
 
         # Handle headers
         if line_stripped.startswith("# "):
-            html_lines.append(f"<h1 style='font-size:1.875rem; font-weight:800; color:#ffffff; margin-top:0; margin-bottom:1rem; line-height:1.2;'>{_esc(line_stripped[2:])}</h1>")
+            html_lines.append(
+                f"<h1 style='font-size:1.875rem; font-weight:800; color:#ffffff; margin-top:0; margin-bottom:1rem; line-height:1.2;'>{_esc(line_stripped[2:])}</h1>"
+            )
         elif line_stripped.startswith("## "):
-            html_lines.append(f"<h2 style='font-size:1.35rem; font-weight:700; color:#ffffff; margin-top:2rem; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:0.5rem;'>{_esc(line_stripped[3:])}</h2>")
+            html_lines.append(
+                f"<h2 style='font-size:1.35rem; font-weight:700; color:#ffffff; margin-top:2rem; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:0.5rem;'>{_esc(line_stripped[3:])}</h2>"
+            )
         elif line_stripped.startswith("### "):
-            html_lines.append(f"<h3 style='font-size:1.1rem; font-weight:600; color:#f3f4f6; margin-top:1.5rem; margin-bottom:0.75rem;'>{_esc(line_stripped[4:])}</h3>")
+            html_lines.append(
+                f"<h3 style='font-size:1.1rem; font-weight:600; color:#f3f4f6; margin-top:1.5rem; margin-bottom:0.75rem;'>{_esc(line_stripped[4:])}</h3>"
+            )
         elif line_stripped == "":
             html_lines.append("<br/>")
         else:
             content = _parse_bold(line)
-            html_lines.append(f"<p style='margin-top:0; margin-bottom:1.25rem; color:#9ca3af;'>{content}</p>")
+            html_lines.append(
+                f"<p style='margin-top:0; margin-bottom:1.25rem; color:#9ca3af;'>{content}</p>"
+            )
 
     if in_list:
         html_lines.append("</ul>")

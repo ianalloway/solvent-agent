@@ -31,6 +31,7 @@ from .security import (
 
 try:
     import stripe  # type: ignore
+
     _HAS_STRIPE = True
 except Exception:
     stripe = None  # type: ignore
@@ -47,11 +48,19 @@ class StripeClient:
     def __init__(self):
         self.key = os.environ.get("STRIPE_API_KEY", "")
         self.live = False
-        if os.environ.get("SOLVENT_FORCE_STRIPE_SIMULATE", "").strip() in ("1", "true", "yes"):
+        if os.environ.get("SOLVENT_FORCE_STRIPE_SIMULATE", "").strip() in (
+            "1",
+            "true",
+            "yes",
+        ):
             self.key = ""
         self.webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
-        self.poll_timeout = float(os.environ.get("STRIPE_PAYMENT_POLL_TIMEOUT", DEFAULT_POLL_TIMEOUT))
-        self.poll_interval = float(os.environ.get("STRIPE_PAYMENT_POLL_INTERVAL", DEFAULT_POLL_INTERVAL))
+        self.poll_timeout = float(
+            os.environ.get("STRIPE_PAYMENT_POLL_TIMEOUT", DEFAULT_POLL_TIMEOUT)
+        )
+        self.poll_interval = float(
+            os.environ.get("STRIPE_PAYMENT_POLL_INTERVAL", DEFAULT_POLL_INTERVAL)
+        )
         self._catalog: dict | None = None
         self._webhook_payments: dict[str, dict] = {}
         self._issuing_available: bool | None = None
@@ -89,13 +98,17 @@ class StripeClient:
         if self._catalog is None:
             return
         CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CATALOG_PATH.write_text(json.dumps(self._catalog, indent=2) + "\n", encoding="utf-8")
+        CATALOG_PATH.write_text(
+            json.dumps(self._catalog, indent=2) + "\n", encoding="utf-8"
+        )
 
     def _get_or_create_product(self) -> str:
         catalog = self._load_catalog()
         if catalog.get("product_id"):
             return catalog["product_id"]
-        product = stripe.Product.create(name=PRODUCT_NAME, metadata={"agent": "SOLVENT"})
+        product = stripe.Product.create(
+            name=PRODUCT_NAME, metadata={"agent": "SOLVENT"}
+        )
         catalog["product_id"] = product.id
         catalog.setdefault("prices", {})
         self._save_catalog()
@@ -139,7 +152,9 @@ class StripeClient:
         self._webhook_payments[plink_id] = payment
         self._save_webhook_cache()
 
-    def process_webhook(self, payload: bytes, sig_header: str, treasury=None) -> dict | None:
+    def process_webhook(
+        self, payload: bytes, sig_header: str, treasury=None
+    ) -> dict | None:
         """Validate checkout.session.completed and cache verified payment.
 
         AUTH: signature is verified with HMAC-SHA256 before any data is read.
@@ -208,14 +223,16 @@ class StripeClient:
         if self.live:
             session = stripe.checkout.Session.create(
                 mode="payment",
-                line_items=[{
-                    "price_data": {
-                        "currency": "usd",
-                        "unit_amount": amount_cents,
-                        "product_data": {"name": name[:500]},
-                    },
-                    "quantity": 1,
-                }],
+                line_items=[
+                    {
+                        "price_data": {
+                            "currency": "usd",
+                            "unit_amount": amount_cents,
+                            "product_data": {"name": name[:500]},
+                        },
+                        "quantity": 1,
+                    }
+                ],
                 metadata={
                     "job_id": job_id,
                     "customer_email": customer_email,
@@ -242,7 +259,9 @@ class StripeClient:
             "job_id": job_id,
         }
 
-    def create_payment_link(self, name: str, amount_cents: int, customer_email: str) -> dict:
+    def create_payment_link(
+        self, name: str, amount_cents: int, customer_email: str
+    ) -> dict:
         """Create a real Stripe Payment Link (test mode) or simulate one."""
         # ACCOUNT TAKEOVER — validate email before it reaches Stripe or the ledger
         try:
@@ -253,7 +272,11 @@ class StripeClient:
             price_id = self._get_or_create_price(amount_cents)
             link = stripe.PaymentLink.create(
                 line_items=[{"price": price_id, "quantity": 1}],
-                metadata={"customer_email": customer_email, "agent": "SOLVENT", "brief": name[:500]},
+                metadata={
+                    "customer_email": customer_email,
+                    "agent": "SOLVENT",
+                    "brief": name[:500],
+                },
             )
             return {
                 "id": link.id,
@@ -357,8 +380,11 @@ class StripeClient:
             return {
                 "paid": True,
                 "stripe_ref": f"pi_sim_{sim_suffix}",
-            "checkout_session_id": link.get("id", f"cs_sim_{sim_suffix}"),
-            "payment_link_id": link.get("payment_link_id") or (link["id"] if str(link.get("id", "")).startswith("plink_") else None),
+                "checkout_session_id": link.get("id", f"cs_sim_{sim_suffix}"),
+                "payment_link_id": link.get("payment_link_id")
+                or (
+                    link["id"] if str(link.get("id", "")).startswith("plink_") else None
+                ),
                 "amount_cents": link["amount_cents"],
                 "simulated": True,
                 "job_id": job_id or link.get("job_id"),
@@ -419,7 +445,9 @@ class StripeClient:
         self._save_catalog()
         return holder.id
 
-    def pay_vendor(self, vendor: str, amount_cents: int, memo: str, job_id: str | None = None) -> dict:
+    def pay_vendor(
+        self, vendor: str, amount_cents: int, memo: str, job_id: str | None = None
+    ) -> dict:
         """Outbound payment for a resource the agent provisions for itself."""
         if self.live and self._issuing_enabled():
             try:
@@ -467,7 +495,9 @@ class StripeClient:
         }
 
     # ---- REFUND -----------------------------------------------------
-    def refund_payment(self, payment_intent_id: str, amount_cents: int, job_id: str | None = None) -> dict:
+    def refund_payment(
+        self, payment_intent_id: str, amount_cents: int, job_id: str | None = None
+    ) -> dict:
         """Refund a verified PaymentIntent (test mode or simulated)."""
         if self.live:
             if not payment_intent_id or not str(payment_intent_id).startswith("pi_"):
@@ -479,7 +509,9 @@ class StripeClient:
                 "amount": amount_cents,
             }
             if job_id:
-                refund = stripe.Refund.create(idempotency_key=f"refund-{job_id}", **kwargs)
+                refund = stripe.Refund.create(
+                    idempotency_key=f"refund-{job_id}", **kwargs
+                )
             else:
                 refund = stripe.Refund.create(**kwargs)
             return {

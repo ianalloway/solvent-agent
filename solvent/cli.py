@@ -53,7 +53,9 @@ def show_spinner(duration: float, label: str):
     sys.stdout.write(f"   {C_GREY}{label}{C_RESET} ")
     sys.stdout.flush()
     while time.time() < end_time:
-        sys.stdout.write(f"\r   {C_GREY}{label}{C_RESET} {C_CYAN}{frames[i % len(frames)]}{C_RESET}")
+        sys.stdout.write(
+            f"\r   {C_GREY}{label}{C_RESET} {C_CYAN}{frames[i % len(frames)]}{C_RESET}"
+        )
         sys.stdout.flush()
         time.sleep(0.08)
         i += 1
@@ -68,8 +70,12 @@ def print_event(e: dict):
     prefix = f"{C_CYAN}[{jid}]{C_RESET}"
 
     if st == "quote":
-        verdict = f"{C_GREEN}ACCEPT{C_RESET}" if e["accept"] else f"{C_RED}DECLINE{C_RESET}"
-        print(f"   ⚖️  {prefix} Margin Gate: price {C_BOLD}{fmt(e['price'])}{C_RESET} | est cost {fmt(e['est_cost'])} | projected margin {e['margin_pct']}% → {verdict}")
+        verdict = (
+            f"{C_GREEN}ACCEPT{C_RESET}" if e["accept"] else f"{C_RED}DECLINE{C_RESET}"
+        )
+        print(
+            f"   ⚖️  {prefix} Margin Gate: price {C_BOLD}{fmt(e['price'])}{C_RESET} | est cost {fmt(e['est_cost'])} | projected margin {e['margin_pct']}% → {verdict}"
+        )
         time.sleep(0.4)
 
     elif st == "declined":
@@ -85,32 +91,47 @@ def print_event(e: dict):
 
     elif st == "paid":
         show_spinner(0.8, f"Polling Stripe invoice confirmation for {jid}...")
-        print(f"   💵  {prefix} {C_GREEN}Stripe Confirmed:{C_RESET} Payment of {C_GREEN}+{fmt(e['amount'])}{C_RESET} received")
+        print(
+            f"   💵  {prefix} {C_GREEN}Stripe Confirmed:{C_RESET} Payment of {C_GREEN}+{fmt(e['amount'])}{C_RESET} received"
+        )
         time.sleep(0.4)
 
     elif st == "fulfilled":
         show_spinner(1.2, f"Nemotron compiling sell-side research brief for {jid}...")
-        filename = Path(e['deliverable']).name
-        print(f"   📝  {prefix} {C_GREEN}Fulfillment Finished:{C_RESET} Deliverable saved to {C_BLUE}data/reports/{filename}{C_RESET} ({e['tokens']} tokens)")
+        filename = Path(e["deliverable"]).name
+        print(
+            f"   📝  {prefix} {C_GREEN}Fulfillment Finished:{C_RESET} Deliverable saved to {C_BLUE}data/reports/{filename}{C_RESET} ({e['tokens']} tokens)"
+        )
         time.sleep(0.4)
 
     elif st == "spend":
         time.sleep(0.3)
-        print(f"   🛡️   {C_GREY}↳ Spend Approved:{C_RESET} Scoped payment {C_RED}−{fmt(e['amount'])}{C_RESET} to {C_BOLD}{e['vendor']}{C_RESET} ({e['memo']})")
+        print(
+            f"   🛡️   {C_GREY}↳ Spend Approved:{C_RESET} Scoped payment {C_RED}−{fmt(e['amount'])}{C_RESET} to {C_BOLD}{e['vendor']}{C_RESET} ({e['memo']})"
+        )
 
     elif st == "spend_blocked":
         time.sleep(0.3)
-        print(f"   🛑  {C_RED}↳ Spend BLOCKED:{C_RESET} Guardrail rejected transaction of {fmt(e['amount'])} to {e['vendor']} ({e['memo']})")
+        print(
+            f"   🛑  {C_RED}↳ Spend BLOCKED:{C_RESET} Guardrail rejected transaction of {fmt(e['amount'])} to {e['vendor']} ({e['memo']})"
+        )
 
     elif st == "refunded":
         time.sleep(0.3)
-        print(f"   ↩️  {prefix} {C_RED}Escrow Refunded:{C_RESET} Returned {C_RED}{fmt(e['amount'])}{C_RESET} to customer ({e['reason']})")
+        print(
+            f"   ↩️  {prefix} {C_RED}Escrow Refunded:{C_RESET} Returned {C_RED}{fmt(e['amount'])}{C_RESET} to customer ({e['reason']})"
+        )
 
     elif st == "booked":
-
-        tag = f"{C_GREEN}profit{C_RESET}" if e["job_pnl"] >= 0 else f"{C_RED}loss{C_RESET}"
+        tag = (
+            f"{C_GREEN}profit{C_RESET}"
+            if e["job_pnl"] >= 0
+            else f"{C_RED}loss{C_RESET}"
+        )
         time.sleep(0.4)
-        print(f"   ✓   {prefix} booked P&L: {tag} {C_BOLD}{fmt(e['job_pnl'])}{C_RESET} | treasury cash balance: {C_YELLOW}{fmt(e['balance'])}{C_RESET}")
+        print(
+            f"   ✓   {prefix} booked P&L: {tag} {C_BOLD}{fmt(e['job_pnl'])}{C_RESET} | treasury cash balance: {C_YELLOW}{fmt(e['balance'])}{C_RESET}"
+        )
         print()
 
 
@@ -120,14 +141,22 @@ def print_results(snap: dict):
     print(f"📊  {C_BOLD}SESSION SUMMARY & BALANCE SHEET{C_RESET}")
     print(f"   Revenue        {C_GREEN}{fmt(snap['revenue_cents'])}{C_RESET}")
     print(f"   Operating spend {C_RED}{fmt(snap['expense_cents'])}{C_RESET}")
-    print(f"   Net profit     {C_GREEN if snap['net_profit_cents']>=0 else C_RED}{fmt(snap['net_profit_cents'])}{C_RESET}  ({snap['margin_pct']}% margin)")
-    print(f"   Cash balance   {C_YELLOW}{fmt(snap['balance_cents'])}{C_RESET}  (seed was {fmt(snap['capital_cents'])})")
+    print(
+        f"   Net profit     {C_GREEN if snap['net_profit_cents'] >= 0 else C_RED}{fmt(snap['net_profit_cents'])}{C_RESET}  ({snap['margin_pct']}% margin)"
+    )
+    print(
+        f"   Cash balance   {C_YELLOW}{fmt(snap['balance_cents'])}{C_RESET}  (seed was {fmt(snap['capital_cents'])})"
+    )
 
-    grew = snap['balance_cents'] - snap['capital_cents']
+    grew = snap["balance_cents"] - snap["capital_cents"]
     if grew > 0:
-        print(f"   {C_GREEN}→ The agent grew its own treasury by {fmt(grew)} this session!{C_RESET}")
+        print(
+            f"   {C_GREEN}→ The agent grew its own treasury by {fmt(grew)} this session!{C_RESET}"
+        )
     elif grew < 0:
-        print(f"   {C_RED}→ The agent ran at a loss of {fmt(abs(grew))} this session.{C_RESET}")
+        print(
+            f"   {C_RED}→ The agent ran at a loss of {fmt(abs(grew))} this session.{C_RESET}"
+        )
     else:
         print("   → The agent broke perfectly even.")
 
@@ -158,7 +187,9 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
 
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, on_event=print_event)
     print(f"   Current balance: {C_YELLOW}{fmt(agent.t.balance_cents())}{C_RESET}")
-    print(f"   {C_GREY}Tip: Type /fund <amount> (e.g. /fund 100) to add funds to the treasury.{C_RESET}\n")
+    print(
+        f"   {C_GREY}Tip: Type /fund <amount> (e.g. /fund 100) to add funds to the treasury.{C_RESET}\n"
+    )
 
     job_index = 1
     while True:
@@ -171,7 +202,9 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
         if topic.startswith("/fund"):
             parts = topic.split()
             if len(parts) < 2:
-                print(f"{C_RED}Usage: /fund <amount_in_usd> (e.g., /fund 150.00){C_RESET}\n")
+                print(
+                    f"{C_RED}Usage: /fund <amount_in_usd> (e.g., /fund 150.00){C_RESET}\n"
+                )
                 continue
             try:
                 fund_amt = float(parts[1])
@@ -181,7 +214,9 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
                     continue
                 # Add capital to treasury
                 agent.t.seed(fund_cents, memo="User injected operating capital")
-                print(f"   💵  {C_GREEN}Deposit Confirmed:{C_RESET} Added {C_GREEN}+{fmt(fund_cents)}{C_RESET} of operating capital to treasury.")
+                print(
+                    f"   💵  {C_GREEN}Deposit Confirmed:{C_RESET} Added {C_GREEN}+{fmt(fund_cents)}{C_RESET} of operating capital to treasury."
+                )
                 # Emit booked event to trigger dashboard update
                 agent._emit(
                     stage="booked",
@@ -189,22 +224,28 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
                     job_pnl=0,
                     balance=agent.t.balance_cents(),
                     status="completed",
-                    title="User Capital Injection"
+                    title="User Capital Injection",
                 )
-                print(f"       Current Capital Balance: {C_YELLOW}{fmt(agent.t.balance_cents())}{C_RESET}\n")
+                print(
+                    f"       Current Capital Balance: {C_YELLOW}{fmt(agent.t.balance_cents())}{C_RESET}\n"
+                )
                 continue
             except ValueError:
                 print(f"{C_RED}Invalid amount. Usage: /fund <amount_in_usd>{C_RESET}\n")
                 continue
 
-        budget_str = input(f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $").strip()
+        budget_str = input(
+            f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $"
+        ).strip()
         try:
             budget_cents = int(float(budget_str) * 100)
             if budget_cents <= 0:
                 print(f"{C_RED}Budget must be greater than 0.{C_RESET}\n")
                 continue
         except ValueError:
-            print(f"{C_RED}Invalid numeric entry. Use standard formats like 49.00.{C_RESET}\n")
+            print(
+                f"{C_RED}Invalid numeric entry. Use standard formats like 49.00.{C_RESET}\n"
+            )
             continue
 
         job_id = f"I{job_index}"
@@ -224,14 +265,18 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
             "budget_cents": budget_cents,
             "est_tokens": est_tokens,
             "market_data_calls": market_calls,
-            "web_search_calls": search_calls
+            "web_search_calls": search_calls,
         }
 
         print(f"\n{C_BOLD}■ {job_id}: {topic}{C_RESET}")
         show_spinner(0.4, "Analyzing inbound job specifications...")
         agent.handle_job(custom_job)
 
-        cont = input(f"Submit another research request? ({C_BOLD}y/N{C_RESET}): ").strip().lower()
+        cont = (
+            input(f"Submit another research request? ({C_BOLD}y/N{C_RESET}): ")
+            .strip()
+            .lower()
+        )
         print()
         if cont != "y":
             break
@@ -275,7 +320,8 @@ def main():
         description="Run SOLVENT — a self-funding analyst agent.",
     )
     parser.add_argument(
-        "-i", "--interactive",
+        "-i",
+        "--interactive",
         action="store_true",
         help="submit custom research jobs from the terminal (overrides saved mode)",
     )
@@ -313,6 +359,7 @@ def main():
         run_interactive_mode(seed_cents=seed_cents, fresh=fresh)
     elif cfg.interaction_mode == "programmatic":
         from solvent.onboarding import _print_programmatic_guidance
+
         _print_programmatic_guidance()
         sys.exit(0)
     elif cfg.interaction_mode == "interactive":

@@ -13,7 +13,6 @@ from solvent.status import _fmt_cents, _time_ago, format_status, gather
 
 
 class TestHelpers(unittest.TestCase):
-
     def test_fmt_cents_whole_dollar(self):
         self.assertEqual(_fmt_cents(100), "$1.00")
 
@@ -41,9 +40,9 @@ class TestHelpers(unittest.TestCase):
 
 
 class TestGather(unittest.TestCase):
-
     def _make_treasury(self):
         from solvent.treasury import Treasury
+
         return Treasury(path=f"/tmp/solvent_status_test_{id(self)}.db")
 
     def test_gather_returns_dict(self):
@@ -54,8 +53,15 @@ class TestGather(unittest.TestCase):
     def test_gather_has_required_keys(self):
         t = self._make_treasury()
         data = gather(treasury=t)
-        for key in ("timestamp", "balance_cents", "revenue_cents", "total_jobs",
-                    "status_counts", "last_job", "api_keys"):
+        for key in (
+            "timestamp",
+            "balance_cents",
+            "revenue_cents",
+            "total_jobs",
+            "status_counts",
+            "last_job",
+            "api_keys",
+        ):
             self.assertIn(key, data)
 
     def test_gather_balance_is_int(self):
@@ -94,7 +100,6 @@ class TestGather(unittest.TestCase):
 
 
 class TestFormatStatus(unittest.TestCase):
-
     def _sample_data(self, **overrides) -> dict:
         base = {
             "timestamp": "2026-01-01T12:00:00+00:00",
@@ -153,36 +158,61 @@ class TestFormatStatus(unittest.TestCase):
 
 
 class TestStatusCLI(unittest.TestCase):
-
     def _make_treasury(self):
         from solvent.treasury import Treasury
+
         return Treasury(path=f"/tmp/solvent_status_cli_test_{id(self)}.db")
 
     def test_json_output_is_valid(self):
         from solvent.status import main
+
         buf = io.StringIO()
-        with mock.patch("solvent.status.gather", return_value={
-            "timestamp": "2026-01-01T00:00:00+00:00",
-            "balance_cents": 0, "revenue_cents": 0, "net_profit_cents": 0,
-            "margin_pct": 0.0, "total_jobs": 0, "status_counts": {},
-            "last_job": None, "last_event_ts": None, "api_keys": {},
-        }), mock.patch.object(sys, "argv", ["solvent-status", "--json"]), \
-             redirect_stdout(buf):
+        with (
+            mock.patch(
+                "solvent.status.gather",
+                return_value={
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "balance_cents": 0,
+                    "revenue_cents": 0,
+                    "net_profit_cents": 0,
+                    "margin_pct": 0.0,
+                    "total_jobs": 0,
+                    "status_counts": {},
+                    "last_job": None,
+                    "last_event_ts": None,
+                    "api_keys": {},
+                },
+            ),
+            mock.patch.object(sys, "argv", ["solvent-status", "--json"]),
+            redirect_stdout(buf),
+        ):
             main()
         data = json.loads(buf.getvalue())
         self.assertIn("balance_cents", data)
 
     def test_human_output_contains_status_header(self):
         from solvent.status import main
+
         buf = io.StringIO()
-        with mock.patch("solvent.status.gather", return_value={
-            "timestamp": "2026-01-01T00:00:00+00:00",
-            "balance_cents": 100, "revenue_cents": 200, "net_profit_cents": 100,
-            "margin_pct": 50.0, "total_jobs": 0, "status_counts": {},
-            "last_job": None, "last_event_ts": None,
-            "api_keys": {"nvidia": False, "stripe": False, "telegram": False},
-        }), mock.patch.object(sys, "argv", ["solvent-status"]), \
-             redirect_stdout(buf):
+        with (
+            mock.patch(
+                "solvent.status.gather",
+                return_value={
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "balance_cents": 100,
+                    "revenue_cents": 200,
+                    "net_profit_cents": 100,
+                    "margin_pct": 50.0,
+                    "total_jobs": 0,
+                    "status_counts": {},
+                    "last_job": None,
+                    "last_event_ts": None,
+                    "api_keys": {"nvidia": False, "stripe": False, "telegram": False},
+                },
+            ),
+            mock.patch.object(sys, "argv", ["solvent-status"]),
+            redirect_stdout(buf),
+        ):
             main()
         self.assertIn("SOLVENT status", buf.getvalue())
 

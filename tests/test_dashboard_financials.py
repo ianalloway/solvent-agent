@@ -11,10 +11,10 @@ class TestLedgerFromSnapshot(unittest.TestCase):
     def test_tolerates_partial_and_bad_rows(self):
         rows = [
             {"kind": "revenue", "amount_cents": 5000, "memo": "x", "ts": 1},
-            {"kind": "expense", "amount_cents": 1000},          # missing memo/ts
-            {"kind": "capital"},                                  # missing amount
-            "not-a-dict",                                          # junk
-            {"kind": "expense", "amount_cents": "bad"},          # uncastable
+            {"kind": "expense", "amount_cents": 1000},  # missing memo/ts
+            {"kind": "capital"},  # missing amount
+            "not-a-dict",  # junk
+            {"kind": "expense", "amount_cents": "bad"},  # uncastable
         ]
         entries = dashboard._ledger_from_snapshot(rows)
         self.assertTrue(all(isinstance(e, LedgerEntry) for e in entries))
@@ -45,6 +45,7 @@ class TestFinancialsHtml(unittest.TestCase):
 
     def test_forecast_rendered_when_enough_history(self):
         from solvent.treasury import LedgerEntry
+
         DAY = 86_400.0
         entries = [
             LedgerEntry("capital", 10000, "seed", ts=0),
@@ -62,13 +63,29 @@ class TestRenderIncludesPanel(unittest.TestCase):
         from pathlib import Path
 
         snapshot = {
-            "capital_cents": 10000, "balance_cents": 14000,
-            "revenue_cents": 5000, "expense_cents": 1000,
-            "net_profit_cents": 4000, "margin_pct": 80.0,
+            "capital_cents": 10000,
+            "balance_cents": 14000,
+            "revenue_cents": 5000,
+            "expense_cents": 1000,
+            "net_profit_cents": 4000,
+            "margin_pct": 80.0,
             "entries": [
                 {"kind": "capital", "amount_cents": 10000, "memo": "seed", "ts": 0},
-                {"kind": "revenue", "amount_cents": 5000, "memo": "j", "job_id": "J1", "ts": 0},
-                {"kind": "expense", "amount_cents": 1000, "memo": "v", "vendor": "nvidia", "job_id": "J1", "ts": 0},
+                {
+                    "kind": "revenue",
+                    "amount_cents": 5000,
+                    "memo": "j",
+                    "job_id": "J1",
+                    "ts": 0,
+                },
+                {
+                    "kind": "expense",
+                    "amount_cents": 1000,
+                    "memo": "v",
+                    "vendor": "nvidia",
+                    "job_id": "J1",
+                    "ts": 0,
+                },
             ],
         }
         with tempfile.TemporaryDirectory() as d:

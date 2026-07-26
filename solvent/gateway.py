@@ -32,6 +32,7 @@ def notify(channel: str, external_id: str, text: str) -> None:
     if channel == "dashboard":
         try:
             from .notifications import enqueue_chat
+
             enqueue_chat(channel, external_id, text)
         except Exception:
             pass
@@ -44,7 +45,9 @@ def _rate_ok(user_key: str) -> bool:
 
 class Gateway:
     def __init__(self, agent: Solvent | None = None):
-        self.agent = agent or Solvent(seed_cents=10_000, fresh=False, sync_payment=False)
+        self.agent = agent or Solvent(
+            seed_cents=10_000, fresh=False, sync_payment=False
+        )
         self.memory = SessionMemory(self.agent.t)
 
     def handle_inbound(
@@ -77,7 +80,9 @@ class Gateway:
             session["id"], text, agent=self.agent, memory=self.memory, channel=channel
         )
 
-    def _handle_command(self, channel: str, external_id: str, text: str, session: dict) -> str:
+    def _handle_command(
+        self, channel: str, external_id: str, text: str, session: dict
+    ) -> str:
         parts = text.split(maxsplit=1)
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
@@ -109,7 +114,13 @@ class Gateway:
         if cmd == "/pair" and arg.strip().lower() == "qr":
             token = self.agent.t.create_openclaw_token(ttl=600)
             from . import qr as _qr
-            host = os.environ.get("SOLVENT_BASE_URL", "").replace("http://", "").replace("https://", "").split("/")[0]
+
+            host = (
+                os.environ.get("SOLVENT_BASE_URL", "")
+                .replace("http://", "")
+                .replace("https://", "")
+                .split("/")[0]
+            )
             try:
                 port = int(host.split(":")[-1]) if ":" in host else 443
                 host = host.split(":")[0]
@@ -124,10 +135,19 @@ class Gateway:
             except ValueError:
                 return "Usage: /quote topic | 50.00"
             from .chat import handle_message
-            prompt = f"Quote a brief on '{topic}' with budget_cents={cents}. Use quote_brief tool."
-            return handle_message(session["id"], prompt, agent=self.agent, memory=self.memory, channel=channel)
 
-        return handle_message(session["id"], text, agent=self.agent, memory=self.memory, channel=channel)
+            prompt = f"Quote a brief on '{topic}' with budget_cents={cents}. Use quote_brief tool."
+            return handle_message(
+                session["id"],
+                prompt,
+                agent=self.agent,
+                memory=self.memory,
+                channel=channel,
+            )
+
+        return handle_message(
+            session["id"], text, agent=self.agent, memory=self.memory, channel=channel
+        )
 
     def on_job_event(self, event: dict) -> None:
         """Push job lifecycle updates to sessions watching a job."""

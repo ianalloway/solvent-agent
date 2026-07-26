@@ -31,19 +31,23 @@ EntryKind = Literal["revenue", "expense", "capital"]
 
 @dataclass
 class LedgerEntry:
-    kind: EntryKind            # revenue (money in), expense (money out), capital (seed)
-    amount_cents: int          # always positive; `kind` carries the sign
-    memo: str                  # human-readable description
+    kind: EntryKind  # revenue (money in), expense (money out), capital (seed)
+    amount_cents: int  # always positive; `kind` carries the sign
+    memo: str  # human-readable description
     job_id: str | None = None
     vendor: str | None = None
-    stripe_ref: str | None = None           # PaymentIntent / issuing card / refund id
-    stripe_session_id: str | None = None    # Checkout Session (cs_...)
-    stripe_link_id: str | None = None       # Payment Link (plink_...)
+    stripe_ref: str | None = None  # PaymentIntent / issuing card / refund id
+    stripe_session_id: str | None = None  # Checkout Session (cs_...)
+    stripe_link_id: str | None = None  # Payment Link (plink_...)
     ts: float = field(default_factory=time.time)
     id: str = field(default_factory=lambda: "le_" + uuid.uuid4().hex[:12])
 
     def signed_cents(self) -> int:
-        return self.amount_cents if self.kind in ("revenue", "capital") else -self.amount_cents
+        return (
+            self.amount_cents
+            if self.kind in ("revenue", "capital")
+            else -self.amount_cents
+        )
 
 
 class Treasury:
@@ -73,7 +77,9 @@ class Treasury:
             conn.close()
 
     @staticmethod
-    def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str) -> None:
+    def _ensure_column(
+        conn: sqlite3.Connection, table: str, column: str, col_type: str
+    ) -> None:
         cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         if column not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
@@ -294,31 +300,40 @@ class Treasury:
             conn.execute("DELETE FROM telegram_pairing")
 
     # ---- writes ------------------------------------------------------
-    def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
+    def record(
+        self, kind: EntryKind, amount_cents: int, memo: str, **kw
+    ) -> LedgerEntry:
         with self.lock():
-            entry = LedgerEntry(kind=kind, amount_cents=int(amount_cents), memo=memo, **kw)
+            entry = LedgerEntry(
+                kind=kind, amount_cents=int(amount_cents), memo=memo, **kw
+            )
             with self._conn() as conn, conn:
-                conn.execute("""
+                conn.execute(
+                    """
                         INSERT INTO ledger (
                             id, kind, amount_cents, memo, job_id, vendor,
                             stripe_ref, stripe_session_id, stripe_link_id, ts
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                    entry.id,
-                    entry.kind,
-                    entry.amount_cents,
-                    entry.memo,
-                    entry.job_id,
-                    entry.vendor,
-                    entry.stripe_ref,
-                    entry.stripe_session_id,
-                    entry.stripe_link_id,
-                    entry.ts,
-                ))
+                    """,
+                    (
+                        entry.id,
+                        entry.kind,
+                        entry.amount_cents,
+                        entry.memo,
+                        entry.job_id,
+                        entry.vendor,
+                        entry.stripe_ref,
+                        entry.stripe_session_id,
+                        entry.stripe_link_id,
+                        entry.ts,
+                    ),
+                )
             return entry
 
-    def seed(self, amount_cents: int, memo: str = "Initial operating capital") -> LedgerEntry:
+    def seed(
+        self, amount_cents: int, memo: str = "Initial operating capital"
+    ) -> LedgerEntry:
         return self.record("capital", amount_cents, memo)
 
     def earn(self, amount_cents: int, memo: str, **kw) -> LedgerEntry:
@@ -343,19 +358,25 @@ class Treasury:
     def revenue_cents(self) -> int:
         with self.lock():
             with self._conn() as conn:
-                row = conn.execute("SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'revenue'").fetchone()
+                row = conn.execute(
+                    "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'revenue'"
+                ).fetchone()
                 return row["s"] or 0
 
     def expense_cents(self) -> int:
         with self.lock():
             with self._conn() as conn:
-                row = conn.execute("SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'expense'").fetchone()
+                row = conn.execute(
+                    "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'expense'"
+                ).fetchone()
                 return row["s"] or 0
 
     def capital_cents(self) -> int:
         with self.lock():
             with self._conn() as conn:
-                row = conn.execute("SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'capital'").fetchone()
+                row = conn.execute(
+                    "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'capital'"
+                ).fetchone()
                 return row["s"] or 0
 
     def net_profit_cents(self) -> int:
@@ -369,8 +390,20 @@ class Treasury:
     def job_pnl_cents(self, job_id: str) -> int:
         with self.lock():
             with self._conn() as conn:
-                rev = conn.execute("SELECT SUM(amount_cents) as s FROM ledger WHERE job_id = ? AND kind = 'revenue'", (job_id,)).fetchone()["s"] or 0
-                exp = conn.execute("SELECT SUM(amount_cents) as s FROM ledger WHERE job_id = ? AND kind = 'expense'", (job_id,)).fetchone()["s"] or 0
+                rev = (
+                    conn.execute(
+                        "SELECT SUM(amount_cents) as s FROM ledger WHERE job_id = ? AND kind = 'revenue'",
+                        (job_id,),
+                    ).fetchone()["s"]
+                    or 0
+                )
+                exp = (
+                    conn.execute(
+                        "SELECT SUM(amount_cents) as s FROM ledger WHERE job_id = ? AND kind = 'expense'",
+                        (job_id,),
+                    ).fetchone()["s"]
+                    or 0
+                )
                 return rev - exp
 
     def snapshot(self) -> dict:
@@ -394,9 +427,20 @@ class Treasury:
 
     # ---- job queue ----------------------------------------------------
     _JOB_COLS = (
-        "topic", "budget_cents", "customer_email", "est_tokens", "market_data_calls",
-        "web_search_calls", "error_reason", "checkout_session_id", "checkout_url",
-        "deliverable_url", "current_stage", "quote_json", "locked_until", "job_payload_json",
+        "topic",
+        "budget_cents",
+        "customer_email",
+        "est_tokens",
+        "market_data_calls",
+        "web_search_calls",
+        "error_reason",
+        "checkout_session_id",
+        "checkout_url",
+        "deliverable_url",
+        "current_stage",
+        "quote_json",
+        "locked_until",
+        "job_payload_json",
         "retry_count",
     )
 
@@ -405,7 +449,9 @@ class Treasury:
         with self.lock():
             with self._conn() as conn:
                 with conn:
-                    existing = conn.execute("SELECT id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+                    existing = conn.execute(
+                        "SELECT id FROM jobs WHERE id = ?", (job_id,)
+                    ).fetchone()
                     ts = time.time()
                     if existing:
                         fields = ["status = ?", "updated_at = ?"]
@@ -418,7 +464,9 @@ class Treasury:
                                 fields.append(f"{col} = ?")
                                 params.append(val)
                         params.append(job_id)
-                        conn.execute(f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params)
+                        conn.execute(
+                            f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params
+                        )
                     else:
                         cols = ["id", "status", "created_at", "updated_at"]
                         vals = [job_id, status, ts, ts]
@@ -429,7 +477,10 @@ class Treasury:
                                 val = json.dumps(val)
                             vals.append(val)
                         placeholders = ", ".join(["?"] * len(cols))
-                        conn.execute(f"INSERT INTO jobs ({', '.join(cols)}) VALUES ({placeholders})", vals)
+                        conn.execute(
+                            f"INSERT INTO jobs ({', '.join(cols)}) VALUES ({placeholders})",
+                            vals,
+                        )
 
     def get_job(self, job_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:
@@ -503,19 +554,22 @@ class Treasury:
             ts = time.time()
             with self._conn() as conn:
                 with conn:
-                    conn.execute("""
+                    conn.execute(
+                        """
                         INSERT OR REPLACE INTO job_stages
                         (id, job_id, stage, idempotency_key, status, payload_json, result_json, ts)
                         VALUES (?, ?, ?, ?, 'completed', ?, ?, ?)
-                    """, (
-                        stage_id,
-                        job_id,
-                        stage,
-                        idempotency_key,
-                        json.dumps(payload or {}),
-                        json.dumps(result or {}),
-                        ts,
-                    ))
+                    """,
+                        (
+                            stage_id,
+                            job_id,
+                            stage,
+                            idempotency_key,
+                            json.dumps(payload or {}),
+                            json.dumps(result or {}),
+                            ts,
+                        ),
+                    )
             return result or {}
 
     def record_event(self, job_id: str, stage: str, payload: dict) -> None:
@@ -524,7 +578,13 @@ class Treasury:
                 with conn:
                     conn.execute(
                         "INSERT INTO events (id, job_id, stage, payload_json, ts) VALUES (?, ?, ?, ?, ?)",
-                        ("ev_" + uuid.uuid4().hex[:12], job_id, stage, json.dumps(payload), time.time()),
+                        (
+                            "ev_" + uuid.uuid4().hex[:12],
+                            job_id,
+                            stage,
+                            json.dumps(payload),
+                            time.time(),
+                        ),
                     )
 
     def list_events(self, job_id: str | None = None, limit: int = 500) -> list[dict]:
@@ -552,10 +612,17 @@ class Treasury:
                         fields = ["ts = ?"]
                         params: list = [ts]
                         for col in (
-                            "est_cost_cents", "actual_cost_cents", "est_margin_pct",
-                            "actual_margin_pct", "margin_drift_cents", "fulfillment_seconds",
-                            "refunded", "tool_calls", "decline_reason",
-                            "block_rule", "block_reason",
+                            "est_cost_cents",
+                            "actual_cost_cents",
+                            "est_margin_pct",
+                            "actual_margin_pct",
+                            "margin_drift_cents",
+                            "fulfillment_seconds",
+                            "refunded",
+                            "tool_calls",
+                            "decline_reason",
+                            "block_rule",
+                            "block_reason",
                         ):
                             if col in kwargs:
                                 fields.append(f"{col} = ?")
@@ -569,10 +636,17 @@ class Treasury:
                         cols = ["job_id", "ts"]
                         vals: list = [job_id, ts]
                         for col in (
-                            "est_cost_cents", "actual_cost_cents", "est_margin_pct",
-                            "actual_margin_pct", "margin_drift_cents", "fulfillment_seconds",
-                            "refunded", "tool_calls", "decline_reason",
-                            "block_rule", "block_reason",
+                            "est_cost_cents",
+                            "actual_cost_cents",
+                            "est_margin_pct",
+                            "actual_margin_pct",
+                            "margin_drift_cents",
+                            "fulfillment_seconds",
+                            "refunded",
+                            "tool_calls",
+                            "decline_reason",
+                            "block_rule",
+                            "block_reason",
                         ):
                             if col in kwargs:
                                 cols.append(col)
@@ -595,13 +669,18 @@ class Treasury:
             rows = conn.execute("SELECT * FROM job_metrics ORDER BY ts ASC").fetchall()
             return [dict(r) for r in rows]
 
-    def upsert_checkout(self, job_id: str, session_id: str, checkout_url: str, status: str) -> None:
+    def upsert_checkout(
+        self, job_id: str, session_id: str, checkout_url: str, status: str
+    ) -> None:
         with self.lock(), self._conn() as conn, conn:
-            conn.execute("""
+            conn.execute(
+                """
                         INSERT OR REPLACE INTO stripe_checkout
                         (job_id, session_id, checkout_url, status, ts)
                         VALUES (?, ?, ?, ?, ?)
-                    """, (job_id, session_id, checkout_url, status, time.time()))
+                    """,
+                (job_id, session_id, checkout_url, status, time.time()),
+            )
 
     def get_checkout(self, job_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:
@@ -657,11 +736,14 @@ class Treasury:
                     ts = time.time()
                     if row:
                         return dict(row)
-                    conn.execute("""
+                    conn.execute(
+                        """
                         INSERT INTO chat_sessions
                         (id, channel, external_id, user_label, paired, created_at, updated_at)
                         VALUES (?, ?, ?, ?, 0, ?, ?)
-                    """, (sid, channel, external_id, user_label, ts, ts))
+                    """,
+                        (sid, channel, external_id, user_label, ts, ts),
+                    )
                     return {
                         "id": sid,
                         "channel": channel,
@@ -678,7 +760,12 @@ class Treasury:
                 with conn:
                     fields = ["updated_at = ?"]
                     params: list = [time.time()]
-                    for col in ("user_label", "paired", "pending_job_json", "notify_job_id"):
+                    for col in (
+                        "user_label",
+                        "paired",
+                        "pending_job_json",
+                        "notify_job_id",
+                    ):
                         if col in kwargs:
                             val = kwargs[col]
                             if col == "pending_job_json" and isinstance(val, dict):
@@ -713,7 +800,13 @@ class Treasury:
                 with conn:
                     conn.execute(
                         "INSERT INTO chat_messages (id, session_id, role, content, ts) VALUES (?, ?, ?, ?, ?)",
-                        ("cm_" + uuid.uuid4().hex[:12], session_id, role, content, time.time()),
+                        (
+                            "cm_" + uuid.uuid4().hex[:12],
+                            session_id,
+                            role,
+                            content,
+                            time.time(),
+                        ),
                     )
 
     def get_chat_messages(self, session_id: str, limit: int = 20) -> list[dict]:
@@ -725,16 +818,21 @@ class Treasury:
             ).fetchall()
             return [dict(r) for r in reversed(rows)]
 
-    def create_pairing_code(self, user_id: str, username: str | None = None, ttl: float = 3600) -> str:
+    def create_pairing_code(
+        self, user_id: str, username: str | None = None, ttl: float = 3600
+    ) -> str:
         code = "TG-" + uuid.uuid4().hex[:6].upper()
         now = time.time()
         with self.lock():
             with self._conn() as conn:
                 with conn:
-                    conn.execute("""
+                    conn.execute(
+                        """
                         INSERT INTO telegram_pairing (code, user_id, username, expires_at, approved, created_at)
                         VALUES (?, ?, ?, ?, 0, ?)
-                    """, (code, user_id, username, now + ttl, now))
+                    """,
+                        (code, user_id, username, now + ttl, now),
+                    )
         return code
 
     def approve_pairing(self, code: str) -> dict | None:
@@ -782,7 +880,6 @@ class Treasury:
                 ).fetchone()
                 return bool(prow)
 
-
     def create_openclaw_token(self, ttl: float = 600) -> str:
         token = "OC-" + uuid.uuid4().hex[:8].upper()
         now = time.time()
@@ -813,4 +910,4 @@ class Treasury:
 
 
 def fmt(cents: int) -> str:
-    return f"${cents/100:,.2f}"
+    return f"${cents / 100:,.2f}"

@@ -18,6 +18,7 @@ from solvent.treasury import Treasury
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_runner(tmp_dir: str, seed_cents: int = 50_000) -> StageRunner:
     """Create a fresh StageRunner backed by an isolated in-process Treasury."""
     db = Path(tmp_dir) / "retry_test.db"
@@ -49,7 +50,9 @@ def _mock_fulfill(tmp_dir: str, job_id: str) -> dict:
         "resources_used": [],
         "actual_cost_cents": 0,
         "fulfillment_seconds": 0.1,
-        "tool_ctx": type("C", (), {"total_calls": 0, "market_data_calls": 0, "web_search_calls": 0})(),
+        "tool_ctx": type(
+            "C", (), {"total_calls": 0, "market_data_calls": 0, "web_search_calls": 0}
+        )(),
         "usage": {"total_tokens": 100},
     }
 
@@ -57,6 +60,7 @@ def _mock_fulfill(tmp_dir: str, job_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestRetryPrePaymentFailed(unittest.TestCase):
     """Retry of a failed pre-payment job should restart from quote."""
@@ -81,12 +85,17 @@ class TestRetryPrePaymentFailed(unittest.TestCase):
             )
 
             checkout_link = {
-                "id": "cs_pre", "url": "http://pay.example/pre",
-                "amount_cents": 5000, "simulated": True, "job_id": "J-pre-fail",
+                "id": "cs_pre",
+                "url": "http://pay.example/pre",
+                "amount_cents": 5000,
+                "simulated": True,
+                "job_id": "J-pre-fail",
             }
             payment = {
-                "paid": True, "stripe_ref": "pi_pre",
-                "checkout_session_id": "cs_pre", "amount_cents": 5000,
+                "paid": True,
+                "stripe_ref": "pi_pre",
+                "checkout_session_id": "cs_pre",
+                "amount_cents": 5000,
             }
             fulfill = _mock_fulfill(tmp, "J-pre-fail")
 
@@ -94,10 +103,19 @@ class TestRetryPrePaymentFailed(unittest.TestCase):
             runner.on_event = events.append
 
             with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
-                with mock.patch.object(runner.stripe, "create_checkout_session", return_value=checkout_link):
-                    with mock.patch.object(runner.stripe, "confirm_payment", return_value=payment):
-                        with mock.patch("solvent.service.fulfill", return_value=fulfill):
-                            with mock.patch("solvent.delivery.send_brief_email", return_value={"simulated": True}):
+                with mock.patch.object(
+                    runner.stripe, "create_checkout_session", return_value=checkout_link
+                ):
+                    with mock.patch.object(
+                        runner.stripe, "confirm_payment", return_value=payment
+                    ):
+                        with mock.patch(
+                            "solvent.service.fulfill", return_value=fulfill
+                        ):
+                            with mock.patch(
+                                "solvent.delivery.send_brief_email",
+                                return_value={"simulated": True},
+                            ):
                                 result = runner.retry_job("J-pre-fail")
 
             # Job should now be completed
@@ -123,6 +141,7 @@ class TestRetryPostPaymentFailed(unittest.TestCase):
             from dataclasses import asdict
 
             from solvent.pricing import quote as _quote
+
             q = _quote(job, runner.pricing)
 
             # Insert the job as failed-after-payment
@@ -140,7 +159,12 @@ class TestRetryPostPaymentFailed(unittest.TestCase):
                 job_payload_json=job,
             )
             # Simulate that revenue was already collected
-            runner.t.earn(q.price_cents, "Prior payment", job_id="J-post-fail", stripe_ref="pi_prior")
+            runner.t.earn(
+                q.price_cents,
+                "Prior payment",
+                job_id="J-post-fail",
+                stripe_ref="pi_prior",
+            )
 
             initial_revenue = runner.t.revenue_cents()
 
@@ -149,9 +173,14 @@ class TestRetryPostPaymentFailed(unittest.TestCase):
             runner.on_event = events.append
 
             with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
-                with mock.patch.object(runner.stripe, "create_checkout_session") as mock_checkout:
+                with mock.patch.object(
+                    runner.stripe, "create_checkout_session"
+                ) as mock_checkout:
                     with mock.patch("solvent.service.fulfill", return_value=fulfill):
-                        with mock.patch("solvent.delivery.send_brief_email", return_value={"simulated": True}):
+                        with mock.patch(
+                            "solvent.delivery.send_brief_email",
+                            return_value={"simulated": True},
+                        ):
                             result = runner.retry_job("J-post-fail")
 
             # Stripe checkout must NOT have been called again
@@ -203,9 +232,7 @@ class TestRetryMaxLimit(unittest.TestCase):
 
             # Manually set retry_count to 3 (already at cap)
             with runner.t.lock(), runner.t._conn() as conn, conn:
-                conn.execute(
-                    "UPDATE jobs SET retry_count = 3 WHERE id = ?", ("J-cap",)
-                )
+                conn.execute("UPDATE jobs SET retry_count = 3 WHERE id = ?", ("J-cap",))
 
             with self.assertRaises(ValueError) as ctx:
                 runner.retry_job("J-cap")
@@ -220,10 +247,12 @@ class TestRetryMaxLimit(unittest.TestCase):
             from dataclasses import asdict
 
             from solvent.pricing import quote as _quote
+
             q = _quote(job, runner.pricing)
 
             runner.t.upsert_job(
-                "J-limit", "failed",
+                "J-limit",
+                "failed",
                 topic=job["topic"],
                 budget_cents=job["budget_cents"],
                 customer_email=job["customer_email"],
@@ -235,18 +264,25 @@ class TestRetryMaxLimit(unittest.TestCase):
                 job_payload_json=job,
             )
             # Simulate revenue already collected so we only test the fulfill path
-            runner.t.earn(q.price_cents, "Payment", job_id="J-limit", stripe_ref="pi_limit")
+            runner.t.earn(
+                q.price_cents, "Payment", job_id="J-limit", stripe_ref="pi_limit"
+            )
 
             # Manually set retry_count to 2
             with runner.t.lock():
                 with runner.t._conn() as conn:
                     with conn:
-                        conn.execute("UPDATE jobs SET retry_count = 2 WHERE id = ?", ("J-limit",))
+                        conn.execute(
+                            "UPDATE jobs SET retry_count = 2 WHERE id = ?", ("J-limit",)
+                        )
 
             fulfill = _mock_fulfill(tmp, "J-limit")
             with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
                 with mock.patch("solvent.service.fulfill", return_value=fulfill):
-                    with mock.patch("solvent.delivery.send_brief_email", return_value={"simulated": True}):
+                    with mock.patch(
+                        "solvent.delivery.send_brief_email",
+                        return_value={"simulated": True},
+                    ):
                         # 3rd retry (count goes to 3) — should succeed
                         result = runner.retry_job("J-limit")
             self.assertEqual(result.get("stage"), "booked")
@@ -270,10 +306,12 @@ class TestRetryCountIncrements(unittest.TestCase):
             from dataclasses import asdict
 
             from solvent.pricing import quote as _quote
+
             q = _quote(job, runner.pricing)
 
             runner.t.upsert_job(
-                "J-cnt", "failed",
+                "J-cnt",
+                "failed",
                 topic=job["topic"],
                 budget_cents=job["budget_cents"],
                 customer_email=job["customer_email"],
@@ -289,9 +327,14 @@ class TestRetryCountIncrements(unittest.TestCase):
             for expected_count in (1, 2, 3):
                 runner.t.upsert_job("J-cnt", "failed")
                 fulfill = _mock_fulfill(tmp, "J-cnt")
-                with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
+                with mock.patch.dict(
+                    "os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}
+                ):
                     with mock.patch("solvent.service.fulfill", return_value=fulfill):
-                        with mock.patch("solvent.delivery.send_brief_email", return_value={"simulated": True}):
+                        with mock.patch(
+                            "solvent.delivery.send_brief_email",
+                            return_value={"simulated": True},
+                        ):
                             runner.retry_job("J-cnt")
                 row = runner.t.get_job("J-cnt")
                 self.assertEqual(row["retry_count"], expected_count)

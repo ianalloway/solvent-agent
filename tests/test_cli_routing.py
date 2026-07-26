@@ -12,9 +12,11 @@ import solvent.__main__ as entry
 
 class TestCliRouting(unittest.TestCase):
     def _routes_to(self, argv, target_module, target_attr="main"):
-        with patch.object(entry.sys, "argv", argv), \
-             patch(f"solvent.{target_module}.{target_attr}") as mock_target, \
-             patch("solvent.cli.main") as mock_demo:
+        with (
+            patch.object(entry.sys, "argv", argv),
+            patch(f"solvent.{target_module}.{target_attr}") as mock_target,
+            patch("solvent.cli.main") as mock_demo,
+        ):
             entry.main()
         return mock_target, mock_demo
 
@@ -34,8 +36,10 @@ class TestCliRouting(unittest.TestCase):
         demo.assert_not_called()
 
     def test_no_subcommand_runs_demo(self):
-        with patch.object(entry.sys, "argv", ["solvent"]), \
-             patch("solvent.cli.main") as mock_demo:
+        with (
+            patch.object(entry.sys, "argv", ["solvent"]),
+            patch("solvent.cli.main") as mock_demo,
+        ):
             entry.main()
         mock_demo.assert_called_once()
 
@@ -45,10 +49,17 @@ class TestCliRouting(unittest.TestCase):
 
         from solvent import __version__
 
-        for argv in (["solvent", "version"], ["solvent", "--version"], ["solvent", "-V"]):
+        for argv in (
+            ["solvent", "version"],
+            ["solvent", "--version"],
+            ["solvent", "-V"],
+        ):
             buf = io.StringIO()
-            with patch.object(entry.sys, "argv", argv), \
-                 patch("solvent.cli.main") as mock_demo, redirect_stdout(buf):
+            with (
+                patch.object(entry.sys, "argv", argv),
+                patch("solvent.cli.main") as mock_demo,
+                redirect_stdout(buf),
+            ):
                 entry.main()
             self.assertIn(__version__, buf.getvalue())
             mock_demo.assert_not_called()
@@ -58,8 +69,11 @@ class TestCliRouting(unittest.TestCase):
         from contextlib import redirect_stdout
 
         buf = io.StringIO()
-        with patch.object(entry.sys, "argv", ["solvent", "help"]), \
-             patch("solvent.cli.main") as mock_demo, redirect_stdout(buf):
+        with (
+            patch.object(entry.sys, "argv", ["solvent", "help"]),
+            patch("solvent.cli.main") as mock_demo,
+            redirect_stdout(buf),
+        ):
             entry.main()
         out = buf.getvalue()
         self.assertIn("Commands:", out)

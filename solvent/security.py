@@ -49,8 +49,10 @@ from pathlib import Path
 # 1. AUTH — Stripe webhook signature verification
 # ---------------------------------------------------------------------------
 
-def verify_webhook_signature(payload: bytes, sig_header: str, secret: str,
-                              tolerance_seconds: int = 300) -> None:
+
+def verify_webhook_signature(
+    payload: bytes, sig_header: str, secret: str, tolerance_seconds: int = 300
+) -> None:
     """Verify a Stripe webhook Stripe-Signature header.
 
     Args:
@@ -91,7 +93,9 @@ def verify_webhook_signature(payload: bytes, sig_header: str, secret: str,
         )
 
     signed_payload = f"{ts}.".encode() + payload
-    expected = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+    expected = hmac.new(
+        secret.encode("utf-8"), signed_payload, hashlib.sha256
+    ).hexdigest()
 
     if not any(hmac.compare_digest(expected, sig) for sig in v1_sigs):
         raise WebhookAuthError("webhook signature verification failed")
@@ -124,7 +128,7 @@ def validate_stripe_key(key: str) -> None:
 
 # Thread-safe seen-event cache: event_id → timestamp
 _SEEN_EVENTS: OrderedDict[str, float] = OrderedDict()
-_SEEN_EVENTS_TTL = 600   # 10 minutes
+_SEEN_EVENTS_TTL = 600  # 10 minutes
 _SEEN_EVENTS_MAX = 5_000
 
 
@@ -188,7 +192,9 @@ def validate_email(email: str) -> str:
     normalised = f"{local}@{domain.lower()}"
 
     if not _EMAIL_RE.match(normalised):
-        raise InputValidationError(f"customer_email is not a valid email address: {email!r}")
+        raise InputValidationError(
+            f"customer_email is not a valid email address: {email!r}"
+        )
 
     return normalised
 
@@ -199,13 +205,20 @@ def validate_email(email: str) -> str:
 
 # Patterns that attempt to override the system role or inject instructions
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.IGNORECASE),
-    re.compile(r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.IGNORECASE),
+    re.compile(
+        r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.IGNORECASE
+    ),
+    re.compile(
+        r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.IGNORECASE
+    ),
     re.compile(r"new\s+instructions?\s*:", re.IGNORECASE),
     re.compile(r"(system|user|assistant)\s*:\s*\[?INST\]?", re.IGNORECASE),
     re.compile(r"<\s*(system|user|assistant|s|\/s)\s*>", re.IGNORECASE),
     re.compile(r"\[INST\]|\[\/INST\]|<<SYS>>|<</SYS>>", re.IGNORECASE),
-    re.compile(r"(disregard|forget|override)\s+(your\s+)?(previous\s+)?(instructions?|rules?|constraints?)", re.IGNORECASE),
+    re.compile(
+        r"(disregard|forget|override)\s+(your\s+)?(previous\s+)?(instructions?|rules?|constraints?)",
+        re.IGNORECASE,
+    ),
     re.compile(r"prompt\s*injection", re.IGNORECASE),
     re.compile(r"jailbreak", re.IGNORECASE),
     re.compile(r"DAN\b", re.IGNORECASE),  # "Do Anything Now" jailbreak keyword
@@ -216,12 +229,13 @@ _INVISIBLE_RE = re.compile(
     r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\ufeff\u00ad]"
 )
 
-_TOPIC_MAX_LEN   = 500
+_TOPIC_MAX_LEN = 500
 _CONTEXT_MAX_LEN = 2_000
 
 
-def sanitise_prompt_input(text: str, field_name: str = "input",
-                           max_len: int = _TOPIC_MAX_LEN) -> str:
+def sanitise_prompt_input(
+    text: str, field_name: str = "input", max_len: int = _TOPIC_MAX_LEN
+) -> str:
     """Strip dangerous content from a string before it enters an LLM prompt.
 
     Removes:
@@ -249,12 +263,15 @@ def sanitise_prompt_input(text: str, field_name: str = "input",
 
     # Strip null bytes and non-printable control chars (keep \t \n \r)
     cleaned = "".join(
-        ch for ch in text
+        ch
+        for ch in text
         if ch in ("\t", "\n", "\r") or (unicodedata.category(ch)[0] != "C")
     )
 
     if not cleaned.strip():
-        raise InputValidationError(f"{field_name} must be a non-empty string after sanitisation")
+        raise InputValidationError(
+            f"{field_name} must be a non-empty string after sanitisation"
+        )
 
     if len(cleaned) > max_len:
         raise InputValidationError(
@@ -302,6 +319,7 @@ def sanitise_job(job: dict) -> dict:
 # ---------------------------------------------------------------------------
 # 4. DATA PROTECTION — path traversal + schema validation
 # ---------------------------------------------------------------------------
+
 
 def safe_report_path(output_dir: Path, job_id: str) -> Path:
     """Return a resolved report path guaranteed to be inside output_dir.
@@ -356,7 +374,9 @@ def validate_catalog_schema(catalog: dict) -> dict:
     def _clean_prices(raw_prices: dict) -> dict:
         clean_prices = {}
         for k, v in raw_prices.items():
-            if re.match(r"^\d{1,10}$", str(k)) and re.match(r"^price_[A-Za-z0-9]{1,50}$", str(v)):
+            if re.match(r"^\d{1,10}$", str(k)) and re.match(
+                r"^price_[A-Za-z0-9]{1,50}$", str(v)
+            ):
                 clean_prices[str(k)] = str(v)
         return clean_prices
 
@@ -392,14 +412,14 @@ def validate_vendor_exact(vendor: str, allowlist: tuple[str, ...]) -> None:
     """
     if vendor not in allowlist:
         raise GuardrailBypassError(
-            f"vendor {vendor!r} not on allowlist — "
-            f"must be one of {allowlist}"
+            f"vendor {vendor!r} not on allowlist — must be one of {allowlist}"
         )
 
 
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
+
 
 class SOLVENTSecurityError(Exception):
     """Base class for all SOLVENT security violations."""

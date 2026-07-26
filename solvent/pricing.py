@@ -17,11 +17,11 @@ from typing import Any
 # Estimated cost of each resource the analyst might consume, in cents.
 # These are the prices SOLVENT pays its own vendors (see stripe_client.spend).
 RESOURCE_COSTS_CENTS: dict[str, int] = {
-    "nemotron_tokens_per_1k": 30,    # NVIDIA Nemotron inference
-    "market_data_call": 120,         # market-data-api per pull
-    "web_search_call": 8,            # web-search-api per query
-    "pdf_render": 40,                # pdf-render-saas per report
-    "email_send": 5,                 # email-delivery-saas per delivery
+    "nemotron_tokens_per_1k": 30,  # NVIDIA Nemotron inference
+    "market_data_call": 120,  # market-data-api per pull
+    "web_search_call": 8,  # web-search-api per query
+    "pdf_render": 40,  # pdf-render-saas per report
+    "email_send": 5,  # email-delivery-saas per delivery
 }
 
 
@@ -38,6 +38,7 @@ class Quote:
         reason: Explanatory text for the decision.
         cost_breakdown: Itemized dictionary of estimated vendor costs.
     """
+
     price_cents: int
     est_cost_cents: int
     margin_cents: int
@@ -55,14 +56,16 @@ class PricingPolicy:
         margin_floor_pct: The minimum profit margin required to accept a job.
         min_price_cents: The minimum price (order size) in cents for any job.
     """
-    margin_floor_pct: float = 35.0     # refuse jobs under this projected margin
-    min_price_cents: int = 1_500       # never sell a report under $15
+
+    margin_floor_pct: float = 35.0  # refuse jobs under this projected margin
+    min_price_cents: int = 1_500  # never sell a report under $15
 
 
 def get_resource_costs() -> dict[str, int]:
     """Return effective resource costs, applying overrides from .solvent/pricing_overrides.json if present."""
     import json
     from pathlib import Path
+
     costs = dict(RESOURCE_COSTS_CENTS)
     override_path = Path(".solvent/pricing_overrides.json")
     if override_path.is_file():
@@ -118,20 +121,32 @@ def quote(job: dict[str, Any], policy: PricingPolicy | None = None) -> Quote:
 
     if budget < applied_policy.min_price_cents:
         return Quote(
-            price, est_cost, margin, margin_pct, False,
-            f"order ${budget/100:.0f} below minimum order size ${applied_policy.min_price_cents/100:.0f}",
-            breakdown
+            price,
+            est_cost,
+            margin,
+            margin_pct,
+            False,
+            f"order ${budget / 100:.0f} below minimum order size ${applied_policy.min_price_cents / 100:.0f}",
+            breakdown,
         )
     if budget < est_cost:
         return Quote(
-            price, est_cost, margin, margin_pct, False,
-            "customer budget below fulfilment cost", breakdown
+            price,
+            est_cost,
+            margin,
+            margin_pct,
+            False,
+            "customer budget below fulfilment cost",
+            breakdown,
         )
     if margin_pct < applied_policy.margin_floor_pct:
         return Quote(
-            price, est_cost, margin, margin_pct, False,
+            price,
+            est_cost,
+            margin,
+            margin_pct,
+            False,
             f"projected margin {margin_pct}% below floor {applied_policy.margin_floor_pct}%",
-            breakdown
+            breakdown,
         )
     return Quote(price, est_cost, margin, margin_pct, True, "accepted", breakdown)
-

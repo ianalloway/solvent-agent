@@ -11,7 +11,6 @@ from unittest import mock
 
 
 class TestInit(unittest.TestCase):
-
     def _run_init(self, home_dir: str, force: bool = False) -> tuple[int, str]:
         """Run init.run() inside a temporary SOLVENT_HOME, return (exit_code, output)."""
         buf = io.StringIO()
@@ -23,6 +22,7 @@ class TestInit(unittest.TestCase):
             import solvent.init as _init
             import solvent.paths as _paths
             import solvent.workspace as _ws
+
             importlib.reload(_paths)
             importlib.reload(_ws)
             importlib.reload(_init)
@@ -94,6 +94,7 @@ class TestInit(unittest.TestCase):
 
             import solvent.paths as _paths
             import solvent.workspace as _ws
+
             with mock.patch.dict(os.environ, env):
                 importlib.reload(_paths)
                 importlib.reload(_ws)
@@ -107,7 +108,6 @@ class TestInit(unittest.TestCase):
 
 
 class TestInitCLI(unittest.TestCase):
-
     def test_main_exits_zero(self):
         with tempfile.TemporaryDirectory() as d:
             workspace_dir = str(Path(d) / "workspace")
@@ -118,6 +118,7 @@ class TestInitCLI(unittest.TestCase):
                 import solvent.init as _init
                 import solvent.paths as _paths
                 import solvent.workspace as _ws
+
                 importlib.reload(_paths)
                 importlib.reload(_ws)
                 importlib.reload(_init)

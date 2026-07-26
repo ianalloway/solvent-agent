@@ -66,10 +66,19 @@ def generate_svg_chart(points: list[int]) -> str:
         y = (height - 15) - ((val - bottom_limit) / v_range * (height - 30))
         coords.append((x, y))
 
-    path_data = " ".join(f"{'M' if i == 0 else 'L'} {x:.1f},{y:.1f}" for i, (x, y) in enumerate(coords))
-    area_data = f"M {coords[0][0]:.1f},{height:.1f} " + " ".join(f"L {x:.1f},{y:.1f}" for x, y in coords) + f" L {coords[-1][0]:.1f},{height:.1f} Z"
+    path_data = " ".join(
+        f"{'M' if i == 0 else 'L'} {x:.1f},{y:.1f}" for i, (x, y) in enumerate(coords)
+    )
+    area_data = (
+        f"M {coords[0][0]:.1f},{height:.1f} "
+        + " ".join(f"L {x:.1f},{y:.1f}" for x, y in coords)
+        + f" L {coords[-1][0]:.1f},{height:.1f} Z"
+    )
 
-    dots = "".join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" class="chart-dot" data-val="{p}" onclick="alert(\'Balance: \' + formatCents({p}))"><title>Balance: {fmt(p)}</title></circle>' for p, (x, y) in zip(points, coords))
+    dots = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" class="chart-dot" data-val="{p}" onclick="alert(\'Balance: \' + formatCents({p}))"><title>Balance: {fmt(p)}</title></circle>'
+        for p, (x, y) in zip(points, coords)
+    )
 
     # Subtle dashed guidelines in the background
     guidelines = ""
@@ -145,23 +154,35 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         </div>
         """
     if not expense_breakdown_html:
-        expense_breakdown_html = "<p class='no-data-msg'>No vendor expenses logged yet.</p>"
+        expense_breakdown_html = (
+            "<p class='no-data-msg'>No vendor expenses logged yet.</p>"
+        )
 
     # 3b. Ops: stuck jobs and margin drift from treasury metrics
     ops_html = ""
     try:
         from .treasury import Treasury
+
         t = Treasury()
-        stuck = [j for j in t.list_jobs() if j.get("status") in ("awaiting_payment", "in_progress", "paid_pending_fulfill")]
+        stuck = [
+            j
+            for j in t.list_jobs()
+            if j.get("status")
+            in ("awaiting_payment", "in_progress", "paid_pending_fulfill")
+        ]
         metrics = t.list_metrics()
         drift_rows = [
-            m for m in metrics
-            if m.get("margin_drift_cents") is not None and abs(m.get("margin_drift_cents", 0)) > 0
+            m
+            for m in metrics
+            if m.get("margin_drift_cents") is not None
+            and abs(m.get("margin_drift_cents", 0)) > 0
         ]
         if stuck:
             ops_html += "<h3>Stuck jobs</h3><ul>"
             for j in stuck[:10]:
-                ops_html += f"<li>{j['id']}: {j.get('status')} — {j.get('topic', '')[:40]}</li>"
+                ops_html += (
+                    f"<li>{j['id']}: {j.get('status')} — {j.get('topic', '')[:40]}</li>"
+                )
             ops_html += "</ul>"
         if drift_rows:
             ops_html += "<h3>Margin drift</h3><ul>"
@@ -178,20 +199,23 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
 
     # 4. Group details by job for card listing
     from collections import defaultdict
-    jobs_data = defaultdict(lambda: {
-        "id": "",
-        "title": "",
-        "status": "pending",
-        "price": 0,
-        "est_cost": 0,
-        "margin_pct": 0.0,
-        "reason": "",
-        "invoice_url": "",
-        "tokens": 0,
-        "deliverable": "",
-        "expenses": [],
-        "pnl": 0
-    })
+
+    jobs_data = defaultdict(
+        lambda: {
+            "id": "",
+            "title": "",
+            "status": "pending",
+            "price": 0,
+            "est_cost": 0,
+            "margin_pct": 0.0,
+            "reason": "",
+            "invoice_url": "",
+            "tokens": 0,
+            "deliverable": "",
+            "expenses": [],
+            "pnl": 0,
+        }
+    )
 
     for e in log:
         jid = e.get("job_id")
@@ -222,11 +246,9 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
             jobs_data[jid]["deliverable"] = e["deliverable"]
             jobs_data[jid]["tokens"] = e["tokens"]
         elif st == "spend":
-            jobs_data[jid]["expenses"].append({
-                "vendor": e["vendor"],
-                "amount": e["amount"],
-                "memo": e["memo"]
-            })
+            jobs_data[jid]["expenses"].append(
+                {"vendor": e["vendor"], "amount": e["amount"], "memo": e["memo"]}
+            )
         elif st == "booked":
             jobs_data[jid]["status"] = e.get("status", "completed")
             jobs_data[jid]["pnl"] = e["job_pnl"]
@@ -250,9 +272,11 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         if job["status"] == "completed":
             btn_html = f"""<button class="btn btn-primary btn-sm" onclick="openBriefModal({jid_js_arg})">View Brief</button>"""
         elif job["status"] == "declined":
-            btn_html = f"""<span class="decline-label">Declined: {h(job['reason'])}</span>"""
+            btn_html = (
+                f"""<span class="decline-label">Declined: {h(job["reason"])}</span>"""
+            )
         elif job["status"] == "awaiting_payment":
-            btn_html = f"""<a href="{safe_href(job['invoice_url'])}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Pay Invoice</a>"""
+            btn_html = f"""<a href="{safe_href(job["invoice_url"])}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Pay Invoice</a>"""
 
         job_cards_html += f"""
         <div class="job-card status-{status_class}">
@@ -265,7 +289,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
           <div class="job-metrics">
             <div class="job-metric-item">
               <span class="job-metric-lbl">Budget</span>
-              <span class="job-metric-val">{fmt(job['price'])}</span>
+              <span class="job-metric-val">{fmt(job["price"])}</span>
             </div>
             <div class="job-metric-item">
               <span class="job-metric-lbl">COGS</span>
@@ -273,7 +297,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
             </div>
             <div class="job-metric-item">
               <span class="job-metric-lbl">P&L</span>
-              <span class="job-metric-val {'green' if fin_pnl >= 0 else 'red'}">{'+' if fin_pnl >= 0 else ''}{fmt(fin_pnl)}</span>
+              <span class="job-metric-val {"green" if fin_pnl >= 0 else "red"}">{"+" if fin_pnl >= 0 else ""}{fmt(fin_pnl)}</span>
             </div>
             <div class="job-metric-item">
               <span class="job-metric-lbl">Margin</span>
@@ -292,11 +316,19 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     for e in log:
         ts_str = time.strftime("%H:%M:%S", time.localtime(e.get("ts", time.time())))
         st = e["stage"]
-        job_ref = f"<span class='console-job-id'>[{h(e.get('job_id'))}]</span>" if e.get("job_id") else ""
+        job_ref = (
+            f"<span class='console-job-id'>[{h(e.get('job_id'))}]</span>"
+            if e.get("job_id")
+            else ""
+        )
 
         if st == "quote":
-            verdict = "<span class='green-txt'>ACCEPT</span>" if e["accept"] else "<span class='red-txt'>DECLINE</span>"
-            msg = f"Quoting topic: \"{h(e['title'])}\" | Price: {fmt(e['price'])} | Est. Cost: {fmt(e['est_cost'])} | Margin: {h(e['margin_pct'])}% → {verdict}"
+            verdict = (
+                "<span class='green-txt'>ACCEPT</span>"
+                if e["accept"]
+                else "<span class='red-txt'>DECLINE</span>"
+            )
+            msg = f'Quoting topic: "{h(e["title"])}" | Price: {fmt(e["price"])} | Est. Cost: {fmt(e["est_cost"])} | Margin: {h(e["margin_pct"])}% → {verdict}'
         elif st == "declined":
             msg = f"✋ Declined job. Reason: <span class='grey-txt'>{h(e['reason'])}</span>"
         elif st == "invoice":
@@ -350,19 +382,22 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
 def _ledger_from_snapshot(entries: list[dict]) -> list:
     """Rebuild LedgerEntry objects from snapshot dicts, tolerating partial rows."""
     from .treasury import LedgerEntry
+
     out = []
     for e in entries:
         if not isinstance(e, dict):
             continue
         try:
-            out.append(LedgerEntry(
-                kind=e.get("kind", "expense"),
-                amount_cents=int(e.get("amount_cents", 0) or 0),
-                memo=str(e.get("memo", "")),
-                job_id=e.get("job_id"),
-                vendor=e.get("vendor"),
-                ts=float(e.get("ts", 0) or 0),
-            ))
+            out.append(
+                LedgerEntry(
+                    kind=e.get("kind", "expense"),
+                    amount_cents=int(e.get("amount_cents", 0) or 0),
+                    memo=str(e.get("memo", "")),
+                    job_id=e.get("job_id"),
+                    vendor=e.get("vendor"),
+                    ts=float(e.get("ts", 0) or 0),
+                )
+            )
         except (TypeError, ValueError):
             continue
     return out
@@ -386,14 +421,23 @@ def _financials_html(report: dict) -> str:
     parts = [
         row("Revenue", fmt(inc["revenue_cents"])),
         row("Operating cost", fmt(inc["operating_cost_cents"])),
-        row(f"Net profit ({inc['net_margin_pct']}% margin)", fmt(inc["net_profit_cents"]), net_cls),
-        row("Avg profit / job", f"{fmt(ue['avg_profit_cents'])} ({ue['contribution_margin_pct']}%)"),
+        row(
+            f"Net profit ({inc['net_margin_pct']}% margin)",
+            fmt(inc["net_profit_cents"]),
+            net_cls,
+        ),
+        row(
+            "Avg profit / job",
+            f"{fmt(ue['avg_profit_cents'])} ({ue['contribution_margin_pct']}%)",
+        ),
     ]
 
     if rw["status"] == "cashflow_positive":
         runway_txt = f"Cash-flow positive (+{fmt(rw['daily_net_cents'])}/day)"
     elif rw["status"] == "burning":
-        runway_txt = f"{rw['runway_days']} days (burning {fmt(-rw['daily_net_cents'])}/day)"
+        runway_txt = (
+            f"{rw['runway_days']} days (burning {fmt(-rw['daily_net_cents'])}/day)"
+        )
     elif rw["status"] == "insufficient_history":
         runway_txt = "Insufficient history"
     else:
@@ -402,12 +446,23 @@ def _financials_html(report: dict) -> str:
 
     fc = report.get("forecast")
     if fc and fc.get("status") == "ok":
-        proj_cls = "green-txt" if fc["projected_balance_cents"] >= fc["balance_cents"] else "red-txt"
-        parts.append(
-            row(f"Projected balance ({fc['horizon_days']}d)", fmt(fc["projected_balance_cents"]), proj_cls)
+        proj_cls = (
+            "green-txt"
+            if fc["projected_balance_cents"] >= fc["balance_cents"]
+            else "red-txt"
         )
         parts.append(
-            row("Forecast best / worst", f"{fmt(fc['best_cents'])} / {fmt(fc['worst_cents'])}")
+            row(
+                f"Projected balance ({fc['horizon_days']}d)",
+                fmt(fc["projected_balance_cents"]),
+                proj_cls,
+            )
+        )
+        parts.append(
+            row(
+                "Forecast best / worst",
+                f"{fmt(fc['best_cents'])} / {fmt(fc['worst_cents'])}",
+            )
         )
 
     out = "".join(parts)
@@ -417,7 +472,7 @@ def _financials_html(report: dict) -> str:
         spark = report.get("balance_sparkline", "")
         out += (
             '<div style="margin-top:10px;font-size:12px;color:var(--color-text-muted)">'
-            f'Net P&amp;L trend by {h(report.get("period", "day"))} '
+            f"Net P&amp;L trend by {h(report.get('period', 'day'))} "
             f'<span style="letter-spacing:2px">{h(spark)}</span></div>'
         )
         for b in trend[-8:]:
@@ -431,6 +486,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     s = snapshot
     status_data = build_status_data(s, log)
     from .finance import build_report
+
     _entries = _ledger_from_snapshot(s.get("entries", []))
     financials_html = _financials_html(build_report(_entries))
     chart_svg = status_data["chart_svg"]
@@ -1197,31 +1253,31 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     </div>
     <div class="header-pills">
       <div id="status-indicator" class="pill"><span class="status-dot live"></span> Live</div>
-      <div id="header-seed-capital" class="pill">Seed Capital: {fmt(s['capital_cents'])}</div>
-      <div id="header-net-growth" class="pill">Net Growth: <span class="green" id="header-net-growth-val">+{fmt(s['balance_cents'] - s['capital_cents'])}</span></div>
+      <div id="header-seed-capital" class="pill">Seed Capital: {fmt(s["capital_cents"])}</div>
+      <div id="header-net-growth" class="pill">Net Growth: <span class="green" id="header-net-growth-val">+{fmt(s["balance_cents"] - s["capital_cents"])}</span></div>
     </div>
   </header>
 
   <div class="metrics-grid">
     <div class="metric-card">
       <div class="label">Cash Balance</div>
-      <div class="val" id="metric-cash-balance">{fmt(s['balance_cents'])}</div>
+      <div class="val" id="metric-cash-balance">{fmt(s["balance_cents"])}</div>
     </div>
     <div class="metric-card">
       <div class="label">Revenue</div>
-      <div class="val green" id="metric-revenue">{fmt(s['revenue_cents'])}</div>
+      <div class="val green" id="metric-revenue">{fmt(s["revenue_cents"])}</div>
     </div>
     <div class="metric-card">
       <div class="label">Operating Spend</div>
-      <div class="val red" id="metric-operating-spend">{fmt(s['expense_cents'])}</div>
+      <div class="val red" id="metric-operating-spend">{fmt(s["expense_cents"])}</div>
     </div>
     <div class="metric-card">
       <div class="label">Net Profit</div>
-      <div class="val {'green' if s['net_profit_cents']>=0 else 'red'}" id="metric-net-profit">{fmt(s['net_profit_cents'])}</div>
+      <div class="val {"green" if s["net_profit_cents"] >= 0 else "red"}" id="metric-net-profit">{fmt(s["net_profit_cents"])}</div>
     </div>
     <div class="metric-card">
       <div class="label">Total Margin</div>
-      <div class="val" id="metric-margin">{s['margin_pct']}%</div>
+      <div class="val" id="metric-margin">{s["margin_pct"]}%</div>
     </div>
   </div>
 

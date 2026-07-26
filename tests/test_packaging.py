@@ -19,6 +19,7 @@ class TestPackaging(unittest.TestCase):
 
     def test_version_attr_present(self):
         import solvent
+
         self.assertRegex(solvent.__version__, r"^\d+\.\d+\.\d+")
 
     @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
@@ -41,6 +42,7 @@ class TestPackaging(unittest.TestCase):
 
     def test_main_entry_point_importable(self):
         from solvent.__main__ import main
+
         self.assertTrue(callable(main))
 
 

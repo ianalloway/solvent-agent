@@ -58,7 +58,9 @@ def approve(code: str) -> dict | None:
     allow = _load_allowlist()
     allow.add(str(row["user_id"]))
     ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ALLOWLIST_PATH.write_text(json.dumps(sorted(allow), indent=2) + "\n", encoding="utf-8")
+    ALLOWLIST_PATH.write_text(
+        json.dumps(sorted(allow), indent=2) + "\n", encoding="utf-8"
+    )
     return row
 
 
@@ -68,6 +70,7 @@ def list_pending() -> list[dict]:
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="SOLVENT Telegram pairing")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="list pending pairing codes")

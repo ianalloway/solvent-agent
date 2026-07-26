@@ -52,6 +52,7 @@ def gather(treasury=None) -> dict[str, Any]:
     """Collect all status data into a single dict."""
     if treasury is None:
         from .treasury import Treasury
+
         treasury = Treasury()
 
     snap = treasury.snapshot()
@@ -67,7 +68,9 @@ def gather(treasury=None) -> dict[str, Any]:
     # Most recent job
     last_job = None
     if jobs:
-        last_job = max(jobs, key=lambda j: j.get("updated_at") or j.get("created_at") or 0)
+        last_job = max(
+            jobs, key=lambda j: j.get("updated_at") or j.get("created_at") or 0
+        )
 
     # Last event time
     last_event_ts = events[0].get("ts") if events else None
@@ -92,7 +95,9 @@ def gather(treasury=None) -> dict[str, Any]:
             "topic": (last_job.get("topic") or "")[:60],
             "status": last_job.get("status", ""),
             "updated_at": last_job.get("updated_at") or last_job.get("created_at"),
-        } if last_job else None,
+        }
+        if last_job
+        else None,
         "last_event_ts": last_event_ts,
         "api_keys": keys,
     }
@@ -108,7 +113,9 @@ def format_status(data: dict) -> str:
     bal = data["balance_cents"]
     rev = data["revenue_cents"]
     margin = data["margin_pct"]
-    lines.append(f"  Balance   {_fmt_cents(bal):>10}   Revenue {_fmt_cents(rev):>10}   Margin {margin:.1f}%")
+    lines.append(
+        f"  Balance   {_fmt_cents(bal):>10}   Revenue {_fmt_cents(rev):>10}   Margin {margin:.1f}%"
+    )
     lines.append("")
 
     # Jobs
@@ -119,7 +126,9 @@ def format_status(data: dict) -> str:
     done = counts.get("completed", 0)
     failed = counts.get("failed", 0)
 
-    lines.append(f"  Jobs      {total} total  •  {active} running  •  {pending} awaiting payment")
+    lines.append(
+        f"  Jobs      {total} total  •  {active} running  •  {pending} awaiting payment"
+    )
     lines.append(f"            {done} completed  •  {failed} failed")
 
     last = data.get("last_job")
