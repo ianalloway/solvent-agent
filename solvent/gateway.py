@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import Callable
 
@@ -15,10 +16,8 @@ from .treasury import fmt
 _outbound_handlers: dict[str, Callable[[str, str], None]] = {}
 _rate_limiter = RateLimiter()
 
-try:
+with contextlib.suppress(Exception):
     _rate_limiter.cleanup()
-except Exception:
-    pass
 
 
 def register_outbound(channel: str, handler: Callable[[str, str], None]) -> None:
