@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -14,12 +15,10 @@ ALLOWLIST_PATH = Path(".solvent/telegram_allowlist.json")
 def _load_allowlist() -> set[str]:
     if not ALLOWLIST_PATH.is_file():
         return set()
-    try:
+    with contextlib.suppress(json.JSONDecodeError, OSError):
         data = json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
         if isinstance(data, list):
             return {str(x) for x in data}
-    except (json.JSONDecodeError, OSError):
-        pass
     return set()
 
 
