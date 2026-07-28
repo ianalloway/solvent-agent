@@ -4,6 +4,7 @@ Commands: [serve|worker|telegram|doctor|pairing|...]
 """
 
 import sys
+from . import __version__
 
 HELP = """\
 SOLVENT — a self-funding analyst agent.
@@ -37,8 +38,6 @@ Run `solvent <command> --help` where supported for command-specific options.
 
 
 def _print_version() -> None:
-    from . import __version__
-
     print(f"solvent {__version__}")
 
 
