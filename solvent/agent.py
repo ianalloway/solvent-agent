@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import time
+from typing import Callable
 
 from .guardrails import Guardrails
 from .pricing import PricingPolicy
@@ -27,7 +28,7 @@ class Solvent:
         self,
         seed_cents: int = 10_000,
         fresh: bool = True,
-        on_event: callable | None = None,
+        on_event: Callable | None = None,
         *,
         sync_payment: bool | None = None,
     ):
