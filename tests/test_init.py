@@ -107,6 +107,29 @@ class TestInit(unittest.TestCase):
                     self.assertNotEqual(content.strip(), "CORRUPTED")
 
 
+
+    def test_init_reports_error_when_treasury_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            buf = io.StringIO()
+            workspace_dir = str(Path(d) / "workspace")
+            env = {"SOLVENT_HOME": d, "SOLVENT_WORKSPACE": workspace_dir}
+            with mock.patch.dict(os.environ, env):
+                import importlib
+                import solvent.init as _init
+                import solvent.paths as _paths
+                import solvent.workspace as _ws
+                importlib.reload(_paths)
+                importlib.reload(_ws)
+                importlib.reload(_init)
+                with mock.patch("solvent.treasury.Treasury", side_effect=RuntimeError("boom")):
+                    with redirect_stdout(buf):
+                        rc = _init.run()
+            self.assertEqual(rc, 1)
+            self.assertIn("Errors", buf.getvalue())
+            self.assertIn("treasury DB: boom", buf.getvalue())
+
+
+
 class TestInitCLI(unittest.TestCase):
     def test_main_exits_zero(self):
         with tempfile.TemporaryDirectory() as d:
