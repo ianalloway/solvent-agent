@@ -312,7 +312,7 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
         # The trailing \s* is consumed by the regex, so the object (if any)
         # begins immediately at m.end().
         brace = m.end() if m.end() < len(text) and text[m.end()] == "{" else -1
-        args: dict = {}
+        legacy_args: dict = {}
         claim_end = m.end()
         if brace != -1:
             end = _find_balanced(text, brace)
@@ -320,11 +320,11 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
                 try:
                     parsed = json.loads(text[brace:end])
                     if isinstance(parsed, dict):
-                        args = parsed
+                        legacy_args = parsed
                     claim_end = end
                 except json.JSONDecodeError:
                     pass
-        results.append((m.start(), m.group(1), args))
+        results.append((m.start(), m.group(1), legacy_args))
         _claim(m.start(), claim_end)
 
     # 3. Bare / fenced JSON fallback — ONLY when no explicit marker matched and

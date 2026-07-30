@@ -61,7 +61,7 @@ def run(*, force: bool = False) -> int:
     try:
         from .treasury import Treasury
 
-        t = Treasury(path=str(db))
+        t = Treasury(path=db)
         # Touch the DB by running the lightest possible query
         with t._conn() as conn:
             conn.execute("SELECT 1")
@@ -97,11 +97,13 @@ def run(*, force: bool = False) -> int:
 
     if created:
         print(f"\n  Created ({len(created)}):")
-        for p in created:
-            print(f"    + {p}")
+        for path_str in created:
+            print(f"    + {path_str}")
 
     if already:
         print(f"\n  Already present ({len(already)}) — skipped.")
+        for path_str in already:
+            print(f"    ~ {path_str}")
 
     if errors:
         print(f"\n  Errors ({len(errors)}):")
