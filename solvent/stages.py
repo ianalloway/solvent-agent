@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable
 from dataclasses import asdict
-from typing import Callable
 
 from . import delivery, service, tools
 from .guardrails import GuardrailError, Guardrails

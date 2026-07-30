@@ -4,6 +4,7 @@ Commands: [serve|worker|telegram|doctor|pairing|...]
 """
 
 import sys
+
 from . import __version__
 
 HELP = """\

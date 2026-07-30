@@ -356,28 +356,25 @@ class Treasury:
             return row["bal"] or 0
 
     def revenue_cents(self) -> int:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'revenue'"
-                ).fetchone()
-                return row["s"] or 0
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'revenue'"
+            ).fetchone()
+            return row["s"] or 0
 
     def expense_cents(self) -> int:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'expense'"
-                ).fetchone()
-                return row["s"] or 0
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'expense'"
+            ).fetchone()
+            return row["s"] or 0
 
     def capital_cents(self) -> int:
-        with self.lock():
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'capital'"
-                ).fetchone()
-                return row["s"] or 0
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT SUM(amount_cents) as s FROM ledger WHERE kind = 'capital'"
+            ).fetchone()
+            return row["s"] or 0
 
     def net_profit_cents(self) -> int:
         """Profit excludes seed capital — it is revenue minus operating spend."""
@@ -446,41 +443,39 @@ class Treasury:
 
     def upsert_job(self, job_id: str, status: str, **kwargs) -> None:
         """Upsert a job's status and other fields in the persistent job queue table."""
-        with self.lock():
-            with self._conn() as conn:
-                with conn:
-                    existing = conn.execute(
-                        "SELECT id FROM jobs WHERE id = ?", (job_id,)
-                    ).fetchone()
-                    ts = time.time()
-                    if existing:
-                        fields = ["status = ?", "updated_at = ?"]
-                        params = [status, ts]
-                        for col in self._JOB_COLS:
-                            if col in kwargs:
-                                val = kwargs[col]
-                                if col == "job_payload_json" and isinstance(val, dict):
-                                    val = json.dumps(val)
-                                fields.append(f"{col} = ?")
-                                params.append(val)
-                        params.append(job_id)
-                        conn.execute(
-                            f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params
-                        )
-                    else:
-                        cols = ["id", "status", "created_at", "updated_at"]
-                        vals = [job_id, status, ts, ts]
-                        for col in self._JOB_COLS:
-                            cols.append(col)
-                            val = kwargs.get(col)
-                            if col == "job_payload_json" and isinstance(val, dict):
-                                val = json.dumps(val)
-                            vals.append(val)
-                        placeholders = ", ".join(["?"] * len(cols))
-                        conn.execute(
-                            f"INSERT INTO jobs ({', '.join(cols)}) VALUES ({placeholders})",
-                            vals,
-                        )
+        with self.lock(), self._conn() as conn, conn:
+            existing = conn.execute(
+                "SELECT id FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+            ts = time.time()
+            if existing:
+                fields = ["status = ?", "updated_at = ?"]
+                params = [status, ts]
+                for col in self._JOB_COLS:
+                    if col in kwargs:
+                        val = kwargs[col]
+                        if col == "job_payload_json" and isinstance(val, dict):
+                            val = json.dumps(val)
+                        fields.append(f"{col} = ?")
+                        params.append(val)
+                params.append(job_id)
+                conn.execute(
+                    f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params
+                )
+            else:
+                cols = ["id", "status", "created_at", "updated_at"]
+                vals = [job_id, status, ts, ts]
+                for col in self._JOB_COLS:
+                    cols.append(col)
+                    val = kwargs.get(col)
+                    if col == "job_payload_json" and isinstance(val, dict):
+                        val = json.dumps(val)
+                    vals.append(val)
+                placeholders = ", ".join(["?"] * len(cols))
+                conn.execute(
+                    f"INSERT INTO jobs ({', '.join(cols)}) VALUES ({placeholders})",
+                    vals,
+                )
 
     def get_job(self, job_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:
@@ -755,28 +750,26 @@ class Treasury:
                     }
 
     def update_chat_session(self, session_id: str, **kwargs) -> None:
-        with self.lock():
-            with self._conn() as conn:
-                with conn:
-                    fields = ["updated_at = ?"]
-                    params: list = [time.time()]
-                    for col in (
-                        "user_label",
-                        "paired",
-                        "pending_job_json",
-                        "notify_job_id",
-                    ):
-                        if col in kwargs:
-                            val = kwargs[col]
-                            if col == "pending_job_json" and isinstance(val, dict):
-                                val = json.dumps(val)
-                            fields.append(f"{col} = ?")
-                            params.append(val)
-                    params.append(session_id)
-                    conn.execute(
-                        f"UPDATE chat_sessions SET {', '.join(fields)} WHERE id = ?",
-                        params,
-                    )
+        with self.lock(), self._conn() as conn, conn:
+            fields = ["updated_at = ?"]
+            params: list = [time.time()]
+            for col in (
+                "user_label",
+                "paired",
+                "pending_job_json",
+                "notify_job_id",
+            ):
+                if col in kwargs:
+                    val = kwargs[col]
+                    if col == "pending_job_json" and isinstance(val, dict):
+                        val = json.dumps(val)
+                    fields.append(f"{col} = ?")
+                    params.append(val)
+            params.append(session_id)
+            conn.execute(
+                f"UPDATE chat_sessions SET {', '.join(fields)} WHERE id = ?",
+                params,
+            )
 
     def get_chat_session(self, session_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:

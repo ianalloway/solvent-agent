@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from .guardrails import Guardrails
 from .pricing import PricingPolicy
