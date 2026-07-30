@@ -288,7 +288,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return client_host in ("127.0.0.1", "::1", "localhost", "testclient")
 
     @app.get("/api/receipt/{job_id}")
-    def get_receipt(job_id: str, token: str = "", request: Request = None):
+    def get_receipt(job_id: str, token: str = "", request: Request = None):  # type: ignore[assignment]
         """Return a plaintext job receipt.
 
         Access requires either:
@@ -363,7 +363,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         raise HTTPException(404, "brief not found")
 
     @app.get("/api/briefs")
-    def list_briefs(request: Request = None):
+    def list_briefs(request: Request = None):  # type: ignore[assignment]
         if not _is_local_request(request):
             raise HTTPException(403, "brief listing is only available locally")
         reports_dir = reports_dir_fn()
@@ -376,7 +376,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return sorted(list(stems))
 
     @app.get("/api/briefs/{job_id}")
-    def get_brief_api(job_id: str, token: str = "", request: Request = None):
+    def get_brief_api(job_id: str, token: str = "", request: Request = None):  # type: ignore[assignment]
         if not is_safe_job_id(job_id):
             raise HTTPException(404, "brief not found")
         if not _is_local_request(request) and not verify_delivery_token(job_id, token):

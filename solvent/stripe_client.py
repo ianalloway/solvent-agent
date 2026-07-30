@@ -391,8 +391,8 @@ class StripeClient:
                 "ts": time.time(),
             }
         if self.webhook_secret and link["id"] in self._webhook_payments:
-            cached = self._webhook_payments[link["id"]]
-            if cached.get("paid"):
+            cached: dict | None = self._webhook_payments[link["id"]]
+            if cached and cached.get("paid"):
                 return self._accept_payment(cached, link)
         if job_id:
             cached = self.get_cached_payment(job_id)

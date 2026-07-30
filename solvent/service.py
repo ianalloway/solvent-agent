@@ -119,7 +119,5 @@ def reconcile_cogs(quote, result: dict) -> dict:
         "margin_drift_cents": drift,
         "cost_warning": warning,
         "fulfillment_seconds": result.get("fulfillment_seconds", 0),
-        "tool_calls": result.get("tool_ctx").total_calls
-        if result.get("tool_ctx")
-        else 0,
+        "tool_calls": (tc.total_calls if (tc := result.get("tool_ctx")) else 0),
     }

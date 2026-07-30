@@ -118,7 +118,7 @@ def runway(
     balance = sum(_signed(e) for e in entries)
     op = [e for e in entries if e.kind in ("revenue", "expense")]
 
-    base = {
+    base: dict[str, int | float | str | bool | None] = {
         "balance_cents": balance,
         "reserve_cents": reserve_cents,
         "spendable_cents": balance - reserve_cents,

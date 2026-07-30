@@ -128,7 +128,7 @@ class Guardrails:
         """
         spent_24h = self._spent_last_24h()
         balance = self.t.balance_cents()
-        ctx = {
+        ctx: dict[str, Any] = {
             "amount_cents": amount_cents,
             "vendor": vendor,
             "spent_24h_cents": spent_24h,

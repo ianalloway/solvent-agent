@@ -68,8 +68,8 @@ class RateLimiter:
         now = time.time()
 
         # 1. Ban check
-        if self.is_banned(user_key):
-            ban_info = self._get_ban(user_key)
+        ban_info = self._get_ban(user_key)
+        if ban_info is not None:
             remaining = max(0, int(ban_info["expires_at"] - now))
             reason = ban_info.get("reason") or "banned"
             return False, f"Banned: {reason} (expires in {remaining}s)"
@@ -141,8 +141,12 @@ class RateLimiter:
         daily_count = self._count_since(user_key, now - 86400)
 
         ban_info = self._get_ban(user_key)
-        banned = ban_info is not None and ban_info["expires_at"] > now
-        ban_expires = ban_info["expires_at"] if banned else None
+        if ban_info is not None:
+            banned = ban_info["expires_at"] > now
+            ban_expires = ban_info["expires_at"]
+        else:
+            banned = False
+            ban_expires = None
 
         return {
             "burst_count": burst_count,

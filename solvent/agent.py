@@ -74,14 +74,15 @@ class Solvent:
 
     def enqueue_job(self, job: dict) -> dict:
         """Validate and persist a job for async worker processing."""
-        job, err = validate_and_coerce_job(job, self.t)
+        validated, err = validate_and_coerce_job(job, self.t)
         if err:
-            job_id = job.get("id", "unknown") if job else "unknown"
+            job_id = validated.get("id", "unknown") if validated else "unknown"
             return self._emit(stage="declined", job_id=job_id, reason=err)
-        q = self._runner._stage_quote(job)
+        assert validated is not None
+        q = self._runner._stage_quote(validated)
         if q.get("stage") == "declined" or not q.get("accept"):
             return q
-        return self._runner._stage_checkout(job, q)
+        return self._runner._stage_checkout(validated, q)
 
     def run(self, jobs: list[dict]) -> dict:
         for job in jobs:

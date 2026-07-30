@@ -156,28 +156,29 @@ class StageRunner:
         return event
 
     def run_job(self, job: dict) -> dict:
-        job, err = validate_and_coerce_job(job, self.t)
+        validated, err = validate_and_coerce_job(job, self.t)
         if err:
             return self._emit(
                 stage="declined",
-                job_id=job.get("id", "unknown") if job else "unknown",
+                job_id=validated.get("id", "unknown") if validated else "unknown",
                 reason=err,
             )
+        assert validated is not None
 
-        q = self._stage_quote(job)
+        q = self._stage_quote(validated)
         if q.get("stage") == "declined" or not q.get("accept"):
             return q
 
-        quote_obj = q.get("_quote") or quote(job, self.pricing)
-        checkout = self._stage_checkout(job, q)
+        quote_obj = q.get("_quote") or quote(validated, self.pricing)
+        checkout = self._stage_checkout(validated, q)
         if checkout.get("stage") == "payment_pending":
             return checkout
 
-        paid = self._stage_paid(job, checkout, quote_obj)
+        paid = self._stage_paid(validated, checkout, quote_obj)
         if paid.get("stage") == "payment_pending":
             return paid
 
-        return self._stage_fulfill_and_book(job, quote_obj, paid)
+        return self._stage_fulfill_and_book(validated, quote_obj, paid)
 
     def advance_job(self, job_id: str) -> dict:
         """Resume a job from its current DB state."""
@@ -408,12 +409,10 @@ class StageRunner:
 
         try:
             fulfill_key = f"fulfill:{job_id}"
-            if (
-                self.t.get_stage(fulfill_key)
-                and self.t.get_stage(fulfill_key)["status"] == "completed"
-            ):
+            fulfill_stage = self.t.get_stage(fulfill_key)
+            if fulfill_stage and fulfill_stage["status"] == "completed":
                 result = json.loads(
-                    self.t.get_stage(fulfill_key)["result_json"] or "{}"
+                    fulfill_stage["result_json"] or "{}"
                 )
             else:
                 result = service.fulfill(job)
@@ -427,7 +426,7 @@ class StageRunner:
                     },
                 )
                 _tctx = result.get("tool_ctx")
-                if getattr(_tctx, "budget_exhausted", False):
+                if _tctx is not None and getattr(_tctx, "budget_exhausted", False):
                     self._emit(
                         stage="tool_budget_exhausted",
                         job_id=job_id,
@@ -456,10 +455,8 @@ class StageRunner:
             self._emit(stage="cogs_reconciled", job_id=job_id, **cogs)
 
             deliver_key = f"deliver:{job_id}"
-            if not (
-                self.t.get_stage(deliver_key)
-                and self.t.get_stage(deliver_key)["status"] == "completed"
-            ):
+            deliver_stage = self.t.get_stage(deliver_key)
+            if not (deliver_stage and deliver_stage["status"] == "completed"):
                 hosted = delivery.hosted_brief_url(_base_url(), job_id)
                 from pathlib import Path
 
@@ -553,9 +550,9 @@ class StageRunner:
         except Exception as e:
             reason = str(e)
             refund_key = f"refund:{job_id}:{payment_intent_id}"
+            refund_stage = self.t.get_stage(refund_key)
             if payment_intent_id and not (
-                self.t.get_stage(refund_key)
-                and self.t.get_stage(refund_key)["status"] == "completed"
+                refund_stage and refund_stage["status"] == "completed"
             ):
                 refund = self.stripe.refund_payment(
                     payment_intent_id, paid_amount, job_id=job_id
@@ -606,7 +603,8 @@ class StageRunner:
             return None
         session_id = payment.get("checkout_session_id", "")
         key = f"paid:{job_id}:{session_id}"
-        if self.t.get_stage(key) and self.t.get_stage(key)["status"] == "completed":
+        paid_stage = self.t.get_stage(key)
+        if paid_stage and paid_stage["status"] == "completed":
             return self.advance_job(job_id)
         row = self.t.get_job(job_id)
         if not row:
@@ -678,6 +676,7 @@ class StageRunner:
                 )
             from .pricing import Quote
 
+            quote_obj: Quote | None = None
             if q_data and all(k in q_data for k in Quote.__dataclass_fields__):
                 quote_obj = Quote(
                     **{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__}

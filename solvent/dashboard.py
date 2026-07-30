@@ -16,6 +16,7 @@ import html
 import json
 import time
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from .dashboard_chat import CHAT_PANEL_CSS, CHAT_PANEL_HTML, LIVE_CLIENT_JS
@@ -129,7 +130,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     chart_svg = generate_svg_chart(balance_points)
 
     # 3. Calculate vendor expenses dynamically
-    vendor_spends = {}
+    vendor_spends: dict[str, int] = {}
     total_expense = 0
     for e in s["entries"]:
         if e["kind"] == "expense":
@@ -200,7 +201,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
     # 4. Group details by job for card listing
     from collections import defaultdict
 
-    jobs_data = defaultdict(
+    jobs_data: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
             "id": "",
             "title": "",
