@@ -159,6 +159,14 @@ class TestWebhookSignature:
         with pytest.raises(WebhookAuthError):
             verify_webhook_signature(b'{"type":"TAMPERED"}', header, secret)
 
+    def test_invalid_timestamp_in_signature(self):
+        # A non-integer timestamp must be rejected, not silently coerced.
+        payload = b'{"type":"test"}'
+        secret = "whsec_testsecret"
+        header = "t=notanumber,v1=abc"
+        with pytest.raises(WebhookAuthError, match="invalid timestamp"):
+            verify_webhook_signature(payload, header, secret)
+
 
 # ============================================================
 # 2. ACCOUNT TAKEOVER
@@ -180,6 +188,15 @@ class TestReplayProtection:
     def test_different_events_both_accepted(self):
         check_event_replay("evt_aaa")
         check_event_replay("evt_bbb")  # no exception
+
+    def test_expired_event_evicted(self):
+        # An entry older than the TTL (600s) must be evicted so the same
+        # event ID can be re-processed after the replay window expires.
+        _SEEN_EVENTS.clear()
+        _SEEN_EVENTS["evt_expired_old"] = time.time() - 700  # older than TTL
+        check_event_replay("evt_new")  # no exception — triggers eviction
+        # The expired entry should have been evicted, so it can be re-added
+        check_event_replay("evt_expired_old")  # no exception
 
 
 class TestEmailValidation:
@@ -211,6 +228,13 @@ class TestEmailValidation:
         # A 300-char local part exceeds RFC limits; caught either as length or format error
         with pytest.raises((InputValidationError,)):
             validate_email("a" * 300 + "@example.com")
+
+    def test_email_exceeds_max_length(self):
+        # An email longer than _EMAIL_MAX (320) chars triggers the explicit
+        # length guard before any regex validation.
+        long_email = "a" * 310 + "@example.com"  # 322 chars total
+        with pytest.raises(InputValidationError, match="exceeds"):
+            validate_email(long_email)
 
     def test_no_at_sign_blocked(self):
         with pytest.raises(InputValidationError, match="not a valid email"):
