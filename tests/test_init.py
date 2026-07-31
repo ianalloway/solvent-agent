@@ -106,8 +106,6 @@ class TestInit(unittest.TestCase):
                     content = soul.read_text()
                     self.assertNotEqual(content.strip(), "CORRUPTED")
 
-
-
     def test_init_reports_error_when_treasury_fails(self):
         with tempfile.TemporaryDirectory() as d:
             buf = io.StringIO()
@@ -118,16 +116,18 @@ class TestInit(unittest.TestCase):
                 import solvent.init as _init
                 import solvent.paths as _paths
                 import solvent.workspace as _ws
+
                 importlib.reload(_paths)
                 importlib.reload(_ws)
                 importlib.reload(_init)
-                with mock.patch("solvent.treasury.Treasury", side_effect=RuntimeError("boom")):
+                with mock.patch(
+                    "solvent.treasury.Treasury", side_effect=RuntimeError("boom")
+                ):
                     with redirect_stdout(buf):
                         rc = _init.run()
             self.assertEqual(rc, 1)
             self.assertIn("Errors", buf.getvalue())
             self.assertIn("treasury DB: boom", buf.getvalue())
-
 
 
 class TestInitCLI(unittest.TestCase):

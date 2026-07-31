@@ -411,9 +411,7 @@ class StageRunner:
             fulfill_key = f"fulfill:{job_id}"
             fulfill_stage = self.t.get_stage(fulfill_key)
             if fulfill_stage and fulfill_stage["status"] == "completed":
-                result = json.loads(
-                    fulfill_stage["result_json"] or "{}"
-                )
+                result = json.loads(fulfill_stage["result_json"] or "{}")
             else:
                 result = service.fulfill(job)
                 self.t.complete_stage(
