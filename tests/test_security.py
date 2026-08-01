@@ -17,6 +17,7 @@ import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -197,6 +198,19 @@ class TestReplayProtection:
         check_event_replay("evt_new")  # no exception — triggers eviction
         # The expired entry should have been evicted, so it can be re-added
         check_event_replay("evt_expired_old")  # no exception
+
+    def test_size_cap_evicts_oldest_entries(self):
+        """When the seen-events cache exceeds its size cap, the oldest entry
+        must be evicted so the event ID can be re-accepted later."""
+        with patch("solvent.security._SEEN_EVENTS_MAX", 2):
+            check_event_replay("evt_size_001")
+            check_event_replay("evt_size_002")
+            # Cache is now full (len == 2). Adding a third event must evict
+            # the oldest entry (evt_size_001) to stay within the cap.
+            check_event_replay("evt_size_003")
+            # The evicted event ID should be re-accepted without a ReplayAttackError.
+            check_event_replay("evt_size_001")
+            assert "evt_size_001" in _SEEN_EVENTS
 
 
 class TestEmailValidation:
