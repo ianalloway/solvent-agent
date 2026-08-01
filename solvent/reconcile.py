@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from .treasury import Treasury
 
 try:
-    import stripe as stripe_sdk
+    import stripe as stripe_sdk  # type: ignore[import-not-found]
 
     _HAS_STRIPE = True
 except Exception:

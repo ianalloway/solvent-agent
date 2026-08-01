@@ -7,7 +7,7 @@ import io
 
 def _ascii_qr(data: str) -> str:
     try:
-        import qrcode
+        import qrcode  # type: ignore[import-untyped]
 
         qr = qrcode.QRCode(border=1)
         qr.add_data(data)
