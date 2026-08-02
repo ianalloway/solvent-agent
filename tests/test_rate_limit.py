@@ -108,6 +108,41 @@ class TestHourlyLimit(unittest.TestCase):
         self.assertTrue(ok)
 
 
+class TestDailyLimit(unittest.TestCase):
+    def test_daily_limit_blocks_correctly(self):
+        """Pre-populating the daily quota must trip the daily cap, not hourly/burst.
+
+        Mirrors ``TestHourlyLimit``: events are placed outside the 60s burst
+        window but inside the 24h rolling day so only the daily counter trips.
+        """
+        rl = _limiter(burst_limit=1000, hourly_limit=1000, daily_limit=5)
+        now = time.time()
+        # 5 events spread within the last day, all older than the burst window.
+        rows = [("user:d", now - 300 - i * 600) for i in range(5)]
+        rl._conn.executemany(
+            "INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows
+        )
+        rl._conn.commit()
+
+        ok, reason = rl.check("user:d")
+        self.assertFalse(ok)
+        self.assertIn("Daily", reason)
+
+    def test_daily_events_older_than_24h_not_counted(self):
+        """Events older than the 24h window must not count against the daily cap."""
+        rl = _limiter(burst_limit=1000, hourly_limit=1000, daily_limit=2)
+        now = time.time()
+        # 2 events just outside the 24h rolling window
+        rows = [("user:d2", now - 86401 - i) for i in range(2)]
+        rl._conn.executemany(
+            "INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows
+        )
+        rl._conn.commit()
+
+        ok, _ = rl.check("user:d2")
+        self.assertTrue(ok)
+
+
 class TestBanUnban(unittest.TestCase):
     def test_ban_blocks_immediately(self):
         rl = _limiter()
