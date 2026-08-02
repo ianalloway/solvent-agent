@@ -6,8 +6,13 @@ import json
 import logging
 import os
 import urllib.request
+from typing import TYPE_CHECKING
 
 from ..gateway import Gateway, register_outbound
+
+if TYPE_CHECKING:  # pragma: no cover - typing-only imports
+    from telegram import Update
+    from telegram.ext import ContextTypes
 
 
 def send_telegram_message(external_id: str, text: str) -> None:
@@ -26,23 +31,24 @@ def send_telegram_message(external_id: str, text: str) -> None:
 
 
 def _require_ptb():
+    """Import the runtime symbols we need from python-telegram-bot.
+
+    ``Update``/``ContextTypes`` are only needed for annotations, so they are
+    imported under ``TYPE_CHECKING`` instead of being returned here.
+    """
     try:
-        from telegram import Update
         from telegram.ext import (
             Application,
             CommandHandler,
-            ContextTypes,
             MessageHandler,
             filters,
         )
 
         return (
-            Update,
             Application,
             CommandHandler,
             MessageHandler,
             filters,
-            ContextTypes,
         )
     except ImportError as exc:
         raise RuntimeError(
@@ -50,19 +56,17 @@ def _require_ptb():
         ) from exc
 
 
-async def _reply(update, text: str) -> None:
+async def _reply(update: Update, text: str) -> None:
     if update.message:
         await update.message.reply_text(text[:4000])
 
 
 def build_application(gateway: Gateway | None = None) -> object:
     (
-        Update,
         Application,
         CommandHandler,
         MessageHandler,
         filters,
-        ContextTypes,
     ) = _require_ptb()
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
