@@ -95,6 +95,23 @@ def test_log_event_handles_oserror_gracefully(monkeypatch):
     treasury_mock.record_event.assert_called_once()
 
 
+def test_log_event_swallows_treasury_exception(tmp_path, monkeypatch):
+    """log_event must not propagate exceptions raised by treasury.record_event."""
+    log_file = tmp_path / "solvent.log"
+    monkeypatch.setattr("solvent.observability.LOG_PATH", log_file)
+
+    treasury_mock = MagicMock()
+    treasury_mock.record_event.side_effect = RuntimeError("ledger down")
+
+    result = log_event(treasury_mock, job_id="J1", stage="paid", amount=5000)
+
+    treasury_mock.record_event.assert_called_once()
+    # Even though treasury raised, the event dict is returned and the log is written
+    assert result["job_id"] == "J1"
+    assert result["stage"] == "paid"
+    assert log_file.exists()
+
+
 def test_log_event_json_env_var_streams_to_stderr(monkeypatch, capsys):
     """When SOLVENT_LOG_JSON is set, also emit to stderr."""
     monkeypatch.setenv("SOLVENT_LOG_JSON", "1")
