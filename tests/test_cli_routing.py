@@ -4,11 +4,10 @@ Regression: a stray `from .cli import main` used to shadow the router so every
 documented subcommand (serve/worker/doctor/...) silently ran the demo CLI.
 """
 
-import json
 import os
 import unittest
 from io import StringIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import solvent.__main__ as entry
 
