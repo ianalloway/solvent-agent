@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from .treasury import Treasury
@@ -19,21 +20,32 @@ except Exception:
 
 def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
     treasury = treasury or Treasury()
-    ledger_refs = set()
-    session_refs = set()
+    # Count, don't just collect: the same PaymentIntent or Checkout Session
+    # booked as revenue twice is double-counted cash, which is exactly the
+    # drift reconciliation exists to catch.
+    ref_counts: Counter[str] = Counter()
+    session_counts: Counter[str] = Counter()
     for e in treasury.entries:
         if e.kind == "revenue":
             if e.stripe_ref:
-                ledger_refs.add(e.stripe_ref)
+                ref_counts[e.stripe_ref] += 1
             if e.stripe_session_id:
-                session_refs.add(e.stripe_session_id)
+                session_counts[e.stripe_session_id] += 1
+
+    ledger_refs = set(ref_counts)
+    duplicates = sorted(
+        {ident for ident, n in ref_counts.items() if n > 1}
+        | {ident for ident, n in session_counts.items() if n > 1}
+    )
 
     report = {
         "ledger_revenue_count": len(ledger_refs),
         "unmatched_stripe": [],
-        "unmatched_ledger": list(ledger_refs),
-        "duplicates": [],
-        "drift": False,
+        "unmatched_ledger": sorted(ledger_refs),
+        "duplicates": duplicates,
+        # Duplicates are detectable from the ledger alone, so they count as
+        # drift even when Stripe is unreachable.
+        "drift": bool(duplicates),
     }
 
     key = os.environ.get("STRIPE_API_KEY", "")
@@ -68,7 +80,7 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
     unmatched_ledger = ledger_refs - stripe_pis
     report["unmatched_stripe"] = sorted(unmatched_stripe)
     report["unmatched_ledger"] = sorted(unmatched_ledger)
-    report["drift"] = bool(unmatched_stripe or unmatched_ledger)
+    report["drift"] = bool(unmatched_stripe or unmatched_ledger or duplicates)
     report["mode"] = "full"
     return report
 
