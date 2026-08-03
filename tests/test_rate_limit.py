@@ -173,6 +173,22 @@ class TestBanUnban(unittest.TestCase):
         rl._conn.commit()
         self.assertFalse(rl.is_banned("user:old"))
 
+    def test_expired_ban_does_not_block(self):
+        """An expired ban must not block ``check``; only active bans should.
+
+        Regression: ``_get_ban`` previously returned *any* ban row regardless of
+        ``expires_at``, so a ban whose timer had elapsed still produced
+        ``"Banned: ... (expires in 0s)"`` and locked the user out until
+        ``cleanup()`` ran. ``is_banned`` filtered correctly, but ``check`` did not.
+        """
+        rl = _limiter()
+        rl.ban("user:expired", duration_seconds=1, reason="short ban")
+        # Let the ban expire.
+        time.sleep(1.2)
+        self.assertFalse(rl.is_banned("user:expired"))
+        ok, reason = rl.check("user:expired")
+        self.assertTrue(ok, reason)
+
     def test_stats_shows_ban_info(self):
         rl = _limiter()
         rl.ban("user:c", duration_seconds=300)

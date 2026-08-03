@@ -176,9 +176,14 @@ class RateLimiter:
         return row[0] if row else 0
 
     def _get_ban(self, user_key: str) -> dict | None:
+        # Only return *active* (non-expired) bans so that an expired ban does
+        # not linger and block the user via check()/stats() after its
+        # expires_at has passed. This mirrors is_banned()'s expires_at filter;
+        # expired rows are reclaimed later by cleanup().
+        now = time.time()
         row = self._conn.execute(
-            "SELECT expires_at, reason FROM rate_bans WHERE user_key = ?",
-            (user_key,),
+            "SELECT expires_at, reason FROM rate_bans WHERE user_key = ? AND expires_at > ?",
+            (user_key, now),
         ).fetchone()
         if row is None:
             return None
