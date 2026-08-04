@@ -5,20 +5,28 @@ from __future__ import annotations
 import json
 import os
 import time
+from pathlib import Path
 
 from .paths import data_dir
 
-_OUTBOX = data_dir() / "chat_outbox.jsonl"
-_LOCK = data_dir() / "chat_outbox.lock"
+
+def _outbox_path() -> Path:
+    return data_dir() / "chat_outbox.jsonl"
+
+
+def _lock_path() -> Path:
+    return data_dir() / "chat_outbox.lock"
 
 
 class _LockCtx:
     def __enter__(self):
         import fcntl
 
-        _LOCK.parent.mkdir(parents=True, exist_ok=True)
-        self._fd = os.open(_LOCK, os.O_CREAT | os.O_RDWR)
+        _lock = _lock_path()
+        _lock.parent.mkdir(parents=True, exist_ok=True)
+        self._fd = os.open(_lock, os.O_CREAT | os.O_RDWR)
         fcntl.flock(self._fd, fcntl.LOCK_EX)
+        self._lock_path = _lock
         return self
 
     def __exit__(self, *args):
@@ -36,18 +44,19 @@ def enqueue_chat(channel: str, external_id: str, text: str) -> None:
         "text": text,
         "ts": time.time(),
     }
-    _OUTBOX.parent.mkdir(parents=True, exist_ok=True)
-    with _LockCtx(), _OUTBOX.open("a", encoding="utf-8") as fh:
+    _outbox_path().parent.mkdir(parents=True, exist_ok=True)
+    with _LockCtx(), _outbox_path().open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, separators=(",", ":")) + "\n")
 
 
 def drain_chat_outbox() -> list[dict]:
     """Return and remove all pending outbox rows (best-effort, file-locked)."""
-    if not _OUTBOX.is_file():
+    outbox = _outbox_path()
+    if not outbox.is_file():
         return []
     with _LockCtx():
-        raw = _OUTBOX.read_text(encoding="utf-8")
-        _OUTBOX.write_text("", encoding="utf-8")
+        raw = outbox.read_text(encoding="utf-8")
+        outbox.write_text("", encoding="utf-8")
     rows: list[dict] = []
     for line in raw.splitlines():
         line = line.strip()
