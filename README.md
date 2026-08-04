@@ -263,6 +263,11 @@ With both keys set:
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
 | `SOLVENT_TELEGRAM_DM_POLICY` | `pairing` · `allowlist` · `open` (default `pairing`) |
 | `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |
+| `SOLVENT_PORT` | Port for the `serve` API server (default `8787`) |
+| `SOLVENT_BASE_URL` | Base URL for hosted brief links and Stripe webhook callbacks |
+| `NEMOTRON_MODEL` | Nemotron model override (default: `nvidia/llama-3.1-nemotron-ultra-253b-v1`) |
+| `SOLVENT_DELIVERY_SECRET` | HMAC token secret for `/briefs/{job_id}`; at least 32 characters, high entropy |
+| `SOLVENT_SKIP_ONBOARD` | Set to `1` to skip the first-run wizard |
 
 Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated runs reuse a single **SOLVENT Research Brief** product instead of cluttering your Stripe dashboard.
 
