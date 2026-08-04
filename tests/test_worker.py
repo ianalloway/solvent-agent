@@ -20,7 +20,9 @@ class TestRunWorker(unittest.TestCase):
     @mock.patch("solvent.worker.list_claimable", return_value=[])
     @mock.patch("solvent.worker.resume_incomplete_jobs", return_value=[])
     @mock.patch("solvent.worker.Solvent")
-    def test_no_resumed_no_claimable_once(self, mock_solvent_cls, mock_resume, mock_list):
+    def test_no_resumed_no_claimable_once(
+        self, mock_solvent_cls, mock_resume, mock_list
+    ):
         agent = self._make_mock_agent()
         mock_solvent_cls.return_value = agent
 
@@ -114,7 +116,9 @@ class TestRunWorker(unittest.TestCase):
     @mock.patch("solvent.worker.list_claimable", return_value=[])
     @mock.patch("solvent.worker.resume_incomplete_jobs", return_value=[])
     @mock.patch("solvent.worker.Solvent")
-    def test_fresh_and_seed_cents_forwarded(self, mock_solvent_cls, mock_resume, mock_list):
+    def test_fresh_and_seed_cents_forwarded(
+        self, mock_solvent_cls, mock_resume, mock_list
+    ):
         agent = self._make_mock_agent()
         mock_solvent_cls.return_value = agent
 
@@ -163,8 +167,10 @@ class TestWorkerMain(unittest.TestCase):
         test_args = [
             "solvent-worker",
             "--once",
-            "--poll-interval", "3.0",
-            "--seed", "200.0",
+            "--poll-interval",
+            "3.0",
+            "--seed",
+            "200.0",
             "--keep-balance",
         ]
 
@@ -174,8 +180,8 @@ class TestWorkerMain(unittest.TestCase):
         mock_run_worker.assert_called_once_with(
             once=True,
             poll_interval=3.0,
-            seed_cents=20_000,   # 200.0 * 100
-            fresh=False,          # --keep-balance → fresh=False
+            seed_cents=20_000,  # 200.0 * 100
+            fresh=False,  # --keep-balance → fresh=False
         )
 
 

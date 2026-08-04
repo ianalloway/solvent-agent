@@ -125,9 +125,7 @@ class TestCliRouting(unittest.TestCase):
         demo.assert_not_called()
 
     def test_telegram_routes_to_telegram_channel(self):
-        target, demo = self._routes_to(
-            ["solvent", "telegram"], "channels.telegram"
-        )
+        target, demo = self._routes_to(["solvent", "telegram"], "channels.telegram")
         target.assert_called_once()
         demo.assert_not_called()
 
