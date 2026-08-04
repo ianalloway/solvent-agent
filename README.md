@@ -268,6 +268,15 @@ With both keys set:
 | `NEMOTRON_MODEL` | Nemotron model override (default: `nvidia/llama-3.1-nemotron-ultra-253b-v1`) |
 | `SOLVENT_DELIVERY_SECRET` | HMAC token secret for `/briefs/{job_id}`; at least 32 characters, high entropy |
 | `SOLVENT_SKIP_ONBOARD` | Set to `1` to skip the first-run wizard |
+| `SOLVENT_ALLOW_POLL` | When set to `1`/`true`/`yes`, actively poll Stripe Checkout Sessions for payment status instead of awaiting webhook confirmation (default: off) |
+| `SOLVENT_ASYNC` | Run job fulfillment asynchronously instead of blocking on payment polling (default: off / synchronous) |
+| `SOLVENT_LIVE_SEARCH` | Enable live web search integration in the agent chat loop (default: off) |
+| `SOLVENT_LOG_JSON` | Emit structured JSON log lines to stderr in addition to the log file (default: off) |
+| `SOLVENT_UPDATE_CHECK` | Opt-in: run a background version-update hint on CLI startup when set to `1`/`true`/`yes` |
+| `SOLVENT_NO_UPDATE_CHECK` | Set to any value to suppress the background version-update hint |
+| `SOLVENT_WORKSPACE` | Override path for the agent workspace directory (SOUL/BRAIN/AGENTS files) |
+| `SOLVENT_WORKSPACE_MAX_CHARS` | Max characters loaded per workspace context file (default `8000`) |
+| `SOLVENT_WORKSPACE_TOTAL_MAX_CHARS` | Max total characters across all workspace context files (default `40000`) |
 
 Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated runs reuse a single **SOLVENT Research Brief** product instead of cluttering your Stripe dashboard.
 
