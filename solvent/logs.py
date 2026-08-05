@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import sys
 import time
-from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -78,17 +77,6 @@ def _human_line(record: dict) -> str:
         if k not in extra_skip:
             parts.append(f"{k}={v}")
     return "  ".join(parts)
-
-
-def _iter_lines(path: Path) -> Iterator[str]:
-    """Yield non-empty lines from the log file."""
-    if not path.is_file():
-        return
-    with path.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                yield line
 
 
 def _tail_lines(path: Path, n: int) -> list[str]:
