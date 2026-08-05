@@ -277,6 +277,11 @@ With both keys set:
 | `SOLVENT_WORKSPACE` | Override path for the agent workspace directory (SOUL/BRAIN/AGENTS files) |
 | `SOLVENT_WORKSPACE_MAX_CHARS` | Max characters loaded per workspace context file (default `8000`) |
 | `SOLVENT_WORKSPACE_TOTAL_MAX_CHARS` | Max total characters across all workspace context files (default `40000`) |
+| `SMTP_HOST` | SMTP server hostname. When empty (default), brief delivery is **simulated** — research briefs are written to the outbox directory instead of emailed. When set, briefs are emailed to the customer |
+| `SMTP_PORT` | SMTP server port (default `587`) |
+| `SMTP_USER` | SMTP authentication username |
+| `SMTP_PASS` | SMTP authentication password |
+| `SMTP_FROM` | "From" address for outgoing brief emails (default: `SMTP_USER`, else `agent@solvent.local`) |
 
 Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated runs reuse a single **SOLVENT Research Brief** product instead of cluttering your Stripe dashboard.
 
