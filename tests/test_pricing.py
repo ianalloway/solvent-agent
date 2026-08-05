@@ -1,6 +1,16 @@
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
-from solvent.pricing import RESOURCE_COSTS_CENTS, PricingPolicy, estimate_cost, quote
+from solvent.pricing import (
+    RESOURCE_COSTS_CENTS,
+    PricingPolicy,
+    estimate_cost,
+    get_resource_costs,
+    quote,
+)
 
 
 class TestPricing(unittest.TestCase):
@@ -131,6 +141,59 @@ class TestPricing(unittest.TestCase):
         q = quote(job)
         self.assertFalse(q.accept)
         self.assertEqual(q.margin_pct, -100.0)
+
+
+class TestResourceCostsOverrides(unittest.TestCase):
+    """Coverage for get_resource_costs() loading .solvent/pricing_overrides.json."""
+
+    def setUp(self) -> None:
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        os.makedirs(os.path.join(self._tmp.name, ".solvent"), exist_ok=True)
+        os.chdir(self._tmp.name)
+
+    def tearDown(self) -> None:
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def test_defaults_when_no_override_file(self) -> None:
+        costs = get_resource_costs()
+        self.assertEqual(costs, RESOURCE_COSTS_CENTS)
+        # Must be a copy, not the same dict object
+        costs["nemotron_tokens_per_1k"] = 999
+        self.assertNotEqual(
+            RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"], 999
+        )
+
+    def test_valid_override_applied(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text(
+            json.dumps({"nemotron_tokens_per_1k": 55, "pdf_render": 25})
+        )
+        costs = get_resource_costs()
+        self.assertEqual(costs["nemotron_tokens_per_1k"], 55)
+        self.assertEqual(costs["pdf_render"], 25)
+        self.assertEqual(
+            costs["market_data_call"],
+            RESOURCE_COSTS_CENTS["market_data_call"],
+        )
+
+    def test_invalid_json_falls_back_to_defaults(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text("{not valid json")
+        costs = get_resource_costs()
+        self.assertEqual(costs, RESOURCE_COSTS_CENTS)
+
+    def test_non_dict_json_falls_back_to_defaults(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text("[1, 2, 3]")
+        costs = get_resource_costs()
+        self.assertEqual(costs, RESOURCE_COSTS_CENTS)
+
+    def test_unknown_keys_and_non_numeric_values_ignored(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text(
+            json.dumps({"unknown_key": 999, "web_search_call": "expensive"})
+        )
+        costs = get_resource_costs()
+        self.assertEqual(costs["web_search_call"], RESOURCE_COSTS_CENTS["web_search_call"])
+        self.assertNotIn("unknown_key", costs)
 
 
 if __name__ == "__main__":
