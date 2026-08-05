@@ -40,6 +40,16 @@ class TestPackaging(unittest.TestCase):
         self.assertIn("solvent", pkg_data)
         self.assertTrue(any("templates" in p for p in pkg_data["solvent"]))
 
+    def test_py_typed_marker_present(self):
+        """PEP 561 marker ships so downstream type checkers can consume annotations."""
+        self.assertTrue((ROOT / "solvent" / "py.typed").is_file())
+
+    @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
+    def test_py_typed_in_package_data(self):
+        data = tomllib.loads(PYPROJECT.read_text())
+        pkg_data = data["tool"]["setuptools"]["package-data"]["solvent"]
+        self.assertIn("py.typed", pkg_data)
+
     def test_main_entry_point_importable(self):
         from solvent.__main__ import main
 

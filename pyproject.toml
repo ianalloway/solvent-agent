@@ -48,4 +48,4 @@ version = { attr = "solvent.__version__" }
 include = ["solvent*"]
 
 [tool.setuptools.package-data]
-solvent = ["templates/**/*"]
+solvent = ["templates/**/*", "py.typed"]
