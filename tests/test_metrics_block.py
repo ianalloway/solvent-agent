@@ -43,10 +43,7 @@ class TestBlockMetrics(unittest.TestCase):
 
         # Opening the Treasury should migrate the schema in place.
         t = Treasury(path=self.db)
-        cols = {
-            r[1]
-            for r in sqlite3.connect(self.db).execute("PRAGMA table_info(job_metrics)")
-        }
+        cols = {r[1] for r in sqlite3.connect(self.db).execute("PRAGMA table_info(job_metrics)")}
         self.assertIn("block_rule", cols)
         self.assertIn("block_reason", cols)
 

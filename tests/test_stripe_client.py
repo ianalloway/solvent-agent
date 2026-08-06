@@ -92,9 +92,7 @@ class TestStripeClientLive(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_refuses_live_key(self):
-        with mock.patch.dict(
-            os.environ, {"STRIPE_API_KEY": "sk_live_bad"}, clear=False
-        ):
+        with mock.patch.dict(os.environ, {"STRIPE_API_KEY": "sk_live_bad"}, clear=False):
             with self.assertRaises(RuntimeError):
                 StripeClient()
 
@@ -175,9 +173,7 @@ class TestStripeClientLive(unittest.TestCase):
             "currency": "usd",
         }
 
-        with mock.patch.dict(
-            os.environ, {"STRIPE_WEBHOOK_SECRET": "whsec_test"}, clear=False
-        ):
+        with mock.patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": "whsec_test"}, clear=False):
             client = StripeClient()
             client._webhook_payments["plink_wh"] = cached
             link = {"id": "plink_wh", "amount_cents": 7500, "simulated": False}
@@ -283,9 +279,7 @@ class TestStripeClientLive(unittest.TestCase):
         mac = _hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
         valid_sig = f"t={ts},v1={mac}"
 
-        with mock.patch.dict(
-            os.environ, {"STRIPE_WEBHOOK_SECRET": secret}, clear=False
-        ):
+        with mock.patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": secret}, clear=False):
             client = StripeClient()
             result = client.process_webhook(payload, valid_sig)
             self.assertTrue(result["paid"])
@@ -325,14 +319,10 @@ class TestStripeClientLive(unittest.TestCase):
     def test_issuing_card_when_available(self):
         self._mock_stripe.issuing.Cardholder.list.return_value = mock.Mock(data=[])
         self._mock_stripe.issuing.Cardholder.create.return_value = mock.Mock(id="ich_1")
-        self._mock_stripe.issuing.Card.create.return_value = mock.Mock(
-            id="ic_1", last4="4242"
-        )
+        self._mock_stripe.issuing.Card.create.return_value = mock.Mock(id="ic_1", last4="4242")
 
         client = StripeClient()
-        pay = client.pay_vendor(
-            "market-data-api", 240, "2 pulls", job_id="job_live_123"
-        )
+        pay = client.pay_vendor("market-data-api", 240, "2 pulls", job_id="job_live_123")
 
         self.assertFalse(pay["simulated"])
         self.assertTrue(pay["issuing"])
@@ -345,9 +335,7 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertEqual(create_kwargs["metadata"]["job_id"], "job_live_123")
 
     def test_issuing_fallback_on_error(self):
-        self._mock_stripe.issuing.Cardholder.list.side_effect = Exception(
-            "issuing disabled"
-        )
+        self._mock_stripe.issuing.Cardholder.list.side_effect = Exception("issuing disabled")
         client = StripeClient()
         pay = client.pay_vendor("market-data-api", 240, "2 pulls")
         self.assertTrue(pay["simulated"])
@@ -356,9 +344,7 @@ class TestStripeClientLive(unittest.TestCase):
 
 class TestAgentPaymentFlow(unittest.TestCase):
     def setUp(self):
-        self._env = mock.patch.dict(
-            os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
-        )
+        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
         self._env.start()
 
     def tearDown(self):
@@ -383,12 +369,8 @@ class TestAgentPaymentFlow(unittest.TestCase):
             }
             pending = {"paid": False, "reason": "payment not received within 120s"}
 
-            with mock.patch.object(
-                agent.stripe, "create_checkout_session", return_value=link
-            ):
-                with mock.patch.object(
-                    agent.stripe, "confirm_payment", return_value=pending
-                ):
+            with mock.patch.object(agent.stripe, "create_checkout_session", return_value=link):
+                with mock.patch.object(agent.stripe, "confirm_payment", return_value=pending):
                     with mock.patch("solvent.service.fulfill") as mock_fulfill:
                         result = agent.handle_job(
                             {
@@ -428,12 +410,8 @@ class TestAgentPaymentFlow(unittest.TestCase):
                 "amount_cents": 4900,
             }
 
-            with mock.patch.object(
-                agent.stripe, "create_checkout_session", return_value=link
-            ):
-                with mock.patch.object(
-                    agent.stripe, "confirm_payment", return_value=payment
-                ):
+            with mock.patch.object(agent.stripe, "create_checkout_session", return_value=link):
+                with mock.patch.object(agent.stripe, "confirm_payment", return_value=payment):
                     with mock.patch("solvent.service.fulfill") as mock_fulfill:
                         mock_fulfill.return_value = {
                             "deliverable_path": str(Path(tmp) / "x.md"),
@@ -466,11 +444,7 @@ class TestAgentPaymentFlow(unittest.TestCase):
                                     "web_search_calls": 1,
                                 }
                             )
-            rev = [
-                e
-                for e in agent.t.entries
-                if e.kind == "revenue" and e.job_id == "J-test"
-            ]
+            rev = [e for e in agent.t.entries if e.kind == "revenue" and e.job_id == "J-test"]
             self.assertEqual(len(rev), 1)
             self.assertEqual(rev[0].stripe_ref, "pi_test123")
             self.assertEqual(rev[0].stripe_session_id, "cs_test123")

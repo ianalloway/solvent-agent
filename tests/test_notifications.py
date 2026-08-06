@@ -39,8 +39,7 @@ class TestNotifications(unittest.TestCase):
 
     def test_drain_skips_malformed_lines(self):
         outbox_path = (
-            __import__("solvent.paths", fromlist=["data_dir"]).data_dir()
-            / "chat_outbox.jsonl"
+            __import__("solvent.paths", fromlist=["data_dir"]).data_dir() / "chat_outbox.jsonl"
         )
         outbox_path.parent.mkdir(parents=True, exist_ok=True)
         outbox_path.write_text("not-json-here\n", encoding="utf-8")
@@ -49,8 +48,7 @@ class TestNotifications(unittest.TestCase):
     def test_drain_skips_blank_lines(self):
         """Empty/whitespace-only lines in the outbox must be silently skipped."""
         outbox_path = (
-            __import__("solvent.paths", fromlist=["data_dir"]).data_dir()
-            / "chat_outbox.jsonl"
+            __import__("solvent.paths", fromlist=["data_dir"]).data_dir() / "chat_outbox.jsonl"
         )
         outbox_path.parent.mkdir(parents=True, exist_ok=True)
         outbox_path.write_text("\n  \n\n", encoding="utf-8")

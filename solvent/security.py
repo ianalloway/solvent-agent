@@ -93,9 +93,7 @@ def verify_webhook_signature(
         )
 
     signed_payload = f"{ts}.".encode() + payload
-    expected = hmac.new(
-        secret.encode("utf-8"), signed_payload, hashlib.sha256
-    ).hexdigest()
+    expected = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
 
     if not any(hmac.compare_digest(expected, sig) for sig in v1_sigs):
         raise WebhookAuthError("webhook signature verification failed")
@@ -113,13 +111,9 @@ def validate_stripe_key(key: str) -> None:
     if not key:
         return  # no key → simulate mode, allowed
     if key.startswith("sk_live_"):
-        raise AuthBypassError(
-            "live Stripe keys are refused by SOLVENT — use sk_test_... only"
-        )
+        raise AuthBypassError("live Stripe keys are refused by SOLVENT — use sk_test_... only")
     if not (key.startswith("sk_test_") or key.startswith("rk_test_")):
-        raise AuthBypassError(
-            f"unrecognised Stripe key prefix: {key[:12]}... — expected sk_test_"
-        )
+        raise AuthBypassError(f"unrecognised Stripe key prefix: {key[:12]}... — expected sk_test_")
 
 
 # ---------------------------------------------------------------------------
@@ -192,9 +186,7 @@ def validate_email(email: str) -> str:
     normalised = f"{local}@{domain.lower()}"
 
     if not _EMAIL_RE.match(normalised):
-        raise InputValidationError(
-            f"customer_email is not a valid email address: {email!r}"
-        )
+        raise InputValidationError(f"customer_email is not a valid email address: {email!r}")
 
     return normalised
 
@@ -205,12 +197,8 @@ def validate_email(email: str) -> str:
 
 # Patterns that attempt to override the system role or inject instructions
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(
-        r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.IGNORECASE
-    ),
-    re.compile(
-        r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.IGNORECASE
-    ),
+    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.IGNORECASE),
+    re.compile(r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.IGNORECASE),
     re.compile(r"new\s+instructions?\s*:", re.IGNORECASE),
     re.compile(r"(system|user|assistant)\s*:\s*\[?INST\]?", re.IGNORECASE),
     re.compile(r"<\s*(system|user|assistant|s|\/s)\s*>", re.IGNORECASE),
@@ -225,9 +213,7 @@ _INJECTION_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 # Unicode bidi override / invisible characters often used to hide injections
-_INVISIBLE_RE = re.compile(
-    r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\ufeff\u00ad]"
-)
+_INVISIBLE_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\ufeff\u00ad]")
 
 _TOPIC_MAX_LEN = 500
 _CONTEXT_MAX_LEN = 2_000
@@ -263,20 +249,14 @@ def sanitise_prompt_input(
 
     # Strip null bytes and non-printable control chars (keep \t \n \r)
     cleaned = "".join(
-        ch
-        for ch in text
-        if ch in ("\t", "\n", "\r") or (unicodedata.category(ch)[0] != "C")
+        ch for ch in text if ch in ("\t", "\n", "\r") or (unicodedata.category(ch)[0] != "C")
     )
 
     if not cleaned.strip():
-        raise InputValidationError(
-            f"{field_name} must be a non-empty string after sanitisation"
-        )
+        raise InputValidationError(f"{field_name} must be a non-empty string after sanitisation")
 
     if len(cleaned) > max_len:
-        raise InputValidationError(
-            f"{field_name} exceeds maximum length of {max_len} characters"
-        )
+        raise InputValidationError(f"{field_name} exceeds maximum length of {max_len} characters")
 
     # Detect injection patterns
     for pattern in _INJECTION_PATTERNS:
@@ -337,17 +317,13 @@ def safe_report_path(output_dir: Path, job_id: str) -> Path:
     """
     # Only allow alphanumeric, hyphens, underscores in job IDs
     if not re.match(r"^[a-zA-Z0-9_\-]{1,128}$", str(job_id)):
-        raise InputValidationError(
-            f"job_id contains illegal characters: {str(job_id)!r}"
-        )
+        raise InputValidationError(f"job_id contains illegal characters: {str(job_id)!r}")
 
     base = output_dir.resolve()
     candidate = (base / f"{job_id}.md").resolve()
 
     if not str(candidate).startswith(str(base) + "/") and candidate != base:
-        raise PathTraversalError(
-            f"report path {candidate} escapes output directory {base}"
-        )
+        raise PathTraversalError(f"report path {candidate} escapes output directory {base}")
 
     return candidate
 
@@ -374,9 +350,7 @@ def validate_catalog_schema(catalog: dict) -> dict:
     def _clean_prices(raw_prices: dict) -> dict:
         clean_prices = {}
         for k, v in raw_prices.items():
-            if re.match(r"^\d{1,10}$", str(k)) and re.match(
-                r"^price_[A-Za-z0-9]{1,50}$", str(v)
-            ):
+            if re.match(r"^\d{1,10}$", str(k)) and re.match(r"^price_[A-Za-z0-9]{1,50}$", str(v)):
                 clean_prices[str(k)] = str(v)
         return clean_prices
 

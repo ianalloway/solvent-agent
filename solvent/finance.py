@@ -59,9 +59,7 @@ def income_statement(entries: Iterable[LedgerEntry]) -> dict:
         "net_margin_pct": round(100 * net / revenue, 1) if revenue else 0.0,
         "seed_capital_cents": capital,
         "balance_cents": sum(_signed(e) for e in entries),
-        "expense_by_vendor": dict(
-            sorted(by_vendor.items(), key=lambda kv: kv[1], reverse=True)
-        ),
+        "expense_by_vendor": dict(sorted(by_vendor.items(), key=lambda kv: kv[1], reverse=True)),
     }
 
 
@@ -96,9 +94,7 @@ def unit_economics(entries: Iterable[LedgerEntry]) -> dict:
         "avg_revenue_cents": avg_rev,
         "avg_cost_cents": avg_exp,
         "avg_profit_cents": avg_profit,
-        "contribution_margin_pct": round(100 * avg_profit / avg_rev, 1)
-        if avg_rev
-        else 0.0,
+        "contribution_margin_pct": round(100 * avg_profit / avg_rev, 1) if avg_rev else 0.0,
     }
 
 
@@ -174,9 +170,7 @@ def sparkline(values: list[int]) -> str:
         return _SPARK_TICKS[0] * len(values)
     span = hi - lo
     return "".join(
-        _SPARK_TICKS[
-            min(len(_SPARK_TICKS) - 1, (v - lo) * (len(_SPARK_TICKS) - 1) // span)
-        ]
+        _SPARK_TICKS[min(len(_SPARK_TICKS) - 1, (v - lo) * (len(_SPARK_TICKS) - 1) // span)]
         for v in values
     )
 

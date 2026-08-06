@@ -22,9 +22,7 @@ T_JAN2 = T_JAN1 + DAY
 
 
 def _e(kind, cents, *, job_id=None, vendor=None, ts=0.0):
-    return LedgerEntry(
-        kind=kind, amount_cents=cents, memo="x", job_id=job_id, vendor=vendor, ts=ts
-    )
+    return LedgerEntry(kind=kind, amount_cents=cents, memo="x", job_id=job_id, vendor=vendor, ts=ts)
 
 
 class TestIncomeStatement(unittest.TestCase):
@@ -185,9 +183,7 @@ class TestForecast(unittest.TestCase):
 
     def test_nonpositive_horizon(self):
         entries = [_e("revenue", 100, ts=T_JAN1), _e("revenue", 100, ts=T_JAN2)]
-        self.assertEqual(
-            forecast(entries, horizon_days=0)["status"], "insufficient_history"
-        )
+        self.assertEqual(forecast(entries, horizon_days=0)["status"], "insufficient_history")
 
 
 class TestReport(unittest.TestCase):

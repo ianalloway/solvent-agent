@@ -49,10 +49,7 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
         if name == "list_jobs":
             jobs = agent.t.list_jobs()[-10:]
             return json.dumps(
-                [
-                    {"id": j["id"], "status": j.get("status"), "topic": j.get("topic")}
-                    for j in jobs
-                ]
+                [{"id": j["id"], "status": j.get("status"), "topic": j.get("topic")} for j in jobs]
             )
         if name == "job_status":
             jid = args.get("job_id", "")
@@ -95,9 +92,7 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
             }
             result = agent.enqueue_job(job)
             if result.get("stage") != "declined" and not result.get("error"):
-                agent.t.update_chat_session(
-                    session_id, notify_job_id=job_id, pending_job_json=""
-                )
+                agent.t.update_chat_session(session_id, notify_job_id=job_id, pending_job_json="")
             if result.get("url"):
                 return json.dumps(
                     {
@@ -265,13 +260,10 @@ def format_job_notification(event: dict) -> str | None:
         if stage in ("paid", "fulfilled", "delivered", "declined"):
             append_daily_memory(f"job {jid}: {stage}")
     except Exception as exc:
-        logging.getLogger(__name__).warning(
-            "format_job_notification memory append failed: %s", exc
-        )
+        logging.getLogger(__name__).warning("format_job_notification memory append failed: %s", exc)
     if stage == "paid":
         return (
-            f"Payment received for job {jid} ({fmt(event.get('amount', 0))}). "
-            "Fulfillment starting."
+            f"Payment received for job {jid} ({fmt(event.get('amount', 0))}). Fulfillment starting."
         )
     if stage == "fulfilled":
         return f"Job {jid} fulfilled. Report saved."

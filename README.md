@@ -184,9 +184,9 @@ In interactive mode, type `/fund 200` at the prompt to deposit $200 into the liv
 from solvent.agent import Solvent
 from solvent.jobs import SAMPLE_JOBS
 
-agent = Solvent(seed_cents=10_000)          # reset treasury, seed $100
-agent.handle_job(SAMPLE_JOBS[0])            # process one job
-snap = agent.run(SAMPLE_JOBS[1:])           # process a list; returns snapshot
+agent = Solvent(seed_cents=10_000)  # reset treasury, seed $100
+agent.handle_job(SAMPLE_JOBS[0])  # process one job
+snap = agent.run(SAMPLE_JOBS[1:])  # process a list; returns snapshot
 
 print(snap["balance_cents"], snap["margin_pct"])
 ```

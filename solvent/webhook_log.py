@@ -103,9 +103,9 @@ class WebhookLog:
         import datetime
 
         try:
-            d["received_at_fmt"] = datetime.datetime.fromtimestamp(
-                d["received_at"]
-            ).strftime("%Y-%m-%d %H:%M:%S")
+            d["received_at_fmt"] = datetime.datetime.fromtimestamp(d["received_at"]).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         except Exception:
             d["received_at_fmt"] = ""
         return d

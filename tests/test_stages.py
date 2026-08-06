@@ -53,18 +53,10 @@ class TestStagesIdempotency(unittest.TestCase):
             }
             Path(fulfill["deliverable_path"]).write_text("# brief")
 
-            with mock.patch.dict(
-                "os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
-            ):
-                with mock.patch.object(
-                    agent.stripe, "create_checkout_session", return_value=link
-                ):
-                    with mock.patch.object(
-                        agent.stripe, "confirm_payment", return_value=payment
-                    ):
-                        with mock.patch(
-                            "solvent.service.fulfill", return_value=fulfill
-                        ):
+            with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False):
+                with mock.patch.object(agent.stripe, "create_checkout_session", return_value=link):
+                    with mock.patch.object(agent.stripe, "confirm_payment", return_value=payment):
+                        with mock.patch("solvent.service.fulfill", return_value=fulfill):
                             with mock.patch(
                                 "solvent.delivery.send_brief_email",
                                 return_value={"simulated": True},

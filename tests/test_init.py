@@ -120,9 +120,7 @@ class TestInit(unittest.TestCase):
                 importlib.reload(_paths)
                 importlib.reload(_ws)
                 importlib.reload(_init)
-                with mock.patch(
-                    "solvent.treasury.Treasury", side_effect=RuntimeError("boom")
-                ):
+                with mock.patch("solvent.treasury.Treasury", side_effect=RuntimeError("boom")):
                     with redirect_stdout(buf):
                         rc = _init.run()
             self.assertEqual(rc, 1)

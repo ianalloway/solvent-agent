@@ -50,13 +50,9 @@ def run_checks() -> list[dict]:
 
     home = base_dir()
     ddir = data_dir()
-    add(
-        "data_home", os.access(ddir, os.W_OK), f"{home}  (set SOLVENT_HOME to relocate)"
-    )
+    add("data_home", os.access(ddir, os.W_OK), f"{home}  (set SOLVENT_HOME to relocate)")
 
-    available = [
-        f"{label} {'✓' if _module_available(mod) else '✗'}" for label, mod, _ in _EXTRAS
-    ]
+    available = [f"{label} {'✓' if _module_available(mod) else '✗'}" for label, mod, _ in _EXTRAS]
     add("optional_extras", True, ", ".join(available))
 
     add("sqlite_writable", t.path.parent.exists() or True, str(t.path))
@@ -84,8 +80,7 @@ def run_checks() -> list[dict]:
     stuck = [
         j
         for j in t.list_jobs()
-        if j.get("status")
-        in ("awaiting_payment", "in_progress", "paid_pending_fulfill")
+        if j.get("status") in ("awaiting_payment", "in_progress", "paid_pending_fulfill")
     ]
     add("stuck_jobs", len(stuck) == 0, f"{len(stuck)} stuck" if stuck else "none")
 

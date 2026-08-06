@@ -68,9 +68,7 @@ def gather(treasury=None) -> dict[str, Any]:
     # Most recent job
     last_job = None
     if jobs:
-        last_job = max(
-            jobs, key=lambda j: j.get("updated_at") or j.get("created_at") or 0
-        )
+        last_job = max(jobs, key=lambda j: j.get("updated_at") or j.get("created_at") or 0)
 
     # Last event time
     last_event_ts = events[0].get("ts") if events else None
@@ -126,9 +124,7 @@ def format_status(data: dict) -> str:
     done = counts.get("completed", 0)
     failed = counts.get("failed", 0)
 
-    lines.append(
-        f"  Jobs      {total} total  •  {active} running  •  {pending} awaiting payment"
-    )
+    lines.append(f"  Jobs      {total} total  •  {active} running  •  {pending} awaiting payment")
     lines.append(f"            {done} completed  •  {failed} failed")
 
     last = data.get("last_job")

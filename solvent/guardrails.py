@@ -88,9 +88,7 @@ class Decision:
 class Guardrails:
     """Enforces deterministic spend safety policies on all transaction requests."""
 
-    def __init__(
-        self, treasury: Treasury | Any, policy: SpendPolicy | None = None
-    ) -> None:
+    def __init__(self, treasury: Treasury | Any, policy: SpendPolicy | None = None) -> None:
         """Initialize the guardrails with a treasury instance and a spend policy.
 
         Args:
@@ -107,11 +105,7 @@ class Guardrails:
             The total spend in cents.
         """
         cutoff = time.time() - 86_400
-        return sum(
-            e.amount_cents
-            for e in self.t.entries
-            if e.kind == "expense" and e.ts >= cutoff
-        )
+        return sum(e.amount_cents for e in self.t.entries if e.kind == "expense" and e.ts >= cutoff)
 
     def evaluate(
         self,
@@ -136,9 +130,7 @@ class Guardrails:
         }
 
         if vendor not in self.policy.vendor_allowlist:
-            return Decision(
-                False, "vendor_allowlist", f"vendor '{vendor}' not on allowlist", **ctx
-            )
+            return Decision(False, "vendor_allowlist", f"vendor '{vendor}' not on allowlist", **ctx)
 
         if amount_cents > self.policy.max_txn_cents:
             return Decision(
@@ -149,14 +141,10 @@ class Guardrails:
             )
 
         if spent_24h + amount_cents > self.policy.daily_budget_cents:
-            return Decision(
-                False, "daily_budget", "would exceed 24h spend budget", **ctx
-            )
+            return Decision(False, "daily_budget", "would exceed 24h spend budget", **ctx)
 
         if balance - amount_cents < self.policy.min_reserve_cents:
-            return Decision(
-                False, "min_reserve", "would breach minimum cash reserve", **ctx
-            )
+            return Decision(False, "min_reserve", "would breach minimum cash reserve", **ctx)
 
         if projected_job_margin_cents is not None and projected_job_margin_cents <= 0:
             return Decision(

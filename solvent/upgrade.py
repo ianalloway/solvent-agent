@@ -123,9 +123,7 @@ def main():
 
     if not result["up_to_date"] and args.install:
         print("\nRunning: pip install --upgrade solvent-agent")
-        rc = subprocess.call(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "solvent-agent"]
-        )
+        rc = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "solvent-agent"])
         sys.exit(rc)
 
     if args.check and not result["up_to_date"]:
@@ -156,9 +154,7 @@ def background_update_hint() -> None:
                     return
             latest = latest_pypi_version()
             stamp_path.write_text(str(time.time()))
-            if latest and not (
-                _parse_version(current_version()) >= _parse_version(latest)
-            ):
+            if latest and not (_parse_version(current_version()) >= _parse_version(latest)):
                 print(
                     f"\n[solvent] Update available: {current_version()} → {latest}"
                     f"  (pip install --upgrade solvent-agent)\n",

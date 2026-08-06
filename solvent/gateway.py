@@ -44,9 +44,7 @@ def _rate_ok(user_key: str) -> bool:
 
 class Gateway:
     def __init__(self, agent: Solvent | None = None):
-        self.agent = agent or Solvent(
-            seed_cents=10_000, fresh=False, sync_payment=False
-        )
+        self.agent = agent or Solvent(seed_cents=10_000, fresh=False, sync_payment=False)
         self.memory = SessionMemory(self.agent.t)
 
     def handle_inbound(
@@ -79,9 +77,7 @@ class Gateway:
             session["id"], text, agent=self.agent, memory=self.memory, channel=channel
         )
 
-    def _handle_command(
-        self, channel: str, external_id: str, text: str, session: dict
-    ) -> str:
+    def _handle_command(self, channel: str, external_id: str, text: str, session: dict) -> str:
         parts = text.split(maxsplit=1)
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
@@ -107,8 +103,7 @@ class Gateway:
             if not jobs:
                 return "No jobs yet."
             return "\n".join(
-                f"{j['id']}: {j.get('status')} — {(j.get('topic') or '')[:40]}"
-                for j in jobs
+                f"{j['id']}: {j.get('status')} — {(j.get('topic') or '')[:40]}" for j in jobs
             )
         if cmd == "/pair" and arg.strip().lower() == "qr":
             token = self.agent.t.create_openclaw_token(ttl=600)

@@ -42,15 +42,11 @@ def make_delivery_token(job_id: str, ts: float | None = None) -> str:
         raise ValueError("unsafe job_id")
     ts = ts or time.time()
     payload = f"{job_id}:{int(ts)}"
-    sig = hmac.new(
-        _delivery_secret().encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
+    sig = hmac.new(_delivery_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{int(ts)}.{sig}"
 
 
-def verify_delivery_token(
-    job_id: str, token: str, max_age_seconds: int = 7 * 86400
-) -> bool:
+def verify_delivery_token(job_id: str, token: str, max_age_seconds: int = 7 * 86400) -> bool:
     if not is_safe_job_id(job_id) or not token or "." not in token:
         return False
     ts_str, sig = token.split(".", 1)
@@ -106,12 +102,8 @@ def markdown_to_html(
             f"<div style='font-weight:600;'>Job ID:</div><div style='font-family:monospace;'>{_esc(job_id)}</div>"
         )
     if topic:
-        rows.append(
-            f"<div style='font-weight:600;'>Topic:</div><div>{_esc(topic)}</div>"
-        )
-    rows.append(
-        f"<div style='font-weight:600;'>Generated At:</div><div>{date_str}</div>"
-    )
+        rows.append(f"<div style='font-weight:600;'>Topic:</div><div>{_esc(topic)}</div>")
+    rows.append(f"<div style='font-weight:600;'>Generated At:</div><div>{date_str}</div>")
 
     metadata_rows = "\n".join(rows)
     metadata_html = f"""
@@ -146,9 +138,7 @@ def markdown_to_html(
                 )
                 in_list = True
             content = _parse_bold(line_stripped[2:])
-            html_lines.append(
-                f"<li style='margin-bottom:0.5rem; color:#9ca3af;'>{content}</li>"
-            )
+            html_lines.append(f"<li style='margin-bottom:0.5rem; color:#9ca3af;'>{content}</li>")
             continue
         elif in_list:
             html_lines.append("</ul>")
@@ -178,7 +168,9 @@ def markdown_to_html(
                 "<div style='overflow-x:auto"
             )
             tag = "th" if is_header else "td"
-            style = "padding:0.75rem 1rem; border:1px solid rgba(255,255,255,0.08); text-align:left;"
+            style = (
+                "padding:0.75rem 1rem; border:1px solid rgba(255,255,255,0.08); text-align:left;"
+            )
             if is_header:
                 style += " background:rgba(255,255,255,0.03); font-weight:600; color:#ffffff;"
             else:
@@ -366,10 +358,7 @@ def markdown_to_html(
 
 def _esc(text: str) -> str:
     return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
 
 
@@ -382,11 +371,7 @@ def send_brief_email(
     """Send brief via SMTP or write to outbox in simulate mode."""
     text = brief_path.read_text(encoding="utf-8") if brief_path.is_file() else ""
     subject = f"Your SOLVENT research brief ({job_id})"
-    body = (
-        f"Your research brief is ready.\n\n"
-        f"View online: {hosted_url}\n\n"
-        f"---\n{text[:8000]}"
-    )
+    body = f"Your research brief is ready.\n\nView online: {hosted_url}\n\n---\n{text[:8000]}"
     host = os.environ.get("SMTP_HOST", "").strip()
     if not host:
         OUTBOX_DIR.mkdir(parents=True, exist_ok=True)

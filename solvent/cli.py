@@ -70,9 +70,7 @@ def print_event(e: dict):
     prefix = f"{C_CYAN}[{jid}]{C_RESET}"
 
     if st == "quote":
-        verdict = (
-            f"{C_GREEN}ACCEPT{C_RESET}" if e["accept"] else f"{C_RED}DECLINE{C_RESET}"
-        )
+        verdict = f"{C_GREEN}ACCEPT{C_RESET}" if e["accept"] else f"{C_RED}DECLINE{C_RESET}"
         print(
             f"   ⚖️  {prefix} Margin Gate: price {C_BOLD}{fmt(e['price'])}{C_RESET} | est cost {fmt(e['est_cost'])} | projected margin {e['margin_pct']}% → {verdict}"
         )
@@ -123,11 +121,7 @@ def print_event(e: dict):
         )
 
     elif st == "booked":
-        tag = (
-            f"{C_GREEN}profit{C_RESET}"
-            if e["job_pnl"] >= 0
-            else f"{C_RED}loss{C_RESET}"
-        )
+        tag = f"{C_GREEN}profit{C_RESET}" if e["job_pnl"] >= 0 else f"{C_RED}loss{C_RESET}"
         time.sleep(0.4)
         print(
             f"   ✓   {prefix} booked P&L: {tag} {C_BOLD}{fmt(e['job_pnl'])}{C_RESET} | treasury cash balance: {C_YELLOW}{fmt(e['balance'])}{C_RESET}"
@@ -154,9 +148,7 @@ def print_results(snap: dict):
             f"   {C_GREEN}→ The agent grew its own treasury by {fmt(grew)} this session!{C_RESET}"
         )
     elif grew < 0:
-        print(
-            f"   {C_RED}→ The agent ran at a loss of {fmt(abs(grew))} this session.{C_RESET}"
-        )
+        print(f"   {C_RED}→ The agent ran at a loss of {fmt(abs(grew))} this session.{C_RESET}")
     else:
         print("   → The agent broke perfectly even.")
 
@@ -202,9 +194,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
         if topic.startswith("/fund"):
             parts = topic.split()
             if len(parts) < 2:
-                print(
-                    f"{C_RED}Usage: /fund <amount_in_usd> (e.g., /fund 150.00){C_RESET}\n"
-                )
+                print(f"{C_RED}Usage: /fund <amount_in_usd> (e.g., /fund 150.00){C_RESET}\n")
                 continue
             try:
                 fund_amt = float(parts[1])
@@ -234,18 +224,14 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
                 print(f"{C_RED}Invalid amount. Usage: /fund <amount_in_usd>{C_RESET}\n")
                 continue
 
-        budget_str = input(
-            f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $"
-        ).strip()
+        budget_str = input(f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $").strip()
         try:
             budget_cents = int(float(budget_str) * 100)
             if budget_cents <= 0:
                 print(f"{C_RED}Budget must be greater than 0.{C_RESET}\n")
                 continue
         except ValueError:
-            print(
-                f"{C_RED}Invalid numeric entry. Use standard formats like 49.00.{C_RESET}\n"
-            )
+            print(f"{C_RED}Invalid numeric entry. Use standard formats like 49.00.{C_RESET}\n")
             continue
 
         job_id = f"I{job_index}"
@@ -272,11 +258,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
         show_spinner(0.4, "Analyzing inbound job specifications...")
         agent.handle_job(custom_job)
 
-        cont = (
-            input(f"Submit another research request? ({C_BOLD}y/N{C_RESET}): ")
-            .strip()
-            .lower()
-        )
+        cont = input(f"Submit another research request? ({C_BOLD}y/N{C_RESET}): ").strip().lower()
         print()
         if cont != "y":
             break

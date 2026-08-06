@@ -187,19 +187,11 @@ def main() -> None:
         metavar="N",
         help="number of recent lines to show (default 20)",
     )
-    p.add_argument(
-        "-f", "--follow", action="store_true", help="follow the log live (like tail -f)"
-    )
+    p.add_argument("-f", "--follow", action="store_true", help="follow the log live (like tail -f)")
     p.add_argument("--job", metavar="ID", help="filter to job ID (prefix match)")
-    p.add_argument(
-        "--stage", metavar="STAGE", help="filter to a specific pipeline stage"
-    )
-    p.add_argument(
-        "--json", dest="as_json", action="store_true", help="emit raw JSON lines"
-    )
-    p.add_argument(
-        "--path", action="store_true", help="print the log file path and exit"
-    )
+    p.add_argument("--stage", metavar="STAGE", help="filter to a specific pipeline stage")
+    p.add_argument("--json", dest="as_json", action="store_true", help="emit raw JSON lines")
+    p.add_argument("--path", action="store_true", help="print the log file path and exit")
     args = p.parse_args()
 
     if args.path:

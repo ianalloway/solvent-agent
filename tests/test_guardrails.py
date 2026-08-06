@@ -63,18 +63,10 @@ class TestGuardrails(unittest.TestCase):
         now = time.time()
         # Create mock entries totaling 22,000 cents of expense in the last 24h
         self.mock_treasury.entries = [
-            LedgerEntry(
-                kind="expense", amount_cents=12000, memo="recent 1", ts=now - 3600
-            ),
-            LedgerEntry(
-                kind="expense", amount_cents=10000, memo="recent 2", ts=now - 7200
-            ),
-            LedgerEntry(
-                kind="expense", amount_cents=20000, memo="old expense", ts=now - 90000
-            ),
-            LedgerEntry(
-                kind="revenue", amount_cents=30000, memo="recent revenue", ts=now - 1000
-            ),
+            LedgerEntry(kind="expense", amount_cents=12000, memo="recent 1", ts=now - 3600),
+            LedgerEntry(kind="expense", amount_cents=10000, memo="recent 2", ts=now - 7200),
+            LedgerEntry(kind="expense", amount_cents=20000, memo="old expense", ts=now - 90000),
+            LedgerEntry(kind="revenue", amount_cents=30000, memo="recent revenue", ts=now - 1000),
         ]
 
         # Spent in last 24h: 12000 + 10000 = 22000 cents ($220)
@@ -112,32 +104,22 @@ class TestGuardrails(unittest.TestCase):
     def test_projected_roi_margin(self) -> None:
         """Test that spending on jobs with negative or zero projected margins is blocked."""
         # Case 1: Job margin is positive -> approved
-        self.assertTrue(
-            self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=100)
-        )
+        self.assertTrue(self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=100))
 
         # Case 2: Job margin is zero -> blocked
         with self.assertRaises(GuardrailError) as ctx:
             self.guard.check_spend(500, "nvidia-nemotron", projected_job_margin_cents=0)
         self.assertIn("job projected to be unprofitable", str(ctx.exception))
-        self.assertFalse(
-            self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=0)
-        )
+        self.assertFalse(self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=0))
 
         # Case 3: Job margin is negative -> blocked
         with self.assertRaises(GuardrailError) as ctx:
-            self.guard.check_spend(
-                500, "nvidia-nemotron", projected_job_margin_cents=-50
-            )
+            self.guard.check_spend(500, "nvidia-nemotron", projected_job_margin_cents=-50)
         self.assertIn("job projected to be unprofitable", str(ctx.exception))
-        self.assertFalse(
-            self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=-50)
-        )
+        self.assertFalse(self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=-50))
 
         # Case 4: Projected margin is not provided (None) -> approved
-        self.assertTrue(
-            self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=None)
-        )
+        self.assertTrue(self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=None))
 
 
 class TestGuardrailDecision(unittest.TestCase):

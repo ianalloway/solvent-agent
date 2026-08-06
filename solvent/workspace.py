@@ -112,9 +112,7 @@ def seed_workspace(*, force: bool = False) -> Path:
 
 def ensure_workspace() -> Path:
     root = workspace_path()
-    if not root.is_dir() or not any(
-        (root / f).exists() for f in ("SOUL.md", "AGENTS.md")
-    ):
+    if not root.is_dir() or not any((root / f).exists() for f in ("SOUL.md", "AGENTS.md")):
         return seed_workspace()
     return root
 

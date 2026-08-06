@@ -68,8 +68,7 @@ def test_dashboard_status_html_fragments_escape_untrusted_fields(tmp_path, monke
 
     assert payload not in rendered_fragments
     assert (
-        "&lt;img src=x onerror=&quot;globalThis.__SOLVENT_XSS_POC=1&quot;&gt;"
-        in rendered_fragments
+        "&lt;img src=x onerror=&quot;globalThis.__SOLVENT_XSS_POC=1&quot;&gt;" in rendered_fragments
     )
     assert "javascript:alert(1)" not in rendered_fragments
     assert "href='#'" in rendered_fragments or 'href="#"' in rendered_fragments

@@ -37,9 +37,7 @@ def is_allowed(user_id: str, username: str | None = None) -> bool:
     if cfg_allow:
         allow.update(x.strip() for x in cfg_allow.split(",") if x.strip())
     if policy == "allowlist":
-        return user_id in allow or (
-            username is not None and username.lstrip("@") in allow
-        )
+        return user_id in allow or (username is not None and username.lstrip("@") in allow)
     # pairing: must be paired in DB
     t = Treasury()
     return t.is_user_paired(user_id)
@@ -59,9 +57,7 @@ def approve(code: str) -> dict | None:
     allow = _load_allowlist()
     allow.add(str(row["user_id"]))
     ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ALLOWLIST_PATH.write_text(
-        json.dumps(sorted(allow), indent=2) + "\n", encoding="utf-8"
-    )
+    ALLOWLIST_PATH.write_text(json.dumps(sorted(allow), indent=2) + "\n", encoding="utf-8")
     return row
 
 

@@ -98,17 +98,13 @@ class StripeClient:
         if self._catalog is None:
             return
         CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CATALOG_PATH.write_text(
-            json.dumps(self._catalog, indent=2) + "\n", encoding="utf-8"
-        )
+        CATALOG_PATH.write_text(json.dumps(self._catalog, indent=2) + "\n", encoding="utf-8")
 
     def _get_or_create_product(self) -> str:
         catalog = self._load_catalog()
         if catalog.get("product_id"):
             return catalog["product_id"]
-        product = stripe.Product.create(
-            name=PRODUCT_NAME, metadata={"agent": "SOLVENT"}
-        )
+        product = stripe.Product.create(name=PRODUCT_NAME, metadata={"agent": "SOLVENT"})
         catalog["product_id"] = product.id
         catalog.setdefault("prices", {})
         self._save_catalog()
@@ -152,9 +148,7 @@ class StripeClient:
         self._webhook_payments[plink_id] = payment
         self._save_webhook_cache()
 
-    def process_webhook(
-        self, payload: bytes, sig_header: str, treasury=None
-    ) -> dict | None:
+    def process_webhook(self, payload: bytes, sig_header: str, treasury=None) -> dict | None:
         """Validate checkout.session.completed and cache verified payment.
 
         AUTH: signature is verified with HMAC-SHA256 before any data is read.
@@ -259,9 +253,7 @@ class StripeClient:
             "job_id": job_id,
         }
 
-    def create_payment_link(
-        self, name: str, amount_cents: int, customer_email: str
-    ) -> dict:
+    def create_payment_link(self, name: str, amount_cents: int, customer_email: str) -> dict:
         """Create a real Stripe Payment Link (test mode) or simulate one."""
         # ACCOUNT TAKEOVER — validate email before it reaches Stripe or the ledger
         try:
@@ -382,9 +374,7 @@ class StripeClient:
                 "stripe_ref": f"pi_sim_{sim_suffix}",
                 "checkout_session_id": link.get("id", f"cs_sim_{sim_suffix}"),
                 "payment_link_id": link.get("payment_link_id")
-                or (
-                    link["id"] if str(link.get("id", "")).startswith("plink_") else None
-                ),
+                or (link["id"] if str(link.get("id", "")).startswith("plink_") else None),
                 "amount_cents": link["amount_cents"],
                 "simulated": True,
                 "job_id": job_id or link.get("job_id"),
@@ -509,9 +499,7 @@ class StripeClient:
                 "amount": amount_cents,
             }
             if job_id:
-                refund = stripe.Refund.create(
-                    idempotency_key=f"refund-{job_id}", **kwargs
-                )
+                refund = stripe.Refund.create(idempotency_key=f"refund-{job_id}", **kwargs)
             else:
                 refund = stripe.Refund.create(**kwargs)
             return {

@@ -17,9 +17,7 @@ from solvent.treasury import Treasury
 
 class TestChatTools(unittest.TestCase):
     def setUp(self):
-        self._env = patch.dict(
-            os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
-        )
+        self._env = patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
         self._env.start()
         self.tmp = tempfile.TemporaryDirectory()
         self.db = Path(self.tmp.name) / "t.db"
@@ -36,9 +34,7 @@ class TestChatTools(unittest.TestCase):
         self._env.stop()
 
     def test_format_job_notification(self):
-        msg = format_job_notification(
-            {"stage": "delivered", "job_id": "J1", "url": "https://x"}
-        )
+        msg = format_job_notification({"stage": "delivered", "job_id": "J1", "url": "https://x"})
         self.assertIn("J1", msg)
         self.assertIn("https://x", msg)
 
@@ -68,8 +64,7 @@ class TestChatTools(unittest.TestCase):
         import solvent.chat as chatmod
 
         many = " ".join(
-            '<tool_call>{"name": "treasury_status", "arguments": {}}</tool_call>'
-            for _ in range(25)
+            '<tool_call>{"name": "treasury_status", "arguments": {}}</tool_call>' for _ in range(25)
         )
         mock_complete.side_effect = [(many, {}), ("All set.", {})]
 
@@ -149,6 +144,4 @@ class TestChatTools(unittest.TestCase):
                 agent=self.agent,
                 memory=self.memory,
             )
-        self.assertTrue(
-            "Checkout" in reply or "invoice" in reply.lower() or len(reply) > 0
-        )
+        self.assertTrue("Checkout" in reply or "invoice" in reply.lower() or len(reply) > 0)

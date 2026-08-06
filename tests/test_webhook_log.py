@@ -13,9 +13,7 @@ class TestWebhookLog(unittest.TestCase):
         self.wl = WebhookLog(db_path=":memory:")
 
     def test_record_appears_in_list_recent(self):
-        self.wl.record(
-            "evt_001", "payment_intent.created", b'{"id":"evt_001"}', "received"
-        )
+        self.wl.record("evt_001", "payment_intent.created", b'{"id":"evt_001"}', "received")
         rows = self.wl.list_recent()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["event_id"], "evt_001")

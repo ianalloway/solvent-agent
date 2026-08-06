@@ -73,9 +73,7 @@ class TestCheckUpgrade(unittest.TestCase):
     def test_network_error_treated_as_up_to_date(self):
         import urllib.error
 
-        with mock.patch(
-            "urllib.request.urlopen", side_effect=urllib.error.URLError("offline")
-        ):
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
             result = check_upgrade(quiet=True)
         self.assertTrue(result["up_to_date"])
         self.assertTrue(result["error"])

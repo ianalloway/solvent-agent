@@ -18,9 +18,7 @@ class TestPaths(unittest.TestCase):
                 self.assertEqual(paths.data_dir(), base / "data")
                 self.assertEqual(paths.db_path(), base / "data" / "solvent.db")
                 self.assertEqual(paths.reports_dir(), base / "data" / "reports")
-                self.assertEqual(
-                    paths.dashboard_html(), base / "treasury_dashboard.html"
-                )
+                self.assertEqual(paths.dashboard_html(), base / "treasury_dashboard.html")
                 self.assertTrue(paths.data_dir().is_dir())
 
     def test_source_checkout_uses_repo_root(self):

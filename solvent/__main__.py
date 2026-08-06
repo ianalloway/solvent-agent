@@ -152,10 +152,7 @@ def main() -> None:
                 )
         elif sub == "failed":
             for row in wl.list_failed():
-                print(
-                    f"  {row['event_id'][:16]} {row['event_type']} "
-                    f"err={row['error'][:60]}"
-                )
+                print(f"  {row['event_id'][:16]} {row['event_type']} err={row['error'][:60]}")
     else:
         # No subcommand: fall through to the demo / interactive CLI.
         # Update checks are opt-in only (SOLVENT_UPDATE_CHECK=1) — run

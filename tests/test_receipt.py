@@ -205,9 +205,7 @@ class TestReceiptEndpoint(unittest.TestCase):
             if not row:
                 raise HTTPException(404, "job not found")
             client_host = (
-                getattr(request.client, "host", "")
-                if (request and request.client)
-                else ""
+                getattr(request.client, "host", "") if (request and request.client) else ""
             )
             is_local = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
             if not is_local and not verify_delivery_token(job_id, token):

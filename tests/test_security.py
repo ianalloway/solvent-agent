@@ -35,9 +35,7 @@ except ImportError:
                 if match and match not in str(e):
                     raise AssertionError(f"expected match {match!r} in {e!r}") from e
             else:
-                name = (
-                    exc if isinstance(exc, str) else getattr(exc, "__name__", str(exc))
-                )
+                name = exc if isinstance(exc, str) else getattr(exc, "__name__", str(exc))
                 raise AssertionError(f"expected {name}")
 
         class mark:
@@ -281,9 +279,7 @@ class TestSanitisePromptInput:
             sanitise_prompt_input(payload, field_name="topic")
 
     def test_normal_topic_passes(self):
-        result = sanitise_prompt_input(
-            "AI chip competitive landscape 2026", field_name="topic"
-        )
+        result = sanitise_prompt_input("AI chip competitive landscape 2026", field_name="topic")
         assert "AI chip" in result
 
     def test_too_long_blocked(self):

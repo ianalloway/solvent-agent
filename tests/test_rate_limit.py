@@ -85,9 +85,7 @@ class TestHourlyLimit(unittest.TestCase):
         now = time.time()
         # Pre-populate 10 events within the last hour
         rows = [("user:h", now - i * 60) for i in range(10)]
-        rl._conn.executemany(
-            "INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows
-        )
+        rl._conn.executemany("INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows)
         rl._conn.commit()
 
         ok, reason = rl.check("user:h")
@@ -99,9 +97,7 @@ class TestHourlyLimit(unittest.TestCase):
         now = time.time()
         # 5 events just outside the 1-hour window
         rows = [("user:h2", now - 3601 - i) for i in range(5)]
-        rl._conn.executemany(
-            "INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows
-        )
+        rl._conn.executemany("INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows)
         rl._conn.commit()
 
         ok, _ = rl.check("user:h2")
@@ -119,9 +115,7 @@ class TestDailyLimit(unittest.TestCase):
         now = time.time()
         # 5 events spread within the last day, all older than the burst window.
         rows = [("user:d", now - 300 - i * 600) for i in range(5)]
-        rl._conn.executemany(
-            "INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows
-        )
+        rl._conn.executemany("INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows)
         rl._conn.commit()
 
         ok, reason = rl.check("user:d")
@@ -134,9 +128,7 @@ class TestDailyLimit(unittest.TestCase):
         now = time.time()
         # 2 events just outside the 24h rolling window
         rows = [("user:d2", now - 86401 - i) for i in range(2)]
-        rl._conn.executemany(
-            "INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows
-        )
+        rl._conn.executemany("INSERT INTO rate_events (user_key, ts) VALUES (?, ?)", rows)
         rl._conn.commit()
 
         ok, _ = rl.check("user:d2")
@@ -244,16 +236,12 @@ class TestPersistence(unittest.TestCase):
             db_path = os.path.join(tmpdir, "rl.db")
 
             # First instance — make 3 requests
-            rl1 = RateLimiter(
-                db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000
-            )
+            rl1 = RateLimiter(db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000)
             for _ in range(3):
                 rl1.check("user:persist")
 
             # Second instance pointing at the same DB
-            rl2 = RateLimiter(
-                db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000
-            )
+            rl2 = RateLimiter(db_path=db_path, burst_limit=10, hourly_limit=100, daily_limit=1000)
             s = rl2.stats("user:persist")
             self.assertEqual(s["burst_count"], 3)
             self.assertEqual(s["hourly_count"], 3)

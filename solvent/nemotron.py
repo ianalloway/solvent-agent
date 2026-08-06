@@ -115,9 +115,7 @@ def _live_complete(system: str, user: str) -> tuple[str, dict]:
 
 def _stub_complete(system: str, user: str) -> str:
     """Deterministic offline analyst. Good enough to demo the money loop."""
-    topic = (
-        user.strip().splitlines()[0][:120] if user.strip() else "the requested topic"
-    )
+    topic = user.strip().splitlines()[0][:120] if user.strip() else "the requested topic"
     return (
         f"# Research Brief: {topic}\n\n"
         "## Executive summary\n"
@@ -347,14 +345,10 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
     return [(name, args) for _, name, args in results]
 
 
-def research_brief(
-    topic: str, context: str = "n/a"
-) -> tuple[str, dict, tools.ToolContext]:
+def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.ToolContext]:
     """Bounded tool-calling loop: plan → tools → final brief."""
     ctx = tools.ToolContext()
-    live_search = bool(
-        os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes")
-    )
+    live_search = bool(os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes"))
     notes: list[str] = []
     system = (
         "You are SOLVENT, a disciplined sell-side research analyst. "
@@ -368,9 +362,7 @@ def research_brief(
     # The transcript carries the running conversation (the model's own plan
     # text plus each tool observation) so reasoning stays coherent across
     # rounds; `notes` is the deduplicated evidence handed to the final synth.
-    transcript = (
-        f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
-    )
+    transcript = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
 
     for _round in range(tools.MAX_TOOL_ROUNDS):
         text, usage = complete(system, transcript)
@@ -407,9 +399,7 @@ def research_brief(
             observations.append(f"[{name}] {result}")
 
         # Preserve the model's plan and the new observations for the next round.
-        transcript += f"\n\nAssistant: {text}\n\nTool results:\n" + "\n".join(
-            observations
-        )
+        transcript += f"\n\nAssistant: {text}\n\nTool results:\n" + "\n".join(observations)
 
         # Once the tool budget is spent there is nothing more to gather — stop
         # spinning and go straight to synthesis.

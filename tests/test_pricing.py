@@ -22,9 +22,7 @@ class TestPricing(unittest.TestCase):
         total_cost, breakdown = estimate_cost(job)
 
         # Defaults: 8000 tokens, 2 market data calls, 6 web search calls
-        expected_nemotron = round(
-            (8000 / 1000) * RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"]
-        )
+        expected_nemotron = round((8000 / 1000) * RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"])
         expected_market = 2 * RESOURCE_COSTS_CENTS["market_data_call"]
         expected_search = 6 * RESOURCE_COSTS_CENTS["web_search_call"]
         expected_pdf = RESOURCE_COSTS_CENTS["pdf_render"]
@@ -37,11 +35,7 @@ class TestPricing(unittest.TestCase):
         self.assertEqual(breakdown["email_send"], expected_email)
 
         expected_total = (
-            expected_nemotron
-            + expected_market
-            + expected_search
-            + expected_pdf
-            + expected_email
+            expected_nemotron + expected_market + expected_search + expected_pdf + expected_email
         )
         self.assertEqual(total_cost, expected_total)
 
@@ -161,9 +155,7 @@ class TestResourceCostsOverrides(unittest.TestCase):
         self.assertEqual(costs, RESOURCE_COSTS_CENTS)
         # Must be a copy, not the same dict object
         costs["nemotron_tokens_per_1k"] = 999
-        self.assertNotEqual(
-            RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"], 999
-        )
+        self.assertNotEqual(RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"], 999)
 
     def test_valid_override_applied(self) -> None:
         Path(".solvent/pricing_overrides.json").write_text(

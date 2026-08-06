@@ -51,18 +51,14 @@ def _resources_from_usage(
         ("pdf-render-saas", costs["pdf_render"], "Render brief to PDF"),
     ]
     if include_delivery:
-        resources.append(
-            ("email-delivery-saas", costs["email_send"], "Deliver to customer")
-        )
+        resources.append(("email-delivery-saas", costs["email_send"], "Deliver to customer"))
     return resources
 
 
 def fulfill(job: dict) -> dict:
     """Produce the report and return deliverable metadata + resources_used."""
     try:
-        topic = sanitise_prompt_input(
-            job.get("topic", ""), field_name="topic", max_len=500
-        )
+        topic = sanitise_prompt_input(job.get("topic", ""), field_name="topic", max_len=500)
         context = (
             sanitise_prompt_input(
                 job.get("context", "n/a") or "n/a", field_name="context", max_len=2_000

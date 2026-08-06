@@ -29,9 +29,7 @@ def build_receipt(job: dict, pnl_cents: int, balance_cents: int) -> str:
     job_id: str = job.get("id", "")
     topic: str = (job.get("topic") or "")[:80]
     status: str = job.get("status", "unknown")
-    revenue_cents: int = int(
-        job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0
-    )
+    revenue_cents: int = int(job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0)
     cogs_cents: int = revenue_cents - pnl_cents
     margin_pct = _margin_pct(revenue_cents, pnl_cents)
 
@@ -65,9 +63,7 @@ def build_html_receipt(job: dict, pnl_cents: int, balance_cents: int) -> str:
     job_id: str = job.get("id", "")
     topic: str = (job.get("topic") or "")[:80]
     status: str = job.get("status", "unknown")
-    revenue_cents: int = int(
-        job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0
-    )
+    revenue_cents: int = int(job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0)
     cogs_cents: int = revenue_cents - pnl_cents
     margin_pct = _margin_pct(revenue_cents, pnl_cents)
 

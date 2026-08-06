@@ -61,25 +61,19 @@ class TestDoctorNotes:
         notes = _doctor_notes(SolventConfig())
         assert notes == []
 
-    def test_missing_nvidia_yields_warning(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_nvidia_yields_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
         cfg = SolventConfig(model="nemotron")
         notes = _doctor_notes(cfg)
         assert any("NVIDIA_API_KEY" in n for n in notes)
 
-    def test_no_nvidia_warning_when_key_present(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_nvidia_warning_when_key_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-fake")
         cfg = SolventConfig(model="nemotron")
         notes = _doctor_notes(cfg)
         assert not any("NVIDIA_API_KEY" in n for n in notes)
 
-    def test_missing_stripe_key_yields_warning(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_stripe_key_yields_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("STRIPE_API_KEY", raising=False)
         cfg = SolventConfig(stripe_test_mode=True)
         notes = _doctor_notes(cfg)
@@ -97,9 +91,7 @@ class TestDoctorNotes:
         notes = _doctor_notes(cfg)
         assert not any("sk_live_" in n for n in notes)
 
-    def test_telegram_no_token_yields_warning(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_telegram_no_token_yields_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
         cfg = SolventConfig(telegram_enabled=True)
         notes = _doctor_notes(cfg)

@@ -39,9 +39,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="SOLVENT async job worker")
-    parser.add_argument(
-        "--once", action="store_true", help="process one pass then exit"
-    )
+    parser.add_argument("--once", action="store_true", help="process one pass then exit")
     parser.add_argument("--poll-interval", type=float, default=2.0)
     parser.add_argument("--seed", type=float, default=100.0)
     parser.add_argument("--keep-balance", action="store_true")

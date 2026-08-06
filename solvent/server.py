@@ -55,15 +55,12 @@ def _require_fastapi():
         return FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse
     except ImportError as exc:
         raise RuntimeError(
-            "FastAPI is required for `solvent serve`. "
-            'Install with: pip install -e ".[serve]"'
+            'FastAPI is required for `solvent serve`. Install with: pip install -e ".[serve]"'
         ) from exc
 
 
 def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
-    FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse = (
-        _require_fastapi()
-    )
+    FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse = _require_fastapi()
     hub = EventHub()
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, sync_payment=False)
     gateway = Gateway(agent=agent)
@@ -81,9 +78,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     def _refresh_status() -> dict:
         from . import dashboard
 
-        return _sanitize_status_data(
-            dashboard.build_status_data(agent.t.snapshot(), agent.log)
-        )
+        return _sanitize_status_data(dashboard.build_status_data(agent.t.snapshot(), agent.log))
 
     def _publish_status() -> None:
         nonlocal last_status_json
@@ -188,9 +183,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             from starlette.responses import Response
 
             return Response(content=png, media_type="image/png")
-        return JSONResponse(
-            {"token": token, "note": "install qrcode[pil] for PNG output"}
-        )
+        return JSONResponse({"token": token, "note": "install qrcode[pil] for PNG output"})
 
     @app.post("/api/pair/verify")
     async def api_pair_verify(req: Request):
@@ -245,9 +238,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         if not message:
             raise HTTPException(400, "message required")
         session_id = body.session_id or "dashboard-default"
-        reply = gateway.handle_inbound(
-            "dashboard", session_id, message, user_label="dashboard"
-        )
+        reply = gateway.handle_inbound("dashboard", session_id, message, user_label="dashboard")
         _publish_status()
         return {"reply": reply, "session_id": session_id}
 
@@ -354,9 +345,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         try:
             path_md.relative_to(reports_dir)
             if path_md.is_file():
-                return HTMLResponse(
-                    markdown_to_html(path_md.read_text(encoding="utf-8"))
-                )
+                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
 
@@ -395,9 +384,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         try:
             path_md.relative_to(reports_dir)
             if path_md.is_file():
-                return HTMLResponse(
-                    markdown_to_html(path_md.read_text(encoding="utf-8"))
-                )
+                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
         except ValueError:
             raise HTTPException(404, "brief not found") from None
 
@@ -438,9 +425,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="SOLVENT HTTP server")
-    parser.add_argument(
-        "--port", type=int, default=int(os.environ.get("SOLVENT_PORT", "8787"))
-    )
+    parser.add_argument("--port", type=int, default=int(os.environ.get("SOLVENT_PORT", "8787")))
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--seed", type=float, default=100.0)
     parser.add_argument("--keep-balance", action="store_true")

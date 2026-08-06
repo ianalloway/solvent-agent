@@ -7,9 +7,7 @@ from solvent import nemotron
 
 
 def _tool(name="web_search", query="q"):
-    return (
-        f'<tool_call>{{"name":"{name}","arguments":{{"query":"{query}"}}}}</tool_call>'
-    )
+    return f'<tool_call>{{"name":"{name}","arguments":{{"query":"{query}"}}}}</tool_call>'
 
 
 class TestResearchBrief(unittest.TestCase):

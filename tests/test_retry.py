@@ -106,12 +106,8 @@ class TestRetryPrePaymentFailed(unittest.TestCase):
                 with mock.patch.object(
                     runner.stripe, "create_checkout_session", return_value=checkout_link
                 ):
-                    with mock.patch.object(
-                        runner.stripe, "confirm_payment", return_value=payment
-                    ):
-                        with mock.patch(
-                            "solvent.service.fulfill", return_value=fulfill
-                        ):
+                    with mock.patch.object(runner.stripe, "confirm_payment", return_value=payment):
+                        with mock.patch("solvent.service.fulfill", return_value=fulfill):
                             with mock.patch(
                                 "solvent.delivery.send_brief_email",
                                 return_value={"simulated": True},
@@ -173,9 +169,7 @@ class TestRetryPostPaymentFailed(unittest.TestCase):
             runner.on_event = events.append
 
             with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
-                with mock.patch.object(
-                    runner.stripe, "create_checkout_session"
-                ) as mock_checkout:
+                with mock.patch.object(runner.stripe, "create_checkout_session") as mock_checkout:
                     with mock.patch("solvent.service.fulfill", return_value=fulfill):
                         with mock.patch(
                             "solvent.delivery.send_brief_email",
@@ -264,17 +258,13 @@ class TestRetryMaxLimit(unittest.TestCase):
                 job_payload_json=job,
             )
             # Simulate revenue already collected so we only test the fulfill path
-            runner.t.earn(
-                q.price_cents, "Payment", job_id="J-limit", stripe_ref="pi_limit"
-            )
+            runner.t.earn(q.price_cents, "Payment", job_id="J-limit", stripe_ref="pi_limit")
 
             # Manually set retry_count to 2
             with runner.t.lock():
                 with runner.t._conn() as conn:
                     with conn:
-                        conn.execute(
-                            "UPDATE jobs SET retry_count = 2 WHERE id = ?", ("J-limit",)
-                        )
+                        conn.execute("UPDATE jobs SET retry_count = 2 WHERE id = ?", ("J-limit",))
 
             fulfill = _mock_fulfill(tmp, "J-limit")
             with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
@@ -327,9 +317,7 @@ class TestRetryCountIncrements(unittest.TestCase):
             for expected_count in (1, 2, 3):
                 runner.t.upsert_job("J-cnt", "failed")
                 fulfill = _mock_fulfill(tmp, "J-cnt")
-                with mock.patch.dict(
-                    "os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}
-                ):
+                with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
                     with mock.patch("solvent.service.fulfill", return_value=fulfill):
                         with mock.patch(
                             "solvent.delivery.send_brief_email",

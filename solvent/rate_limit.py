@@ -81,13 +81,10 @@ class RateLimiter:
 
         if burst_count >= self.burst_limit:
             return False, (
-                f"Burst limit exceeded ({burst_count}/{self.burst_limit} "
-                f"in {self.burst_window}s)"
+                f"Burst limit exceeded ({burst_count}/{self.burst_limit} in {self.burst_window}s)"
             )
         if hourly_count >= self.hourly_limit:
-            return False, (
-                f"Hourly limit exceeded ({hourly_count}/{self.hourly_limit})"
-            )
+            return False, (f"Hourly limit exceeded ({hourly_count}/{self.hourly_limit})")
         if daily_count >= self.daily_limit:
             return False, (f"Daily limit exceeded ({daily_count}/{self.daily_limit})")
 

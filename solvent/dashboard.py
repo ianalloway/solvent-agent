@@ -155,9 +155,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         </div>
         """
     if not expense_breakdown_html:
-        expense_breakdown_html = (
-            "<p class='no-data-msg'>No vendor expenses logged yet.</p>"
-        )
+        expense_breakdown_html = "<p class='no-data-msg'>No vendor expenses logged yet.</p>"
 
     # 3b. Ops: stuck jobs and margin drift from treasury metrics
     ops_html = ""
@@ -168,22 +166,18 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         stuck = [
             j
             for j in t.list_jobs()
-            if j.get("status")
-            in ("awaiting_payment", "in_progress", "paid_pending_fulfill")
+            if j.get("status") in ("awaiting_payment", "in_progress", "paid_pending_fulfill")
         ]
         metrics = t.list_metrics()
         drift_rows = [
             m
             for m in metrics
-            if m.get("margin_drift_cents") is not None
-            and abs(m.get("margin_drift_cents", 0)) > 0
+            if m.get("margin_drift_cents") is not None and abs(m.get("margin_drift_cents", 0)) > 0
         ]
         if stuck:
             ops_html += "<h3>Stuck jobs</h3><ul>"
             for j in stuck[:10]:
-                ops_html += (
-                    f"<li>{j['id']}: {j.get('status')} — {j.get('topic', '')[:40]}</li>"
-                )
+                ops_html += f"<li>{j['id']}: {j.get('status')} — {j.get('topic', '')[:40]}</li>"
             ops_html += "</ul>"
         if drift_rows:
             ops_html += "<h3>Margin drift</h3><ul>"
@@ -273,9 +267,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         if job["status"] == "completed":
             btn_html = f"""<button class="btn btn-primary btn-sm" onclick="openBriefModal({jid_js_arg})">View Brief</button>"""
         elif job["status"] == "declined":
-            btn_html = (
-                f"""<span class="decline-label">Declined: {h(job["reason"])}</span>"""
-            )
+            btn_html = f"""<span class="decline-label">Declined: {h(job["reason"])}</span>"""
         elif job["status"] == "awaiting_payment":
             btn_html = f"""<a href="{safe_href(job["invoice_url"])}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Pay Invoice</a>"""
 
@@ -318,9 +310,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         ts_str = time.strftime("%H:%M:%S", time.localtime(e.get("ts", time.time())))
         st = e["stage"]
         job_ref = (
-            f"<span class='console-job-id'>[{h(e.get('job_id'))}]</span>"
-            if e.get("job_id")
-            else ""
+            f"<span class='console-job-id'>[{h(e.get('job_id'))}]</span>" if e.get("job_id") else ""
         )
 
         if st == "quote":
@@ -436,9 +426,7 @@ def _financials_html(report: dict) -> str:
     if rw["status"] == "cashflow_positive":
         runway_txt = f"Cash-flow positive (+{fmt(rw['daily_net_cents'])}/day)"
     elif rw["status"] == "burning":
-        runway_txt = (
-            f"{rw['runway_days']} days (burning {fmt(-rw['daily_net_cents'])}/day)"
-        )
+        runway_txt = f"{rw['runway_days']} days (burning {fmt(-rw['daily_net_cents'])}/day)"
     elif rw["status"] == "insufficient_history":
         runway_txt = "Insufficient history"
     else:
@@ -448,9 +436,7 @@ def _financials_html(report: dict) -> str:
     fc = report.get("forecast")
     if fc and fc.get("status") == "ok":
         proj_cls = (
-            "green-txt"
-            if fc["projected_balance_cents"] >= fc["balance_cents"]
-            else "red-txt"
+            "green-txt" if fc["projected_balance_cents"] >= fc["balance_cents"] else "red-txt"
         )
         parts.append(
             row(

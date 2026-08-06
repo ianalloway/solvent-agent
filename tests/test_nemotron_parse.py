@@ -45,7 +45,9 @@ class TestNemotronParse(unittest.TestCase):
 
     def test_arguments_as_json_string(self):
         """Models often emit arguments as a JSON-encoded string, not an object."""
-        text = '<tool_call>{"name": "web_search", "arguments": "{\\"query\\": \\"ai\\"}"}</tool_call>'
+        text = (
+            '<tool_call>{"name": "web_search", "arguments": "{\\"query\\": \\"ai\\"}"}</tool_call>'
+        )
         got = parse_tool_calls(text)
         self.assertEqual(got, [("web_search", {"query": "ai"})])
         # critical: args must be a dict so downstream args.get(...) is safe
@@ -111,9 +113,7 @@ class TestNemotronParse(unittest.TestCase):
         self.assertEqual(parse_tool_calls("no json here at all"), [])
 
     def test_malformed_json_is_skipped(self):
-        self.assertEqual(
-            parse_tool_calls('<tool_call>{"name": "x", arguments:}</tool_call>'), []
-        )
+        self.assertEqual(parse_tool_calls('<tool_call>{"name": "x", arguments:}</tool_call>'), [])
 
 
 class TestLiveRetry(unittest.TestCase):
@@ -153,9 +153,7 @@ class TestLiveRetry(unittest.TestCase):
 
         def bad_key(system, user):
             calls["n"] += 1
-            raise urllib.error.HTTPError(
-                nemotron.ENDPOINT, 401, "Unauthorized", {}, None
-            )
+            raise urllib.error.HTTPError(nemotron.ENDPOINT, 401, "Unauthorized", {}, None)
 
         with (
             patch.object(nemotron, "_live_request", side_effect=bad_key),

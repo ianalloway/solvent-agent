@@ -63,9 +63,7 @@ class TestWorkspace(unittest.TestCase):
     def test_promote_skill(self):
         skills_dir = Path(self.tmp.name) / "skills"
         with patch.object(workspace, "SKILLS_DIR", skills_dir):
-            path = workspace.promote_skill(
-                "margin-hint", "# Margin\nAlways quote first."
-            )
+            path = workspace.promote_skill("margin-hint", "# Margin\nAlways quote first.")
             self.assertTrue(path.name == "SKILL.md")
             self.assertTrue(path.is_file())
             prompt = workspace.build_system_prompt()

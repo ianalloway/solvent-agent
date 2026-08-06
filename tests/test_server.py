@@ -11,9 +11,7 @@ from solvent.server import create_app
 
 class TestHostedBriefs(unittest.TestCase):
     def setUp(self):
-        self._env = mock.patch.dict(
-            os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
-        )
+        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
         self._env.start()
         self.reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
         self.reports_dir.mkdir(parents=True, exist_ok=True)

@@ -8,9 +8,7 @@ from solvent.tools import ALLOWED_TOOLS, MAX_TOOL_CALLS, ToolContext, dispatch
 class TestTools(unittest.TestCase):
     def test_allowlist(self):
         ctx = ToolContext()
-        result = dispatch(
-            "web_search", {"query": "AI chips"}, ctx, lambda s, u: ("ok", {})
-        )
+        result = dispatch("web_search", {"query": "AI chips"}, ctx, lambda s, u: ("ok", {}))
         self.assertIn("offline web_search", result)
         self.assertEqual(ctx.web_search_calls, 1)
 

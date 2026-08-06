@@ -20,17 +20,13 @@ class TestRunWorker(unittest.TestCase):
     @mock.patch("solvent.worker.list_claimable", return_value=[])
     @mock.patch("solvent.worker.resume_incomplete_jobs", return_value=[])
     @mock.patch("solvent.worker.Solvent")
-    def test_no_resumed_no_claimable_once(
-        self, mock_solvent_cls, mock_resume, mock_list
-    ):
+    def test_no_resumed_no_claimable_once(self, mock_solvent_cls, mock_resume, mock_list):
         agent = self._make_mock_agent()
         mock_solvent_cls.return_value = agent
 
         run_worker(once=True)
 
-        mock_solvent_cls.assert_called_once_with(
-            seed_cents=10_000, fresh=False, sync_payment=False
-        )
+        mock_solvent_cls.assert_called_once_with(seed_cents=10_000, fresh=False, sync_payment=False)
         agent.advance_job.assert_not_called()
         agent.t.release_job.assert_not_called()
         mock_list.assert_called_once_with(agent.t)
@@ -116,17 +112,13 @@ class TestRunWorker(unittest.TestCase):
     @mock.patch("solvent.worker.list_claimable", return_value=[])
     @mock.patch("solvent.worker.resume_incomplete_jobs", return_value=[])
     @mock.patch("solvent.worker.Solvent")
-    def test_fresh_and_seed_cents_forwarded(
-        self, mock_solvent_cls, mock_resume, mock_list
-    ):
+    def test_fresh_and_seed_cents_forwarded(self, mock_solvent_cls, mock_resume, mock_list):
         agent = self._make_mock_agent()
         mock_solvent_cls.return_value = agent
 
         run_worker(once=True, seed_cents=50_000, fresh=True)
 
-        mock_solvent_cls.assert_called_once_with(
-            seed_cents=50_000, fresh=True, sync_payment=False
-        )
+        mock_solvent_cls.assert_called_once_with(seed_cents=50_000, fresh=True, sync_payment=False)
 
     @mock.patch("solvent.worker.time.sleep")
     @mock.patch("solvent.worker.list_claimable", return_value=[])

@@ -186,9 +186,7 @@ class TestReconcileStripeIntegration(unittest.TestCase):
         """A Stripe API error is surfaced in the report without crashing."""
         t = self._fresh()
         t.earn(5000, "job1", job_id="J1", stripe_ref="pi_match")
-        self._mock_stripe.PaymentIntent.list.side_effect = RuntimeError(
-            "Stripe API down"
-        )
+        self._mock_stripe.PaymentIntent.list.side_effect = RuntimeError("Stripe API down")
         with mock.patch.dict("os.environ", {"STRIPE_API_KEY": "sk_test_abc123"}):
             report = reconcile(t)
         self.assertEqual(report["mode"], "ledger_only")

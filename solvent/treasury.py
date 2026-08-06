@@ -43,11 +43,7 @@ class LedgerEntry:
     id: str = field(default_factory=lambda: "le_" + uuid.uuid4().hex[:12])
 
     def signed_cents(self) -> int:
-        return (
-            self.amount_cents
-            if self.kind in ("revenue", "capital")
-            else -self.amount_cents
-        )
+        return self.amount_cents if self.kind in ("revenue", "capital") else -self.amount_cents
 
 
 class Treasury:
@@ -77,9 +73,7 @@ class Treasury:
             conn.close()
 
     @staticmethod
-    def _ensure_column(
-        conn: sqlite3.Connection, table: str, column: str, col_type: str
-    ) -> None:
+    def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str) -> None:
         cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         if column not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
@@ -300,13 +294,9 @@ class Treasury:
             conn.execute("DELETE FROM telegram_pairing")
 
     # ---- writes ------------------------------------------------------
-    def record(
-        self, kind: EntryKind, amount_cents: int, memo: str, **kw
-    ) -> LedgerEntry:
+    def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
         with self.lock():
-            entry = LedgerEntry(
-                kind=kind, amount_cents=int(amount_cents), memo=memo, **kw
-            )
+            entry = LedgerEntry(kind=kind, amount_cents=int(amount_cents), memo=memo, **kw)
             with self._conn() as conn, conn:
                 conn.execute(
                     """
@@ -331,9 +321,7 @@ class Treasury:
                 )
             return entry
 
-    def seed(
-        self, amount_cents: int, memo: str = "Initial operating capital"
-    ) -> LedgerEntry:
+    def seed(self, amount_cents: int, memo: str = "Initial operating capital") -> LedgerEntry:
         return self.record("capital", amount_cents, memo)
 
     def earn(self, amount_cents: int, memo: str, **kw) -> LedgerEntry:
@@ -444,9 +432,7 @@ class Treasury:
     def upsert_job(self, job_id: str, status: str, **kwargs) -> None:
         """Upsert a job's status and other fields in the persistent job queue table."""
         with self.lock(), self._conn() as conn, conn:
-            existing = conn.execute(
-                "SELECT id FROM jobs WHERE id = ?", (job_id,)
-            ).fetchone()
+            existing = conn.execute("SELECT id FROM jobs WHERE id = ?", (job_id,)).fetchone()
             ts = time.time()
             if existing:
                 fields = ["status = ?", "updated_at = ?"]
@@ -459,9 +445,7 @@ class Treasury:
                         fields.append(f"{col} = ?")
                         params.append(val)
                 params.append(job_id)
-                conn.execute(
-                    f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params
-                )
+                conn.execute(f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params)
             else:
                 cols = ["id", "status", "created_at", "updated_at"]
                 vals = [job_id, status, ts, ts]
@@ -504,9 +488,7 @@ class Treasury:
         now = time.time()
         until = now + lease_seconds
         with self.lock(), self._conn() as conn, conn:
-            row = conn.execute(
-                "SELECT locked_until FROM jobs WHERE id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT locked_until FROM jobs WHERE id = ?", (job_id,)).fetchone()
             if not row:
                 return False
             locked = row["locked_until"]
@@ -654,9 +636,7 @@ class Treasury:
 
     def get_metrics(self, job_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM job_metrics WHERE job_id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM job_metrics WHERE job_id = ?", (job_id,)).fetchone()
             return dict(row) if row else None
 
     def list_metrics(self) -> list[dict]:
@@ -664,9 +644,7 @@ class Treasury:
             rows = conn.execute("SELECT * FROM job_metrics ORDER BY ts ASC").fetchall()
             return [dict(r) for r in rows]
 
-    def upsert_checkout(
-        self, job_id: str, session_id: str, checkout_url: str, status: str
-    ) -> None:
+    def upsert_checkout(self, job_id: str, session_id: str, checkout_url: str, status: str) -> None:
         with self.lock(), self._conn() as conn, conn:
             conn.execute(
                 """
@@ -773,9 +751,7 @@ class Treasury:
 
     def get_chat_session(self, session_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM chat_sessions WHERE id = ?", (session_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM chat_sessions WHERE id = ?", (session_id,)).fetchone()
             return dict(row) if row else None
 
     def list_chat_sessions_by_channel(self, channel: str) -> list[dict]:
@@ -896,9 +872,7 @@ class Treasury:
             if not row or row["used"] or row["expires_at"] < now:
                 return False
             with conn:
-                conn.execute(
-                    "UPDATE openclaw_tokens SET used = 1 WHERE token = ?", (token,)
-                )
+                conn.execute("UPDATE openclaw_tokens SET used = 1 WHERE token = ?", (token,))
             return True
 
 
