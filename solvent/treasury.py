@@ -482,7 +482,7 @@ class Treasury:
                 ).fetchall()
                 return [dict(row) for row in rows]
 
-    def get_job_for_session(self, job_id: str, session_id: str) -> Optional[dict]:
+    def get_job_for_session(self, job_id: str, session_id: str) -> dict | None:
         with self.lock():
             with self._conn() as conn:
                 row = conn.execute(
