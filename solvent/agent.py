@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Callable
 
-from .treasury import Treasury
 from .guardrails import Guardrails
 from .pricing import PricingPolicy
-from .stripe_client import StripeClient
 from .stages import StageRunner, validate_and_coerce_job
+from .stripe_client import StripeClient
+from .treasury import Treasury
 
 
 class Solvent:
@@ -27,7 +28,7 @@ class Solvent:
         self,
         seed_cents: int = 10_000,
         fresh: bool = True,
-        on_event: callable | None = None,
+        on_event: Callable | None = None,
         *,
         sync_payment: bool | None = None,
     ):
@@ -41,7 +42,8 @@ class Solvent:
         self.log: list[dict] = []
         self.on_event = on_event
         if sync_payment is None:
-            sync_payment = os.environ.get("SOLVENT_ASYNC", "").strip() not in ("1", "true", "yes")
+            async_flag = os.environ.get("SOLVENT_ASYNC", "").strip()
+            sync_payment = async_flag not in ("1", "true", "yes")
         self._runner = StageRunner(
             self.t,
             self.guard,
@@ -72,14 +74,15 @@ class Solvent:
 
     def enqueue_job(self, job: dict) -> dict:
         """Validate and persist a job for async worker processing."""
-        job, err = validate_and_coerce_job(job, self.t)
+        validated, err = validate_and_coerce_job(job, self.t)
         if err:
-            return self._emit(stage="declined", job_id=job.get("id", "unknown") if job else "unknown", reason=err)
-        q = self._runner._stage_quote(job)
+            job_id = validated.get("id", "unknown") if validated else "unknown"
+            return self._emit(stage="declined", job_id=job_id, reason=err)
+        assert validated is not None
+        q = self._runner._stage_quote(validated)
         if q.get("stage") == "declined" or not q.get("accept"):
             return q
-        checkout = self._runner._stage_checkout(job, q)
-        return checkout
+        return self._runner._stage_checkout(validated, q)
 
     def run(self, jobs: list[dict]) -> dict:
         for job in jobs:

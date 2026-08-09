@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 
 from .agent import Solvent
@@ -38,6 +37,7 @@ def run_worker(
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="SOLVENT async job worker")
     parser.add_argument("--once", action="store_true", help="process one pass then exit")
     parser.add_argument("--poll-interval", type=float, default=2.0)

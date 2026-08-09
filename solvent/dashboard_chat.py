@@ -269,6 +269,7 @@ LIVE_CLIENT_JS = """
       jobsData = data.jobs_data;
       briefs = data.briefs;
       if (currentOpenJobId) updateDrawerContent(currentOpenJobId);
+      if (typeof updateBriefsList === 'function') updateBriefsList();
       const indicator = document.getElementById("status-indicator");
       if (indicator) indicator.innerHTML = '<span class="status-dot live"></span> Live';
     }
@@ -291,12 +292,14 @@ LIVE_CLIENT_JS = """
     }
 
     if (typeof EventSource !== 'undefined') {
-      const es = new EventSource('/api/events' + dashboardTokenParam);
+      const esParams = new URLSearchParams({ session_id: chatSessionId });
+      if (dashboardToken) esParams.set('token', dashboardToken);
+      const es = new EventSource('/api/events?' + esParams.toString());
       es.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
           if (msg.type === 'status' && msg.data) applyStatus(msg.data);
-          if (msg.type === 'chat' && msg.role === 'assistant') {
+          if (msg.type === 'chat' && msg.role === 'assistant' && msg.channel === 'dashboard' && (!msg.session_id || msg.session_id === chatSessionId)) {
             appendChat('assistant', msg.text);
             speak(msg.text);
           }

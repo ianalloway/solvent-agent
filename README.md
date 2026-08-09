@@ -44,6 +44,36 @@ python3 run_demo.py
 
 The agent will run a full batch of 4 analyst jobs — complete with margin gating, Stripe payment simulation, NVIDIA Nemotron fulfillment, guardrail screening, and live P&L — in about 30 seconds.
 
+### Install as a package (optional)
+
+The core runs on the **standard library alone**, so a bare install pulls in
+nothing extra and gives you a `solvent` command:
+
+```bash
+pip install -e .                 # editable install from a checkout
+# or once published:  pipx install solvent-agent
+
+solvent                          # run the demo
+solvent finance                  # financial report (income, runway, forecast)
+solvent --help                   # list all commands
+solvent --version
+```
+
+Third-party features are **opt-in extras** — install only what you need:
+
+```bash
+pip install -e ".[stripe]"       # real Stripe test-mode payment links
+pip install -e ".[serve]"        # FastAPI webhooks + hosted briefs
+pip install -e ".[telegram]"     # Telegram bot channel
+pip install -e ".[qr]"           # scannable QR codes for OpenClaw pairing
+pip install -e ".[dev]"          # pytest, for running the test suite
+pip install -e ".[all]"          # everything
+```
+
+When run from a source checkout, runtime data stays under `<repo>/data`. When
+installed elsewhere, SOLVENT writes to `~/.solvent` instead of into
+`site-packages` — override either with `SOLVENT_HOME=/path/to/dir`.
+
 > **First run**: A short onboarding wizard asks you to choose a model, interaction mode, and whether to enable Stripe test mode. Preferences are saved to `.solvent/config.json` and never committed.
 
 ---
@@ -154,25 +184,17 @@ In interactive mode, type `/fund 200` at the prompt to deposit $200 into the liv
 from solvent.agent import Solvent
 from solvent.jobs import SAMPLE_JOBS
 
-agent = Solvent(seed_cents=10_000)          # reset treasury, seed $100
-agent.handle_job(SAMPLE_JOBS[0])            # process one job
-snap = agent.run(SAMPLE_JOBS[1:])           # process a list; returns snapshot
+agent = Solvent(seed_cents=10_000)  # reset treasury, seed $100
+agent.handle_job(SAMPLE_JOBS[0])  # process one job
+snap = agent.run(SAMPLE_JOBS[1:])  # process a list; returns snapshot
 
 print(snap["balance_cents"], snap["margin_pct"])
 ```
 
-### Guardrails demo (standalone)
-
-```bash
-python3 demo_guardrails.py
-```
-
-Shows five spend attempts and which ones the NemoClaw-style policy blocks — without starting the agent or touching Stripe.
-
 ### Production mode (webhooks + async worker)
 
 ```bash
-pip install -r requirements.txt -r requirements-serve.txt
+pip install -e ".[serve]"
 export SOLVENT_DASHBOARD_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 
 python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
@@ -187,15 +209,26 @@ python3 run_demo.py --serve --no-onboard
 
 The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Dashboard/control routes require `SOLVENT_DASHBOARD_TOKEN` via `?token=...` or the `X-Solvent-Dashboard-Token` header before they expose status data or route chat through the Nemotron agent loop.
 
-See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, reconciliation, and auto-tuning.
+See [docs/PRODUCTION.md](docs/PRODUCTION.md) for Stripe webhook setup, SMTP delivery, and reconciliation.
 
 ### Operations
 
 ```bash
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
-python3 -m solvent tune                   # propose pricing improvements (dry-run)
-python3 -m solvent tune --apply             # apply after 5+ completed jobs
+python3 -m solvent finance                # income statement, unit economics, runway
+python3 -m solvent finance --json         # machine-readable report
+python3 -m solvent finance --reserve 50   # runway to a $50 cash-reserve floor
+python3 -m solvent finance --period week  # net P&L trend by day | week | month
+python3 -m solvent finance --horizon 60   # forecast the balance 60 days out
 ```
+
+`finance` (alias `report`) turns the treasury ledger into the numbers a
+business steers by: revenue/cost/net-margin, average profit per job, a cash
+**runway** — days of burn remaining, or `cash-flow positive` once the agent
+funds itself — a **net-P&L trend** bucketed by day/week/month, and a
+**balance forecast** (central projection with a best/worst band whose width
+grows with daily volatility). The income statement, runway, trend, and
+forecast also render as a **Financial Statement** panel in the HTML dashboard.
 
 ---
 
@@ -204,7 +237,7 @@ python3 -m solvent tune --apply             # apply after 5+ completed jobs
 To use live Nemotron inference and real Stripe test-mode payment links:
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[stripe]"
 
 export NVIDIA_API_KEY=nvapi-...        # from build.nvidia.com
 export STRIPE_API_KEY=sk_test_...      # Stripe test mode only (live keys refused)
@@ -224,6 +257,7 @@ With both keys set:
 
 | Variable | Purpose |
 |---|---|
+| `SOLVENT_HOME` | Where runtime data (treasury DB, reports, dashboard, logs) is stored. Defaults to the repo when run from a checkout, else `~/.solvent` |
 | `NVIDIA_API_KEY` | Live Nemotron inference (`nvapi-...`) |
 | `STRIPE_API_KEY` | Stripe test key (`sk_test_...`) |
 | `STRIPE_WEBHOOK_SECRET` | Optional webhook verification |
@@ -234,6 +268,25 @@ With both keys set:
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
 | `SOLVENT_TELEGRAM_DM_POLICY` | `pairing` · `allowlist` · `open` (default `pairing`) |
 | `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |
+| `SOLVENT_PORT` | Port for the `serve` API server (default `8787`) |
+| `SOLVENT_BASE_URL` | Base URL for hosted brief links and Stripe webhook callbacks |
+| `NEMOTRON_MODEL` | Nemotron model override (default: `nvidia/llama-3.1-nemotron-ultra-253b-v1`) |
+| `SOLVENT_DELIVERY_SECRET` | HMAC token secret for `/briefs/{job_id}`; at least 32 characters, high entropy |
+| `SOLVENT_SKIP_ONBOARD` | Set to `1` to skip the first-run wizard |
+| `SOLVENT_ALLOW_POLL` | When set to `1`/`true`/`yes`, actively poll Stripe Checkout Sessions for payment status instead of awaiting webhook confirmation (default: off) |
+| `SOLVENT_ASYNC` | Run job fulfillment asynchronously instead of blocking on payment polling (default: off / synchronous) |
+| `SOLVENT_LIVE_SEARCH` | Enable live web search integration in the agent chat loop (default: off) |
+| `SOLVENT_LOG_JSON` | Emit structured JSON log lines to stderr in addition to the log file (default: off) |
+| `SOLVENT_UPDATE_CHECK` | Opt-in: run a background version-update hint on CLI startup when set to `1`/`true`/`yes` |
+| `SOLVENT_NO_UPDATE_CHECK` | Set to any value to suppress the background version-update hint |
+| `SOLVENT_WORKSPACE` | Override path for the agent workspace directory (SOUL/BRAIN/AGENTS files) |
+| `SOLVENT_WORKSPACE_MAX_CHARS` | Max characters loaded per workspace context file (default `8000`) |
+| `SOLVENT_WORKSPACE_TOTAL_MAX_CHARS` | Max total characters across all workspace context files (default `40000`) |
+| `SMTP_HOST` | SMTP server hostname. When empty (default), brief delivery is **simulated** — research briefs are written to the outbox directory instead of emailed. When set, briefs are emailed to the customer |
+| `SMTP_PORT` | SMTP server port (default `587`) |
+| `SMTP_USER` | SMTP authentication username |
+| `SMTP_PASS` | SMTP authentication password |
+| `SMTP_FROM` | "From" address for outgoing brief emails (default: `SMTP_USER`, else `agent@solvent.local`) |
 
 Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated runs reuse a single **SOLVENT Research Brief** product instead of cluttering your Stripe dashboard.
 
@@ -244,7 +297,7 @@ Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated r
 Full chat on Telegram with OpenClaw-style pairing and Hermes-style tool/memory patterns. See **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
 
 ```bash
-pip install -r requirements-telegram.txt
+pip install -e ".[telegram]"
 export TELEGRAM_BOT_TOKEN=...
 
 python -m solvent serve &    # Stripe webhooks + checkout
@@ -264,7 +317,7 @@ Personality and operating rules come from the **agent workspace** (`SOUL.md`, `B
 ## 🧪 Tests
 
 ```bash
-pip install pytest
+pip install -e ".[dev]"
 python3 -m pytest tests/ -v
 ```
 
@@ -277,6 +330,7 @@ Unit tests cover: pricing & margin gate · guardrail policy · treasury ledger �
 ```
 solvent/
   agent.py         the orchestrator (earn → fulfil → spend → book)
+  stages.py        idempotent stage machine (quote→paid→fulfill→deliver→spend)
   treasury.py      SQLite ledger / balance sheet
   pricing.py       the margin gate
   guardrails.py    NemoClaw-style spend policy
@@ -285,18 +339,19 @@ solvent/
   service.py       the product: an on-demand research brief
   jobs.py          sample inbound work
   dashboard.py     renders the treasury to HTML + JSON
+  finance.py       income statement · unit economics · runway · forecast
   config.py        onboarding wizard and config persistence
+  server.py        FastAPI webhooks + job API + hosted briefs (serve)
+  worker.py        async job processor + resume incomplete jobs
   gateway.py       channel router (Telegram → chat sessions)
   chat.py          conversational loop + business tools
   memory.py        Hermes-style session memory
-  hermes_tools.py  progressive tool disclosure bridge
   doctor.py        stack diagnostics
   workspace.py     SOUL/BRAIN/AGENTS prompt assembly
   channels/        Telegram long-poll adapter
 run_demo.py        the full business loop (CLI entry point)
-demo_guardrails.py the safety story (standalone)
 tests/             pytest suite
-docs/              screenshots and supporting assets
+docs/              screenshots and supporting docs
 ```
 
 ---

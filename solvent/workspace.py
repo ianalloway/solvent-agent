@@ -5,8 +5,8 @@ The workspace (``.solvent/workspace/``) is the agent's brain: markdown files
 injected into the system prompt each session, following:
 
 - Hermes: SOUL.md is slot #1 (identity), AGENTS.md is project context
-- OpenClaw: SOUL, IDENTITY, USER, TOOLS, AGENTS, MEMORY, HEARTBEAT, daily logs
 - Community: BRAIN.md for active business state (read every session)
+- OpenClaw: daily memory logs + an optional MEMORY.md for durable facts
 """
 
 from __future__ import annotations
@@ -30,22 +30,14 @@ MAX_TOTAL_CHARS = int(os.environ.get("SOLVENT_WORKSPACE_TOTAL_MAX_CHARS", "40000
 
 BOOTSTRAP_FILES = (
     "SOUL.md",
-    "IDENTITY.md",
     "AGENTS.md",
-    "USER.md",
-    "TOOLS.md",
     "BRAIN.md",
-    "HEARTBEAT.md",
-    "MEMORY.md",
-    "BOOTSTRAP.md",
 )
 
 # Hermes/OpenClaw injection order for project context
 CONTEXT_FILES = (
     "BRAIN.md",
     "AGENTS.md",
-    "TOOLS.md",
-    "USER.md",
 )
 
 SOLVENT_CORE_RULES = (
@@ -110,7 +102,10 @@ def seed_workspace(*, force: bool = False) -> Path:
         if src.is_file():
             shutil.copy2(src, dest)
         elif not dest.exists():
-            dest.write_text(f"# {name}\n\n(Edit this file to customize SOLVENT.)\n", encoding="utf-8")
+            dest.write_text(
+                f"# {name}\n\n(Edit this file to customize SOLVENT.)\n",
+                encoding="utf-8",
+            )
 
     return root
 
@@ -127,31 +122,39 @@ def list_workspace_files() -> list[dict]:
     out: list[dict] = []
     for name in BOOTSTRAP_FILES:
         p = root / name
-        out.append({
-            "name": name,
-            "path": str(p),
-            "exists": p.is_file(),
-            "bytes": p.stat().st_size if p.is_file() else 0,
-        })
+        out.append(
+            {
+                "name": name,
+                "path": str(p),
+                "exists": p.is_file(),
+                "bytes": p.stat().st_size if p.is_file() else 0,
+            }
+        )
     mem = root / "memory"
     if mem.is_dir():
         for p in sorted(mem.glob("*.md"))[-7:]:
-            out.append({
-                "name": f"memory/{p.name}",
-                "path": str(p),
-                "exists": True,
-                "bytes": p.stat().st_size,
-            })
+            out.append(
+                {
+                    "name": f"memory/{p.name}",
+                    "path": str(p),
+                    "exists": True,
+                    "bytes": p.stat().st_size,
+                }
+            )
     for skills_root in (root / "skills", SKILLS_DIR):
         if not skills_root.is_dir():
             continue
         for name, path in _iter_skills(skills_root):
-            out.append({
-                "name": f"skills/{name}/SKILL.md" if path.name == "SKILL.md" else f"skills/{path.name}",
-                "path": str(path),
-                "exists": True,
-                "bytes": path.stat().st_size,
-            })
+            out.append(
+                {
+                    "name": f"skills/{name}/SKILL.md"
+                    if path.name == "SKILL.md"
+                    else f"skills/{path.name}",
+                    "path": str(path),
+                    "exists": True,
+                    "bytes": path.stat().st_size,
+                }
+            )
     return out
 
 
@@ -184,10 +187,6 @@ def load_soul() -> str:
     root = ensure_workspace()
     content = _read_file(root / "SOUL.md")
     return content or _missing_marker("SOUL.md")
-
-
-def load_identity() -> str | None:
-    return _read_file(workspace_path() / "IDENTITY.md")
 
 
 def load_context_file(name: str) -> str | None:
@@ -234,7 +233,6 @@ def build_system_prompt(
     *,
     session_kind: str = "main",
     include_memory: bool = True,
-    include_heartbeat: bool = False,
 ) -> str:
     """
     Compose the chat system prompt (Hermes prompt assembly + OpenClaw workspace).
@@ -256,10 +254,6 @@ def build_system_prompt(
 
     # Slot 1: SOUL (identity — verbatim, Hermes)
     add_block(load_soul())
-
-    identity = load_identity()
-    if identity:
-        add_block(f"# Identity\n\n{identity}")
 
     add_block(SOLVENT_CORE_RULES)
 
@@ -291,25 +285,11 @@ def build_system_prompt(
     if skills:
         add_block(skills)
 
-    if include_heartbeat:
-        hb = load_context_file("HEARTBEAT.md")
-        if hb:
-            add_block(f"# Heartbeat Checklist\n\n{hb}")
-
-    bootstrap = load_context_file("BOOTSTRAP.md")
-    if bootstrap and "[complete]" not in bootstrap.lower():
-        add_block(
-            "# Bootstrap Ritual\n\n"
-            "Complete the first-run ritual in BOOTSTRAP.md, then delete the file or "
-            "mark it complete.\n\n"
-            + bootstrap
-        )
-
     return "\n\n".join(parts)
 
 
 def build_chat_system_prompt(channel: str = "cli") -> str:
-    """Gateway/chat entry — private channels get MEMORY.md."""
+    """Gateway/chat entry — authenticated private channels get MEMORY.md."""
     session_kind = "main" if channel in ("cli", "telegram", "interactive") else "shared"
     return build_system_prompt(session_kind=session_kind)
 

@@ -4,15 +4,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from solvent.agent import Solvent
-from solvent.chat import handle_message, format_job_notification, _merge_commission_slots
-from solvent.memory import SessionMemory
 from solvent import nemotron
+from solvent.agent import Solvent
+from solvent.chat import (
+    _merge_commission_slots,
+    format_job_notification,
+    handle_message,
+)
+from solvent.memory import SessionMemory
 from solvent.treasury import Treasury
 
 
 class TestChatTools(unittest.TestCase):
     def setUp(self):
+        self._env = patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
+        self._env.start()
         self.tmp = tempfile.TemporaryDirectory()
         self.db = Path(self.tmp.name) / "t.db"
         self.t = Treasury(path=self.db)
@@ -25,6 +31,7 @@ class TestChatTools(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+        self._env.stop()
 
     def test_format_job_notification(self):
         msg = format_job_notification({"stage": "delivered", "job_id": "J1", "url": "https://x"})
@@ -33,7 +40,9 @@ class TestChatTools(unittest.TestCase):
 
     def test_slot_filling(self):
         pending = _merge_commission_slots(
-            self.agent, self.session["id"], "Commission a brief on AI chips budget $50 alice@example.com"
+            self.agent,
+            self.session["id"],
+            "Commission a brief on AI chips budget $50 alice@example.com",
         )
         self.assertEqual(pending.get("budget_cents"), 5000)
         self.assertEqual(pending.get("customer_email"), "alice@example.com")
@@ -44,8 +53,79 @@ class TestChatTools(unittest.TestCase):
             ('<tool_call>{"name": "treasury_status", "arguments": {}}</tool_call>', {}),
             ("Balance looks healthy.", {}),
         ]
-        reply = handle_message(self.session["id"], "How is treasury?", agent=self.agent, memory=self.memory)
+        reply = handle_message(
+            self.session["id"], "How is treasury?", agent=self.agent, memory=self.memory
+        )
         self.assertIn("healthy", reply.lower())
+
+    @patch.object(nemotron, "complete")
+    def test_per_turn_tool_budget(self, mock_complete):
+        """A single reply with many tool calls is capped at the per-turn budget."""
+        import solvent.chat as chatmod
+
+        many = " ".join(
+            '<tool_call>{"name": "treasury_status", "arguments": {}}</tool_call>' for _ in range(25)
+        )
+        mock_complete.side_effect = [(many, {}), ("All set.", {})]
+
+        calls = {"n": 0}
+        orig = chatmod._make_executor
+
+        def counting_executor(agent, session_id, live_search):
+            run = orig(agent, session_id, live_search)
+
+            def counting_run(name, args):
+                calls["n"] += 1
+                return run(name, args)
+
+            return counting_run
+
+        with (
+            patch.object(chatmod, "_make_executor", counting_executor),
+            patch.object(chatmod.tools, "MAX_TOOL_CALLS", 5),
+        ):
+            reply = handle_message(
+                self.session["id"], "spam tools", agent=self.agent, memory=self.memory
+            )
+
+        self.assertLessEqual(calls["n"], 5)
+        self.assertIn("set", reply.lower())
+
+    @patch.object(nemotron, "complete")
+    def test_submit_brief_ignores_tool_supplied_job_id(self, mock_complete):
+        self.t.upsert_job(
+            "VICTIM1",
+            "awaiting_payment",
+            topic="Victim topic",
+            budget_cents=7500,
+            customer_email="victim@example.com",
+            job_payload_json={"id": "VICTIM1", "topic": "Victim topic"},
+        )
+        mock_complete.side_effect = [
+            (
+                '<tool_call>{"name": "submit_brief", "arguments": '
+                '{"job_id": "VICTIM1", "topic": "Attacker topic", '
+                '"budget_cents": 5000, "customer_email": "attacker@example.com"}}</tool_call>',
+                {},
+            ),
+            ("Done.", {}),
+        ]
+
+        handle_message(
+            self.session["id"],
+            "Submit a brief",
+            agent=self.agent,
+            memory=self.memory,
+        )
+
+        victim = self.t.get_job("VICTIM1")
+        self.assertEqual(victim["topic"], "Victim topic")
+        self.assertEqual(victim["customer_email"], "victim@example.com")
+        session = self.t.get_chat_session(self.session["id"])
+        self.assertNotEqual(session.get("notify_job_id"), "VICTIM1")
+        created = [j for j in self.t.list_jobs() if j["id"] != "VICTIM1"]
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0]["topic"], "Attacker topic")
 
     @patch.object(nemotron, "complete")
     def test_submit_brief_via_tool(self, mock_complete):
@@ -57,10 +137,11 @@ class TestChatTools(unittest.TestCase):
             ),
             ("Checkout link sent.", {}),
         ]
-        reply = handle_message(
-            self.session["id"],
-            "Submit brief on EV market budget 50 email c@test.com",
-            agent=self.agent,
-            memory=self.memory,
-        )
+        with patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}):
+            reply = handle_message(
+                self.session["id"],
+                "Submit brief on EV market budget 50 email c@test.com",
+                agent=self.agent,
+                memory=self.memory,
+            )
         self.assertTrue("Checkout" in reply or "invoice" in reply.lower() or len(reply) > 0)

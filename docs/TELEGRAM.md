@@ -8,7 +8,7 @@ Talk to your self-funding research agent on Telegram. Pairing, conversational co
 2. Install Telegram dependencies:
 
 ```bash
-pip install -r requirements-telegram.txt
+pip install -e ".[telegram]"
 ```
 
 3. Export the token (never commit it):
@@ -28,10 +28,12 @@ export SOLVENT_TELEGRAM_DM_POLICY=pairing   # pairing | allowlist | open
 In separate terminals:
 
 ```bash
-python -m solvent serve      # Stripe webhooks + checkout
+python -m solvent serve      # Stripe webhooks + checkout + browser dashboard
 python -m solvent worker     # fulfill paid jobs
 python -m solvent telegram     # long-poll bot
 ```
+
+`serve` also hosts the **interactive dashboard** at `http://127.0.0.1:8787/` — typed chat, Web Speech mic input, and live treasury updates via SSE. Job lifecycle messages from `worker` reach the dashboard via `data/chat_outbox.jsonl` when `serve` is running.
 
 Verify configuration:
 

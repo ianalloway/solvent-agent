@@ -6,9 +6,10 @@ import json
 import os
 import sys
 import time
-from pathlib import Path
 
-LOG_PATH = Path(__file__).resolve().parent.parent / "data" / "solvent.log"
+from .paths import data_dir
+
+LOG_PATH = data_dir() / "solvent.log"
 
 
 def log_event(

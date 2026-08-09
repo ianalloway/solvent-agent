@@ -10,13 +10,18 @@ Stripe on the SPEND side. This is what ties COGS to each unit of revenue.
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from . import nemotron
-from .pricing import RESOURCE_COSTS_CENTS, get_resource_costs
-from .security import sanitise_prompt_input, safe_report_path, PromptInjectionError, InputValidationError
+from .paths import reports_dir
+from .pricing import get_resource_costs
+from .security import (
+    InputValidationError,
+    PromptInjectionError,
+    safe_report_path,
+    sanitise_prompt_input,
+)
 
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data" / "reports"
+OUTPUT_DIR = reports_dir()
 
 
 def _resources_from_usage(
@@ -46,9 +51,7 @@ def _resources_from_usage(
         ("pdf-render-saas", costs["pdf_render"], "Render brief to PDF"),
     ]
     if include_delivery:
-        resources.append(
-            ("email-delivery-saas", costs["email_send"], "Deliver to customer")
-        )
+        resources.append(("email-delivery-saas", costs["email_send"], "Deliver to customer"))
     return resources
 
 
@@ -56,9 +59,13 @@ def fulfill(job: dict) -> dict:
     """Produce the report and return deliverable metadata + resources_used."""
     try:
         topic = sanitise_prompt_input(job.get("topic", ""), field_name="topic", max_len=500)
-        context = sanitise_prompt_input(
-            job.get("context", "n/a") or "n/a", field_name="context", max_len=2_000
-        ) if job.get("context") else "n/a"
+        context = (
+            sanitise_prompt_input(
+                job.get("context", "n/a") or "n/a", field_name="context", max_len=2_000
+            )
+            if job.get("context")
+            else "n/a"
+        )
     except (PromptInjectionError, InputValidationError) as exc:
         raise ValueError(f"job input rejected by security layer: {exc}") from exc
 
@@ -72,6 +79,12 @@ def fulfill(job: dict) -> dict:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     path = safe_report_path(OUTPUT_DIR, job["id"])
     path.write_text(text)
+
+    from .delivery import markdown_to_html
+
+    html_content = markdown_to_html(text, job_id=job["id"], topic=job.get("topic"))
+    html_path = path.with_suffix(".html")
+    html_path.write_text(html_content, encoding="utf-8")
 
     return {
         "deliverable_path": str(path),
@@ -102,5 +115,5 @@ def reconcile_cogs(quote, result: dict) -> dict:
         "margin_drift_cents": drift,
         "cost_warning": warning,
         "fulfillment_seconds": result.get("fulfillment_seconds", 0),
-        "tool_calls": result.get("tool_ctx").total_calls if result.get("tool_ctx") else 0,
+        "tool_calls": (tc.total_calls if (tc := result.get("tool_ctx")) else 0),
     }

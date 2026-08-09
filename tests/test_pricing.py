@@ -1,5 +1,16 @@
+import json
+import os
+import tempfile
 import unittest
-from solvent.pricing import estimate_cost, quote, PricingPolicy, RESOURCE_COSTS_CENTS
+from pathlib import Path
+
+from solvent.pricing import (
+    RESOURCE_COSTS_CENTS,
+    PricingPolicy,
+    estimate_cost,
+    get_resource_costs,
+    quote,
+)
 
 
 class TestPricing(unittest.TestCase):
@@ -23,16 +34,14 @@ class TestPricing(unittest.TestCase):
         self.assertEqual(breakdown["pdf_render"], expected_pdf)
         self.assertEqual(breakdown["email_send"], expected_email)
 
-        expected_total = expected_nemotron + expected_market + expected_search + expected_pdf + expected_email
+        expected_total = (
+            expected_nemotron + expected_market + expected_search + expected_pdf + expected_email
+        )
         self.assertEqual(total_cost, expected_total)
 
     def test_estimate_cost_custom(self) -> None:
         """Test cost estimation with custom parameters."""
-        job = {
-            "est_tokens": 12_500,
-            "market_data_calls": 5,
-            "web_search_calls": 10
-        }
+        job = {"est_tokens": 12_500, "market_data_calls": 5, "web_search_calls": 10}
         total_cost, breakdown = estimate_cost(job)
 
         # Nemotron: 12.5 * 30 = 375 cents
@@ -54,7 +63,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 1000,  # $10 budget, less than $15 minimum
             "est_tokens": 2000,
             "market_data_calls": 1,
-            "web_search_calls": 2
+            "web_search_calls": 2,
         }
         q = quote(job, policy)
         self.assertFalse(q.accept)
@@ -74,7 +83,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 900,  # $9 budget, but cost is 965
             "est_tokens": 8000,
             "market_data_calls": 5,
-            "web_search_calls": 10
+            "web_search_calls": 10,
         }
         q = quote(job, policy)
         self.assertFalse(q.accept)
@@ -92,7 +101,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 1200,
             "est_tokens": 8000,
             "market_data_calls": 5,
-            "web_search_calls": 10
+            "web_search_calls": 10,
         }
         q = quote(job, policy)
         self.assertFalse(q.accept)
@@ -110,7 +119,7 @@ class TestPricing(unittest.TestCase):
             "budget_cents": 2000,
             "est_tokens": 8000,
             "market_data_calls": 5,
-            "web_search_calls": 10
+            "web_search_calls": 10,
         }
         q = quote(job, policy)
         self.assertTrue(q.accept)
@@ -126,6 +135,57 @@ class TestPricing(unittest.TestCase):
         q = quote(job)
         self.assertFalse(q.accept)
         self.assertEqual(q.margin_pct, -100.0)
+
+
+class TestResourceCostsOverrides(unittest.TestCase):
+    """Coverage for get_resource_costs() loading .solvent/pricing_overrides.json."""
+
+    def setUp(self) -> None:
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        os.makedirs(os.path.join(self._tmp.name, ".solvent"), exist_ok=True)
+        os.chdir(self._tmp.name)
+
+    def tearDown(self) -> None:
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def test_defaults_when_no_override_file(self) -> None:
+        costs = get_resource_costs()
+        self.assertEqual(costs, RESOURCE_COSTS_CENTS)
+        # Must be a copy, not the same dict object
+        costs["nemotron_tokens_per_1k"] = 999
+        self.assertNotEqual(RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"], 999)
+
+    def test_valid_override_applied(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text(
+            json.dumps({"nemotron_tokens_per_1k": 55, "pdf_render": 25})
+        )
+        costs = get_resource_costs()
+        self.assertEqual(costs["nemotron_tokens_per_1k"], 55)
+        self.assertEqual(costs["pdf_render"], 25)
+        self.assertEqual(
+            costs["market_data_call"],
+            RESOURCE_COSTS_CENTS["market_data_call"],
+        )
+
+    def test_invalid_json_falls_back_to_defaults(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text("{not valid json")
+        costs = get_resource_costs()
+        self.assertEqual(costs, RESOURCE_COSTS_CENTS)
+
+    def test_non_dict_json_falls_back_to_defaults(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text("[1, 2, 3]")
+        costs = get_resource_costs()
+        self.assertEqual(costs, RESOURCE_COSTS_CENTS)
+
+    def test_unknown_keys_and_non_numeric_values_ignored(self) -> None:
+        Path(".solvent/pricing_overrides.json").write_text(
+            json.dumps({"unknown_key": 999, "web_search_call": "expensive"})
+        )
+        costs = get_resource_costs()
+        self.assertEqual(costs["web_search_call"], RESOURCE_COSTS_CENTS["web_search_call"])
+        self.assertNotIn("unknown_key", costs)
 
 
 if __name__ == "__main__":

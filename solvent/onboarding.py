@@ -137,16 +137,20 @@ def run_wizard() -> SolventConfig:
         "Step 1 — Choose reasoning model",
         [
             ("Offline stub", "Zero credentials · deterministic briefs (demo default)"),
-            ("NVIDIA Nemotron", "Live inference · set NVIDIA_API_KEY in your environment"),
-            ("Custom endpoint", "Future: OpenAI-compatible URL · uses offline stub for now"),
+            (
+                "NVIDIA Nemotron",
+                "Live inference · set NVIDIA_API_KEY in your environment",
+            ),
+            (
+                "Custom endpoint",
+                "Future: OpenAI-compatible URL · uses offline stub for now",
+            ),
         ],
         default=1,
     )
     if model_choice == 2:
         model = "nemotron"
-        nemotron_model = os.environ.get(
-            "NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1"
-        )
+        nemotron_model = os.environ.get("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
         if not os.environ.get("NVIDIA_API_KEY"):
             print(
                 f"\n  {C_YELLOW}Tip:{C_RESET} export NVIDIA_API_KEY=nvapi-... "

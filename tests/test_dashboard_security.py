@@ -1,16 +1,13 @@
 """Security tests for dashboard rendering."""
 
 import json
-from pathlib import Path
 
 from solvent import dashboard
 
 
 def test_dashboard_status_html_fragments_escape_untrusted_fields(tmp_path, monkeypatch):
-    fake_module = tmp_path / "pkg" / "dashboard.py"
-    fake_module.parent.mkdir()
-    fake_module.write_text("")
-    monkeypatch.setattr(dashboard, "__file__", str(fake_module))
+    # Redirect all runtime data to a temp home so the status JSON lands there.
+    monkeypatch.setenv("SOLVENT_HOME", str(tmp_path))
     monkeypatch.setattr(dashboard, "OUT", tmp_path / "treasury_dashboard.html")
 
     payload = '<img src=x onerror="globalThis.__SOLVENT_XSS_POC=1">'
@@ -70,6 +67,8 @@ def test_dashboard_status_html_fragments_escape_untrusted_fields(tmp_path, monke
     )
 
     assert payload not in rendered_fragments
-    assert "&lt;img src=x onerror=&quot;globalThis.__SOLVENT_XSS_POC=1&quot;&gt;" in rendered_fragments
+    assert (
+        "&lt;img src=x onerror=&quot;globalThis.__SOLVENT_XSS_POC=1&quot;&gt;" in rendered_fragments
+    )
     assert "javascript:alert(1)" not in rendered_fragments
     assert "href='#'" in rendered_fragments or 'href="#"' in rendered_fragments

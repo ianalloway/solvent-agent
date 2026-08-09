@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.request
+from typing import TYPE_CHECKING
 
 from ..gateway import Gateway, register_outbound
+
+if TYPE_CHECKING:  # pragma: no cover - typing-only imports
+    from telegram import Update
+    from telegram.ext import ContextTypes
 
 
 def send_telegram_message(external_id: str, text: str) -> None:
@@ -16,31 +22,52 @@ def send_telegram_message(external_id: str, text: str) -> None:
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = json.dumps({"chat_id": int(external_id), "text": text[:4000]}).encode()
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    req = urllib.request.Request(url, data=payload, headers=headers)
     try:
         urllib.request.urlopen(req, timeout=15)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).warning("telegram send failed: %s", exc)
 
 
 def _require_ptb():
+    """Import the runtime symbols we need from python-telegram-bot.
+
+    ``Update``/``ContextTypes`` are only needed for annotations, so they are
+    imported under ``TYPE_CHECKING`` instead of being returned here.
+    """
     try:
-        from telegram import Update
-        from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-        return Update, Application, CommandHandler, MessageHandler, filters, ContextTypes
+        from telegram.ext import (
+            Application,
+            CommandHandler,
+            MessageHandler,
+            filters,
+        )
+
+        return (
+            Application,
+            CommandHandler,
+            MessageHandler,
+            filters,
+        )
     except ImportError as exc:
         raise RuntimeError(
-            "python-telegram-bot required. Install: pip install -r requirements-telegram.txt"
+            'python-telegram-bot required. Install: pip install -e ".[telegram]"'
         ) from exc
 
 
-async def _reply(update, text: str) -> None:
+async def _reply(update: Update, text: str) -> None:
     if update.message:
         await update.message.reply_text(text[:4000])
 
 
 def build_application(gateway: Gateway | None = None) -> object:
-    Update, Application, CommandHandler, MessageHandler, filters, ContextTypes = _require_ptb()
+    (
+        Application,
+        CommandHandler,
+        MessageHandler,
+        filters,
+    ) = _require_ptb()
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
@@ -68,7 +95,6 @@ def build_application(gateway: Gateway | None = None) -> object:
 
 
 def main():
-    import asyncio
     app = build_application()
     print("SOLVENT Telegram bot starting (long-poll)...")
     app.run_polling(allowed_updates=["message"])

@@ -44,6 +44,16 @@ class TestWorkspace(unittest.TestCase):
         self.assertIn("SECRET_USER_FACT", main_prompt)
         self.assertNotIn("SECRET_USER_FACT", shared_prompt)
 
+    def test_dashboard_chat_uses_shared_prompt_without_memory(self):
+        workspace.seed_workspace()
+        (workspace.workspace_path() / "MEMORY.md").write_text(
+            "DASHBOARD_PRIVATE_MEMORY_SECRET\n", encoding="utf-8"
+        )
+        cli_prompt = workspace.build_chat_system_prompt("cli")
+        dashboard_prompt = workspace.build_chat_system_prompt("dashboard")
+        self.assertIn("DASHBOARD_PRIVATE_MEMORY_SECRET", cli_prompt)
+        self.assertNotIn("DASHBOARD_PRIVATE_MEMORY_SECRET", dashboard_prompt)
+
     def test_append_daily_memory(self):
         workspace.seed_workspace()
         path = workspace.append_daily_memory("test event")

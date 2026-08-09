@@ -3,14 +3,14 @@
 import os
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 from solvent.delivery import (
-    make_delivery_token,
-    verify_delivery_token,
-    send_brief_email,
     hosted_brief_url,
+    make_delivery_token,
+    send_brief_email,
+    verify_delivery_token,
 )
 
 
@@ -33,7 +33,11 @@ class TestDelivery(unittest.TestCase):
                 make_delivery_token("J1")
             self.assertFalse(verify_delivery_token("J1", "123.bad"))
 
-        with mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "change-me-in-production"}, clear=True):
+        with mock.patch.dict(
+            os.environ,
+            {"SOLVENT_DELIVERY_SECRET": "change-me-in-production"},
+            clear=True,
+        ):
             with self.assertRaises(RuntimeError):
                 make_delivery_token("J1")
             self.assertFalse(verify_delivery_token("J1", "123.bad"))

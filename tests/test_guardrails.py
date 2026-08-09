@@ -1,7 +1,8 @@
-import unittest
 import time
+import unittest
 from unittest.mock import MagicMock
-from solvent.guardrails import Guardrails, SpendPolicy, GuardrailError
+
+from solvent.guardrails import Decision, GuardrailError, Guardrails, SpendPolicy
 from solvent.treasury import LedgerEntry
 
 
@@ -119,6 +120,71 @@ class TestGuardrails(unittest.TestCase):
 
         # Case 4: Projected margin is not provided (None) -> approved
         self.assertTrue(self.guard.approve(500, "nvidia-nemotron", projected_job_margin_cents=None))
+
+
+class TestGuardrailDecision(unittest.TestCase):
+    """The structured Decision API used for auditable spend screening."""
+
+    def setUp(self) -> None:
+        self.t = MagicMock()
+        self.t.balance_cents.return_value = 10000
+        self.t.entries = []
+        self.guard = Guardrails(self.t)
+
+    def test_approved_decision_carries_context(self) -> None:
+        d = self.guard.evaluate(500, "nvidia-nemotron", projected_job_margin_cents=100)
+        self.assertIsInstance(d, Decision)
+        self.assertTrue(d.allowed)
+        self.assertIsNone(d.rule)
+        self.assertEqual(d.reason, "approved")
+        self.assertEqual(d.amount_cents, 500)
+        self.assertEqual(d.vendor, "nvidia-nemotron")
+        self.assertEqual(d.balance_cents, 10000)
+
+    def test_denied_decision_names_the_rule(self) -> None:
+        cases = [
+            ({"amount_cents": 100, "vendor": "rogue-vendor"}, "vendor_allowlist"),
+            ({"amount_cents": 9999, "vendor": "nvidia-nemotron"}, "max_txn_cap"),
+        ]
+        for kwargs, rule in cases:
+            d = self.guard.evaluate(**kwargs)
+            self.assertFalse(d.allowed)
+            self.assertEqual(d.rule, rule)
+            self.assertTrue(d.reason)
+
+    def test_reserve_rule_id(self) -> None:
+        self.t.balance_cents.return_value = 2500
+        d = self.guard.evaluate(501, "nvidia-nemotron")
+        self.assertFalse(d.allowed)
+        self.assertEqual(d.rule, "min_reserve")
+
+    def test_roi_rule_id(self) -> None:
+        d = self.guard.evaluate(500, "nvidia-nemotron", projected_job_margin_cents=-1)
+        self.assertFalse(d.allowed)
+        self.assertEqual(d.rule, "roi")
+
+    def test_first_violation_wins_priority(self) -> None:
+        # Both an unlisted vendor AND an over-cap amount: allowlist is checked first.
+        d = self.guard.evaluate(9999, "rogue-vendor")
+        self.assertEqual(d.rule, "vendor_allowlist")
+
+    def test_as_dict_is_serialisable(self) -> None:
+        import json
+
+        d = self.guard.evaluate(100, "rogue-vendor")
+        payload = json.dumps(d.as_dict())
+        self.assertIn("vendor_allowlist", payload)
+
+    def test_evaluate_and_approve_agree(self) -> None:
+        for amount, vendor in [
+            (500, "nvidia-nemotron"),
+            (9999, "nvidia-nemotron"),
+            (100, "nope"),
+        ]:
+            self.assertEqual(
+                self.guard.evaluate(amount, vendor).allowed,
+                self.guard.approve(amount, vendor),
+            )
 
 
 if __name__ == "__main__":

@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-import time
-from collections import defaultdict
-from typing import Callable
+import contextlib
+import os
+from collections.abc import Callable
 
-from .agent import Solvent
-from .chat import handle_message, format_job_notification
-from .memory import SessionMemory
 from . import pairing
-from .treasury import Treasury, fmt
+from .agent import Solvent
+from .chat import format_job_notification, handle_message
+from .memory import SessionMemory
+from .rate_limit import RateLimiter
+from .treasury import fmt
 
 _outbound_handlers: dict[str, Callable[[str, str], None]] = {}
-_rate_limits: dict[str, list[float]] = defaultdict(list)
-RATE_LIMIT_PER_HOUR = 30
+_rate_limiter = RateLimiter()
+
+with contextlib.suppress(Exception):
+    _rate_limiter.cleanup()
 
 
 def register_outbound(channel: str, handler: Callable[[str, str], None]) -> None:
@@ -25,16 +28,18 @@ def notify(channel: str, external_id: str, text: str) -> None:
     handler = _outbound_handlers.get(channel)
     if handler:
         handler(external_id, text)
+    if channel == "dashboard":
+        try:
+            from .notifications import enqueue_chat
+
+            enqueue_chat(channel, external_id, text)
+        except Exception:
+            pass
 
 
 def _rate_ok(user_key: str) -> bool:
-    now = time.time()
-    window = _rate_limits[user_key]
-    _rate_limits[user_key] = [t for t in window if now - t < 3600]
-    if len(_rate_limits[user_key]) >= RATE_LIMIT_PER_HOUR:
-        return False
-    _rate_limits[user_key].append(now)
-    return True
+    allowed, _reason = _rate_limiter.check(user_key)
+    return allowed
 
 
 class Gateway:
@@ -50,10 +55,11 @@ class Gateway:
         *,
         user_label: str | None = None,
     ) -> str:
-        if not _rate_ok(f"{channel}:{external_id}"):
-            return "Rate limit exceeded. Please wait before sending more messages."
-
         session = self.memory.get_or_create(channel, external_id, user_label)
+        is_command = text.strip().startswith("/")
+
+        if not is_command and not _rate_ok(f"{channel}:{external_id}"):
+            return "Rate limit exceeded. Please wait before sending more messages."
 
         if channel == "telegram" and not pairing.is_allowed(external_id, user_label):
             if text.strip().lower().startswith("/start"):
@@ -64,7 +70,7 @@ class Gateway:
                 )
             return "Pairing required. Send /start to get a pairing code."
 
-        if text.strip().startswith("/"):
+        if is_command:
             return self._handle_command(channel, external_id, text.strip(), session)
 
         return handle_message(
@@ -81,6 +87,7 @@ class Gateway:
                 "SOLVENT research business bot.\n"
                 "/status — treasury snapshot\n"
                 "/jobs — recent jobs\n"
+                "/pair qr — generate OpenClaw pairing QR code\n"
                 "/quote <topic> | <budget_usd> — margin preview\n"
                 "Or chat naturally to commission a research brief."
             )
@@ -96,9 +103,25 @@ class Gateway:
             if not jobs:
                 return "No jobs yet."
             return "\n".join(
-                f"{j['id']}: {j.get('status')} — {(j.get('topic') or '')[:40]}"
-                for j in jobs
+                f"{j['id']}: {j.get('status')} — {(j.get('topic') or '')[:40]}" for j in jobs
             )
+        if cmd == "/pair" and arg.strip().lower() == "qr":
+            token = self.agent.t.create_openclaw_token(ttl=600)
+            from . import qr as _qr
+
+            host = (
+                os.environ.get("SOLVENT_BASE_URL", "")
+                .replace("http://", "")
+                .replace("https://", "")
+                .split("/")[0]
+            )
+            try:
+                port = int(host.split(":")[-1]) if ":" in host else 443
+                host = host.split(":")[0]
+            except ValueError:
+                port = 443
+            return _qr.render_token(token, host=host, port=port)
+
         if cmd == "/quote" and "|" in arg:
             topic, budget_s = [x.strip() for x in arg.split("|", 1)]
             try:
@@ -106,16 +129,41 @@ class Gateway:
             except ValueError:
                 return "Usage: /quote topic | 50.00"
             from .chat import handle_message
-            prompt = f"Quote a brief on '{topic}' with budget_cents={cents}. Use quote_brief tool."
-            return handle_message(session["id"], prompt, agent=self.agent, memory=self.memory, channel=channel)
 
-        return handle_message(session["id"], text, agent=self.agent, memory=self.memory, channel=channel)
+            prompt = f"Quote a brief on '{topic}' with budget_cents={cents}. Use quote_brief tool."
+            return handle_message(
+                session["id"],
+                prompt,
+                agent=self.agent,
+                memory=self.memory,
+                channel=channel,
+            )
+
+        return handle_message(
+            session["id"], text, agent=self.agent, memory=self.memory, channel=channel
+        )
 
     def on_job_event(self, event: dict) -> None:
         """Push job lifecycle updates to sessions watching a job."""
         jid = event.get("job_id")
         if not jid:
             return
+
+        # Push formatted receipt to the Telegram / dashboard session that owns the job.
+        if event.get("stage") in ("receipt_ready", "refund_receipt_ready"):
+            receipt_text = event.get("receipt", "")
+            if receipt_text:
+                try:
+                    for sess in self.agent.t.list_chat_sessions_by_channel("telegram"):
+                        if sess.get("notify_job_id") == jid:
+                            notify("telegram", sess["external_id"], receipt_text)
+                    for sess in self.agent.t.list_chat_sessions_by_channel("dashboard"):
+                        if sess.get("notify_job_id") == jid:
+                            notify("dashboard", sess["external_id"], receipt_text)
+                except Exception:
+                    pass
+            return
+
         msg = format_job_notification(event)
         if not msg:
             return
