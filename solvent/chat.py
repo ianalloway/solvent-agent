@@ -47,13 +47,15 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
                 }
             )
         if name == "list_jobs":
-            jobs = agent.t.list_jobs()[-10:]
+            jobs = agent.t.list_jobs_for_session(session_id)[-10:]
             return json.dumps(
                 [{"id": j["id"], "status": j.get("status"), "topic": j.get("topic")} for j in jobs]
             )
         if name == "job_status":
             jid = args.get("job_id", "")
-            row = agent.t.get_job(jid)
+            row = agent.t.get_job_for_session(jid, session_id)
+            if not row:
+                return json.dumps({"error": "job not found"})
             metrics = agent.t.get_metrics(jid)
             return json.dumps({"job": row, "metrics": metrics})
         if name == "quote_brief":
@@ -89,6 +91,7 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool):
                 "market_data_calls": 2,
                 "web_search_calls": 6,
                 "context": f"Commissioned via chat session {session_id}",
+                "job_owner_session_id": session_id,
             }
             result = agent.enqueue_job(job)
             if result.get("stage") != "declined" and not result.get("error"):

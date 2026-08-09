@@ -85,6 +85,7 @@ def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None,
         market_data_calls=job["market_data_calls"],
         web_search_calls=job["web_search_calls"],
         job_payload_json=job,
+        job_owner_session_id=job.get("job_owner_session_id"),
     )
     return job, None
 
