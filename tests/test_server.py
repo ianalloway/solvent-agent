@@ -11,7 +11,7 @@ from solvent.server import create_app
 
 class TestHostedBriefs(unittest.TestCase):
     def setUp(self):
-        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False)
+        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32, "SOLVENT_DASHBOARD_TOKEN": "d" * 32}, clear=False)
         self._env.start()
         self.reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
         self.reports_dir.mkdir(parents=True, exist_ok=True)
@@ -71,10 +71,11 @@ class TestHostedBriefs(unittest.TestCase):
 
         client = TestClient(create_app(fresh=True))
         self.assertEqual(client.get("/health").status_code, 200)
-        dash = client.get("/")
+        self.assertEqual(client.get("/api/status").status_code, 403)
+        dash = client.get("/?token=" + "d" * 32)
         self.assertEqual(dash.status_code, 200)
         self.assertIn("Agent Chat", dash.text)
-        status = client.get("/api/status")
+        status = client.get("/api/status", headers={"X-Solvent-Dashboard-Token": "d" * 32})
         self.assertEqual(status.status_code, 200)
         self.assertIn("balance_cents", status.json())
 
@@ -88,12 +89,12 @@ class TestHostedBriefs(unittest.TestCase):
         self.report_path.write_text(f"# Private brief\n{secret}", encoding="utf-8")
 
         client = TestClient(create_app(fresh=True))
-        status = client.get("/api/status")
+        status = client.get("/api/status", headers={"X-Solvent-Dashboard-Token": "d" * 32})
         self.assertEqual(status.status_code, 200)
         self.assertEqual(status.json()["briefs"].get("victim-job"), "")
         self.assertNotIn(secret, status.text)
 
-        dash = client.get("/")
+        dash = client.get("/?token=" + "d" * 32)
         self.assertEqual(dash.status_code, 200)
         self.assertIn('"victim-job": ""', dash.text)
         self.assertNotIn(secret, dash.text)
@@ -105,7 +106,8 @@ class TestHostedBriefs(unittest.TestCase):
             self.skipTest("FastAPI test client is not installed")
 
         client = TestClient(create_app(fresh=True))
-        response = client.post("/api/chat", json={"message": "/status"})
+        self.assertEqual(client.post("/api/chat", json={"message": "/status"}).status_code, 403)
+        response = client.post("/api/chat", json={"message": "/status"}, headers={"X-Solvent-Dashboard-Token": "d" * 32})
         self.assertEqual(response.status_code, 200)
         self.assertIn("Balance", response.json()["reply"])
 

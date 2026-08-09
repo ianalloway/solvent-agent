@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -68,6 +69,12 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     webhook_log = WebhookLog()
     status_lock = threading.Lock()
     last_status_json = ""
+    dashboard_token = os.environ.get("SOLVENT_DASHBOARD_TOKEN", "").strip()
+
+    def _require_dashboard_auth(req: Request) -> None:
+        token = req.headers.get("X-Solvent-Dashboard-Token", "") or req.query_params.get("token", "")
+        if not dashboard_token or not secrets.compare_digest(token, dashboard_token):
+            raise HTTPException(403, "invalid dashboard token")
 
     def _sanitize_status_data(data: dict) -> dict:
         sanitized = dict(data)
@@ -197,18 +204,21 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return {"verified": True}
 
     @app.get("/")
-    def dashboard_page():
+    def dashboard_page(req: Request):
+        _require_dashboard_auth(req)
         from . import dashboard
 
         path = dashboard.render(agent.t.snapshot(), agent.log, live=True)
         return HTMLResponse(path.read_text(encoding="utf-8"))
 
     @app.get("/api/status")
-    def api_status():
+    def api_status(req: Request):
+        _require_dashboard_auth(req)
         return JSONResponse(_refresh_status())
 
     @app.get("/api/events")
     async def api_events(request: Request):
+        _require_dashboard_auth(request)
         session_id = request.query_params.get("session_id", "")
         q = hub.subscribe()
 
@@ -233,7 +243,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return StreamingResponse(stream(), media_type="text/event-stream")
 
     @app.post("/api/chat")
-    async def api_chat(body: ChatBody):
+    async def api_chat(body: ChatBody, req: Request):
+        _require_dashboard_auth(req)
         message = body.message.strip()
         if not message:
             raise HTTPException(400, "message required")
@@ -243,7 +254,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return {"reply": reply, "session_id": session_id}
 
     @app.post("/api/job")
-    async def api_job(body: JobBody):
+    async def api_job(body: JobBody, req: Request):
+        _require_dashboard_auth(req)
         payload = body.model_dump(exclude_none=True)
         if not payload.get("id"):
             import uuid

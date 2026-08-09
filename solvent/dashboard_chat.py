@@ -135,6 +135,8 @@ CHAT_PANEL_HTML = """
 """
 
 LIVE_CLIENT_JS = """
+    const dashboardToken = new URLSearchParams(window.location.search).get('token') || '';
+    const dashboardTokenParam = dashboardToken ? ('?token=' + encodeURIComponent(dashboardToken)) : '';
     const chatSessionId = localStorage.getItem('solvent_chat_session') || ('web-' + Math.random().toString(36).slice(2, 10));
     localStorage.setItem('solvent_chat_session', chatSessionId);
     let ttsEnabled = localStorage.getItem('solvent_tts') === '1';
@@ -210,9 +212,9 @@ LIVE_CLIENT_JS = """
       input.value = '';
       appendChat('user', text);
       try {
-        const res = await fetch('/api/chat', {
+        const res = await fetch('/api/chat' + dashboardTokenParam, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Solvent-Dashboard-Token': dashboardToken },
           body: JSON.stringify({ message: text, session_id: chatSessionId }),
         });
         if (!res.ok) throw new Error('chat failed');
@@ -274,7 +276,7 @@ LIVE_CLIENT_JS = """
 
     async function pollStatus() {
       try {
-        const res = await fetch('/api/status');
+        const res = await fetch('/api/status' + dashboardTokenParam, { headers: { 'X-Solvent-Dashboard-Token': dashboardToken } });
         if (!res.ok) throw new Error('status failed');
         applyStatus(await res.json());
       } catch (err) {
@@ -290,7 +292,9 @@ LIVE_CLIENT_JS = """
     }
 
     if (typeof EventSource !== 'undefined') {
-      const es = new EventSource('/api/events?session_id=' + encodeURIComponent(chatSessionId));
+      const esParams = new URLSearchParams({ session_id: chatSessionId });
+      if (dashboardToken) esParams.set('token', dashboardToken);
+      const es = new EventSource('/api/events?' + esParams.toString());
       es.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
