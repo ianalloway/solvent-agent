@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -14,12 +15,10 @@ ALLOWLIST_PATH = Path(".solvent/telegram_allowlist.json")
 def _load_allowlist() -> set[str]:
     if not ALLOWLIST_PATH.is_file():
         return set()
-    try:
+    with contextlib.suppress(json.JSONDecodeError, OSError):
         data = json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
         if isinstance(data, list):
             return {str(x) for x in data}
-    except (json.JSONDecodeError, OSError):
-        pass
     return set()
 
 
@@ -38,7 +37,7 @@ def is_allowed(user_id: str, username: str | None = None) -> bool:
     if cfg_allow:
         allow.update(x.strip() for x in cfg_allow.split(",") if x.strip())
     if policy == "allowlist":
-        return user_id in allow or (username and username.lstrip("@") in allow)
+        return user_id in allow or (username is not None and username.lstrip("@") in allow)
     # pairing: must be paired in DB
     t = Treasury()
     return t.is_user_paired(user_id)
@@ -68,6 +67,7 @@ def list_pending() -> list[dict]:
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="SOLVENT Telegram pairing")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="list pending pairing codes")

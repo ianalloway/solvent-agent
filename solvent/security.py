@@ -45,13 +45,14 @@ import unicodedata
 from collections import OrderedDict
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # 1. AUTH — Stripe webhook signature verification
 # ---------------------------------------------------------------------------
 
-def verify_webhook_signature(payload: bytes, sig_header: str, secret: str,
-                              tolerance_seconds: int = 300) -> None:
+
+def verify_webhook_signature(
+    payload: bytes, sig_header: str, secret: str, tolerance_seconds: int = 300
+) -> None:
     """Verify a Stripe webhook Stripe-Signature header.
 
     Args:
@@ -110,13 +111,9 @@ def validate_stripe_key(key: str) -> None:
     if not key:
         return  # no key → simulate mode, allowed
     if key.startswith("sk_live_"):
-        raise AuthBypassError(
-            "live Stripe keys are refused by SOLVENT — use sk_test_... only"
-        )
+        raise AuthBypassError("live Stripe keys are refused by SOLVENT — use sk_test_... only")
     if not (key.startswith("sk_test_") or key.startswith("rk_test_")):
-        raise AuthBypassError(
-            f"unrecognised Stripe key prefix: {key[:12]}... — expected sk_test_"
-        )
+        raise AuthBypassError(f"unrecognised Stripe key prefix: {key[:12]}... — expected sk_test_")
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +122,7 @@ def validate_stripe_key(key: str) -> None:
 
 # Thread-safe seen-event cache: event_id → timestamp
 _SEEN_EVENTS: OrderedDict[str, float] = OrderedDict()
-_SEEN_EVENTS_TTL = 600   # 10 minutes
+_SEEN_EVENTS_TTL = 600  # 10 minutes
 _SEEN_EVENTS_MAX = 5_000
 
 
@@ -200,29 +197,31 @@ def validate_email(email: str) -> str:
 
 # Patterns that attempt to override the system role or inject instructions
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.I),
-    re.compile(r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.I),
-    re.compile(r"new\s+instructions?\s*:", re.I),
-    re.compile(r"(system|user|assistant)\s*:\s*\[?INST\]?", re.I),
-    re.compile(r"<\s*(system|user|assistant|s|\/s)\s*>", re.I),
-    re.compile(r"\[INST\]|\[\/INST\]|<<SYS>>|<</SYS>>", re.I),
-    re.compile(r"(disregard|forget|override)\s+(your\s+)?(previous\s+)?(instructions?|rules?|constraints?)", re.I),
-    re.compile(r"prompt\s*injection", re.I),
-    re.compile(r"jailbreak", re.I),
-    re.compile(r"DAN\b", re.I),  # "Do Anything Now" jailbreak keyword
+    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", re.IGNORECASE),
+    re.compile(r"(you\s+are|act\s+as|pretend\s+(you\s+are|to\s+be))\s+\w", re.IGNORECASE),
+    re.compile(r"new\s+instructions?\s*:", re.IGNORECASE),
+    re.compile(r"(system|user|assistant)\s*:\s*\[?INST\]?", re.IGNORECASE),
+    re.compile(r"<\s*(system|user|assistant|s|\/s)\s*>", re.IGNORECASE),
+    re.compile(r"\[INST\]|\[\/INST\]|<<SYS>>|<</SYS>>", re.IGNORECASE),
+    re.compile(
+        r"(disregard|forget|override)\s+(your\s+)?(previous\s+)?(instructions?|rules?|constraints?)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"prompt\s*injection", re.IGNORECASE),
+    re.compile(r"jailbreak", re.IGNORECASE),
+    re.compile(r"DAN\b", re.IGNORECASE),  # "Do Anything Now" jailbreak keyword
 ]
 
 # Unicode bidi override / invisible characters often used to hide injections
-_INVISIBLE_RE = re.compile(
-    r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\ufeff\u00ad]"
-)
+_INVISIBLE_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\ufeff\u00ad]")
 
-_TOPIC_MAX_LEN   = 500
+_TOPIC_MAX_LEN = 500
 _CONTEXT_MAX_LEN = 2_000
 
 
-def sanitise_prompt_input(text: str, field_name: str = "input",
-                           max_len: int = _TOPIC_MAX_LEN) -> str:
+def sanitise_prompt_input(
+    text: str, field_name: str = "input", max_len: int = _TOPIC_MAX_LEN
+) -> str:
     """Strip dangerous content from a string before it enters an LLM prompt.
 
     Removes:
@@ -250,17 +249,14 @@ def sanitise_prompt_input(text: str, field_name: str = "input",
 
     # Strip null bytes and non-printable control chars (keep \t \n \r)
     cleaned = "".join(
-        ch for ch in text
-        if ch in ("\t", "\n", "\r") or (unicodedata.category(ch)[0] != "C")
+        ch for ch in text if ch in ("\t", "\n", "\r") or (unicodedata.category(ch)[0] != "C")
     )
 
     if not cleaned.strip():
         raise InputValidationError(f"{field_name} must be a non-empty string after sanitisation")
 
     if len(cleaned) > max_len:
-        raise InputValidationError(
-            f"{field_name} exceeds maximum length of {max_len} characters"
-        )
+        raise InputValidationError(f"{field_name} exceeds maximum length of {max_len} characters")
 
     # Detect injection patterns
     for pattern in _INJECTION_PATTERNS:
@@ -304,6 +300,7 @@ def sanitise_job(job: dict) -> dict:
 # 4. DATA PROTECTION — path traversal + schema validation
 # ---------------------------------------------------------------------------
 
+
 def safe_report_path(output_dir: Path, job_id: str) -> Path:
     """Return a resolved report path guaranteed to be inside output_dir.
 
@@ -320,17 +317,13 @@ def safe_report_path(output_dir: Path, job_id: str) -> Path:
     """
     # Only allow alphanumeric, hyphens, underscores in job IDs
     if not re.match(r"^[a-zA-Z0-9_\-]{1,128}$", str(job_id)):
-        raise InputValidationError(
-            f"job_id contains illegal characters: {str(job_id)!r}"
-        )
+        raise InputValidationError(f"job_id contains illegal characters: {str(job_id)!r}")
 
     base = output_dir.resolve()
     candidate = (base / f"{job_id}.md").resolve()
 
     if not str(candidate).startswith(str(base) + "/") and candidate != base:
-        raise PathTraversalError(
-            f"report path {candidate} escapes output directory {base}"
-        )
+        raise PathTraversalError(f"report path {candidate} escapes output directory {base}")
 
     return candidate
 
@@ -347,7 +340,6 @@ def validate_catalog_schema(catalog: dict) -> dict:
     Returns:
         A clean dict with only permitted keys.
     """
-    allowed = {"product_id", "price_ids", "prices", "cardholder_id"}
     clean: dict = {}
 
     if "product_id" in catalog:
@@ -394,14 +386,14 @@ def validate_vendor_exact(vendor: str, allowlist: tuple[str, ...]) -> None:
     """
     if vendor not in allowlist:
         raise GuardrailBypassError(
-            f"vendor {vendor!r} not on allowlist — "
-            f"must be one of {allowlist}"
+            f"vendor {vendor!r} not on allowlist — must be one of {allowlist}"
         )
 
 
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
+
 
 class SOLVENTSecurityError(Exception):
     """Base class for all SOLVENT security violations."""

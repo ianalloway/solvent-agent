@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solvent-agent"
+description = "A self-funding analyst agent: earns on Stripe, fulfils with NVIDIA Nemotron, spends within guardrails."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dynamic = ["version"]
+keywords = ["agent", "stripe", "nvidia", "nemotron", "llm", "treasury"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+]
+# Core runs on the standard library alone (offline stubs). Everything that
+# needs a third-party package is an opt-in extra below.
+dependencies = []
+
+[project.optional-dependencies]
+stripe = ["stripe>=9.0.0"]
+serve = ["fastapi>=0.110.0", "uvicorn[standard]>=0.27.0"]
+qr = ["qrcode[pil]>=7.0"]
+telegram = ["python-telegram-bot>=21.0"]
+dev = ["pytest>=7.0.0", "ruff>=0.3"]
+all = [
+    "stripe>=9.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "qrcode[pil]>=7.0",
+    "python-telegram-bot>=21.0",
+]
+
+[project.scripts]
+solvent = "solvent.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/ianalloway/solvent-agent"
+Repository = "https://github.com/ianalloway/solvent-agent"
+
+[tool.setuptools.dynamic]
+version = { attr = "solvent.__version__" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.setuptools.packages.find]
+include = ["solvent*"]
+
+[tool.setuptools.package-data]
+solvent = ["templates/**/*", "py.typed"]

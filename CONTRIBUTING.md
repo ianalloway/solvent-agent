@@ -18,7 +18,7 @@ Thanks for your interest in SOLVENT! This is a hackathon project that I'm active
 git clone https://github.com/ianalloway/solvent-agent.git
 cd solvent-agent
 python3 run_demo.py          # no install required for the demo
-pip install pytest
+pip install -e ".[dev]"
 python3 -m pytest tests/ -v  # run the test suite
 ```
 
@@ -33,7 +33,7 @@ python3 -m pytest tests/ -v  # run the test suite
 
 - Python 3.10+ with type hints where it helps readability.
 - No external dependencies in core `solvent/` (keep it importable with stdlib only).
-- Dependencies in `requirements.txt` are for optional live integrations only.
+- Third-party packages are opt-in extras declared in `pyproject.toml` (`stripe`, `serve`, `telegram`, `qr`, `dev`, `all`) — never a hard dependency of core.
 
 ## Questions?
 

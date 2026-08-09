@@ -41,3 +41,33 @@ class TestTelegramPairing(unittest.TestCase):
         finally:
             os.environ.pop("SOLVENT_TELEGRAM_DM_POLICY", None)
             os.environ.pop("SOLVENT_TELEGRAM_ALLOW_FROM", None)
+
+    def test_dm_policy_defaults_to_pairing(self):
+        os.environ.pop("SOLVENT_TELEGRAM_DM_POLICY", None)
+        try:
+            self.assertEqual(pairing.dm_policy(), "pairing")
+        finally:
+            os.environ.pop("SOLVENT_TELEGRAM_DM_POLICY", None)
+
+    def test_dm_policy_reads_env(self):
+        os.environ["SOLVENT_TELEGRAM_DM_POLICY"] = "open"
+        try:
+            self.assertEqual(pairing.dm_policy(), "open")
+        finally:
+            os.environ.pop("SOLVENT_TELEGRAM_DM_POLICY", None)
+
+    def test_is_allowed_open_policy(self):
+        os.environ["SOLVENT_TELEGRAM_DM_POLICY"] = "open"
+        try:
+            self.assertTrue(pairing.is_allowed("any-user"))
+            self.assertTrue(pairing.is_allowed("any-user", "anyone"))
+        finally:
+            os.environ.pop("SOLVENT_TELEGRAM_DM_POLICY", None)
+
+    def test_is_allowed_disabled_policy(self):
+        os.environ["SOLVENT_TELEGRAM_DM_POLICY"] = "disabled"
+        try:
+            self.assertFalse(pairing.is_allowed("any-user"))
+            self.assertFalse(pairing.is_allowed("any-user", "anyone"))
+        finally:
+            os.environ.pop("SOLVENT_TELEGRAM_DM_POLICY", None)

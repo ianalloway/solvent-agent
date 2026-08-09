@@ -8,9 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from solvent.stripe_client import (
-    CATALOG_PATH,
     StripeClient,
-    WEBHOOK_CACHE_PATH,
 )
 
 
@@ -50,10 +48,11 @@ class TestStripeClientSimulate(unittest.TestCase):
 
     def test_simulate_pay_vendor(self):
         client = StripeClient()
-        pay = client.pay_vendor("nvidia-nemotron", 500, "tokens")
+        pay = client.pay_vendor("nvidia-nemotron", 500, "tokens", job_id="job_sim_1")
         self.assertTrue(pay["simulated"])
         self.assertFalse(pay["issuing"])
         self.assertTrue(pay["id"].startswith("pay_sim_"))
+        self.assertEqual(pay["job_id"], "job_sim_1")
 
 
 class TestStripeClientLive(unittest.TestCase):
@@ -117,7 +116,12 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertEqual(catalog["prices"]["4900"], "price_4900")
 
     def test_confirm_payment_polls_until_paid(self):
-        unpaid = mock.Mock(payment_status="unpaid", payment_intent="pi_pending", id="cs_1", payment_link="plink_x")
+        unpaid = mock.Mock(
+            payment_status="unpaid",
+            payment_intent="pi_pending",
+            id="cs_1",
+            payment_link="plink_x",
+        )
         paid = mock.Mock(
             payment_status="paid",
             payment_intent="pi_paid123",
@@ -140,7 +144,6 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertEqual(payment["checkout_session_id"], "cs_paid")
         self.assertGreaterEqual(self._mock_stripe.checkout.Session.list.call_count, 2)
 
-
     def test_confirm_payment_rejects_underpaid_session(self):
         paid = mock.Mock(
             payment_status="paid",
@@ -152,9 +155,10 @@ class TestStripeClientLive(unittest.TestCase):
         )
         self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[paid])
 
-        client = StripeClient()
-        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
-        payment = client.confirm_payment(link)
+        with mock.patch.dict(os.environ, {"SOLVENT_ALLOW_POLL": "1"}, clear=False):
+            client = StripeClient()
+            link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link)
 
         self.assertFalse(payment["paid"])
         self.assertEqual(payment["reason"], "payment amount below expected quote")
@@ -190,9 +194,10 @@ class TestStripeClientLive(unittest.TestCase):
         )
         self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[bad])
 
-        client = StripeClient()
-        link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
-        payment = client.confirm_payment(link)
+        with mock.patch.dict(os.environ, {"SOLVENT_ALLOW_POLL": "1"}, clear=False):
+            client = StripeClient()
+            link = {"id": "plink_x", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link)
 
         self.assertFalse(payment["paid"])
         self.assertEqual(payment["reason"], "payment link mismatch")
@@ -210,9 +215,19 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertIn("not received", payment["reason"])
 
     def test_confirm_payment_awaits_webhook_by_default(self):
-        client = StripeClient()
-        link = {"id": "cs_test123", "amount_cents": 4900, "simulated": False, "job_id": "J1"}
-        payment = client.confirm_payment(link, job_id="J1")
+        with mock.patch.dict(
+            os.environ,
+            {"SOLVENT_ALLOW_POLL": "", "STRIPE_WEBHOOK_SECRET": ""},
+            clear=False,
+        ):
+            client = StripeClient()
+            link = {
+                "id": "cs_test123",
+                "amount_cents": 4900,
+                "simulated": False,
+                "job_id": "J1",
+            }
+            payment = client.confirm_payment(link, job_id="J1")
         self.assertFalse(payment["paid"])
         self.assertIn("webhook", payment["reason"])
 
@@ -238,7 +253,10 @@ class TestStripeClientLive(unittest.TestCase):
         )
 
     def test_webhook_caches_payment(self):
-        import hashlib, hmac as _hmac, time as _time
+        import hashlib
+        import hmac as _hmac
+        import time as _time
+
         session = {
             "id": "cs_wh",
             "payment_status": "paid",
@@ -268,7 +286,12 @@ class TestStripeClientLive(unittest.TestCase):
             self.assertEqual(result["stripe_ref"], "pi_wh")
             self.assertEqual(result["job_id"], "J-wh")
 
-            link = {"id": "plink_wh", "amount_cents": 7500, "simulated": False, "job_id": "J-wh"}
+            link = {
+                "id": "plink_wh",
+                "amount_cents": 7500,
+                "simulated": False,
+                "job_id": "J-wh",
+            }
             payment = client.confirm_payment(link, job_id="J-wh")
             self.assertTrue(payment["paid"])
             self.assertEqual(payment["stripe_ref"], "pi_wh")
@@ -293,22 +316,23 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertEqual(call_kwargs["client_reference_id"], "J1")
         self.assertEqual(call_kwargs["idempotency_key"], "checkout-J1")
 
-
     def test_issuing_card_when_available(self):
         self._mock_stripe.issuing.Cardholder.list.return_value = mock.Mock(data=[])
         self._mock_stripe.issuing.Cardholder.create.return_value = mock.Mock(id="ich_1")
         self._mock_stripe.issuing.Card.create.return_value = mock.Mock(id="ic_1", last4="4242")
 
         client = StripeClient()
-        pay = client.pay_vendor("market-data-api", 240, "2 pulls")
+        pay = client.pay_vendor("market-data-api", 240, "2 pulls", job_id="job_live_123")
 
         self.assertFalse(pay["simulated"])
         self.assertTrue(pay["issuing"])
         self.assertEqual(pay["id"], "ic_1")
-        limits = self._mock_stripe.issuing.Card.create.call_args.kwargs["spending_controls"][
-            "spending_limits"
-        ]
+        self.assertEqual(pay["job_id"], "job_live_123")
+
+        create_kwargs = self._mock_stripe.issuing.Card.create.call_args.kwargs
+        limits = create_kwargs["spending_controls"]["spending_limits"]
         self.assertEqual(limits[0]["amount"], 240)
+        self.assertEqual(create_kwargs["metadata"]["job_id"], "job_live_123")
 
     def test_issuing_fallback_on_error(self):
         self._mock_stripe.issuing.Cardholder.list.side_effect = Exception("issuing disabled")
@@ -395,10 +419,21 @@ class TestAgentPaymentFlow(unittest.TestCase):
                             "resources_used": [],
                             "actual_cost_cents": 0,
                             "fulfillment_seconds": 1.0,
-                            "tool_ctx": type("C", (), {"total_calls": 0, "market_data_calls": 0, "web_search_calls": 0})(),
+                            "tool_ctx": type(
+                                "C",
+                                (),
+                                {
+                                    "total_calls": 0,
+                                    "market_data_calls": 0,
+                                    "web_search_calls": 0,
+                                },
+                            )(),
                             "usage": {"total_tokens": 100},
                         }
-                        with mock.patch("solvent.delivery.send_brief_email", return_value={"simulated": True}):
+                        with mock.patch(
+                            "solvent.delivery.send_brief_email",
+                            return_value={"simulated": True},
+                        ):
                             agent.handle_job(
                                 {
                                     "id": "J-test",

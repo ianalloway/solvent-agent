@@ -71,6 +71,7 @@ class ToolContext:
     calls: list[dict] = field(default_factory=list)
     web_search_calls: int = 0
     market_data_calls: int = 0
+    budget_exhausted: bool = False  # set when MAX_TOOL_CALLS was hit (truncated)
 
     def record(self, name: str, args: dict, result: str) -> None:
         self.calls.append({"tool": name, "args": args, "result_len": len(result)})
@@ -96,11 +97,13 @@ def _stub_web_search(query: str) -> str:
 
 def _live_web_search(query: str) -> str:
     try:
-        url = "https://api.duckduckgo.com/?" + urllib.parse.urlencode({
-            "q": query[:200],
-            "format": "json",
-            "no_redirect": "1",
-        })
+        url = "https://api.duckduckgo.com/?" + urllib.parse.urlencode(
+            {
+                "q": query[:200],
+                "format": "json",
+                "no_redirect": "1",
+            }
+        )
         req = urllib.request.Request(url, headers={"User-Agent": "SOLVENT/1.0"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = json.loads(resp.read())
@@ -117,9 +120,39 @@ def _stub_market_data(symbol: str) -> str:
     seed = int(hashlib.md5(sym.encode()).hexdigest()[:6], 16)
     price = 50 + (seed % 450)
     return (
-        f"[market_data] {sym}: last ${price}.52, 30d range ${price-20}-${price+30}, "
+        f"[market_data] {sym}: last ${price}.52, 30d range ${price - 20}-${price + 30}, "
         f"vol +{(seed % 40)}% YoY (offline stub)."
     )
+
+
+def _live_market_data(symbol: str) -> str:
+    """Keyless live quote via Stooq's CSV endpoint; falls back to the stub."""
+    sym = symbol.upper()[:12]
+    try:
+        url = "https://stooq.com/q/l/?" + urllib.parse.urlencode(
+            {
+                "s": sym.lower(),
+                "f": "sd2t2ohlcv",
+                "h": "",
+                "e": "csv",
+            }
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "SOLVENT/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read().decode("utf-8", "replace").strip()
+        # CSV header + one row: Symbol,Date,Time,Open,High,Low,Close,Volume
+        rows = raw.splitlines()
+        if len(rows) >= 2:
+            cols = rows[1].split(",")
+            if len(cols) >= 8 and cols[6] not in ("N/D", ""):
+                _, date, _t, o, hi, lo, close, vol = cols[:8]
+                return (
+                    f"[market_data] {sym}: close ${close} "
+                    f"(O {o} / H {hi} / L {lo}), vol {vol}, as of {date}."
+                )
+    except Exception:
+        pass
+    return _stub_market_data(symbol)
 
 
 def web_search(query: str, *, live: bool = False) -> str:
@@ -131,7 +164,7 @@ def web_search(query: str, *, live: bool = False) -> str:
 def market_data(symbol: str, *, live: bool = False) -> str:
     if not symbol or not isinstance(symbol, str):
         return "empty symbol"
-    return _stub_market_data(symbol)
+    return _live_market_data(symbol) if live else _stub_market_data(symbol)
 
 
 def summarize(text: str, nemotron_fn) -> str:
@@ -142,10 +175,13 @@ def summarize(text: str, nemotron_fn) -> str:
     return result
 
 
-def dispatch(name: str, args: dict, ctx: ToolContext, nemotron_fn, live_search: bool = False) -> str:
+def dispatch(
+    name: str, args: dict, ctx: ToolContext, nemotron_fn, live_search: bool = False
+) -> str:
     if name not in ALLOWED_TOOLS:
         raise ValueError(f"tool {name!r} not allowlisted")
     if ctx.total_calls >= MAX_TOOL_CALLS:
+        ctx.budget_exhausted = True
         raise RuntimeError(f"max tool calls ({MAX_TOOL_CALLS}) exceeded")
     if name == "web_search":
         result = web_search(args.get("query", ""), live=live_search)

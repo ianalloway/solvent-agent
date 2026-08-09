@@ -22,17 +22,16 @@ import uuid
 from pathlib import Path
 
 from .security import (
-    validate_stripe_key,
-    validate_catalog_schema,
-    verify_webhook_signature,
     check_event_replay,
+    validate_catalog_schema,
     validate_email,
-    WebhookAuthError,
-    ReplayAttackError,
+    validate_stripe_key,
+    verify_webhook_signature,
 )
 
 try:
     import stripe  # type: ignore
+
     _HAS_STRIPE = True
 except Exception:
     stripe = None  # type: ignore
@@ -49,11 +48,19 @@ class StripeClient:
     def __init__(self):
         self.key = os.environ.get("STRIPE_API_KEY", "")
         self.live = False
-        if os.environ.get("SOLVENT_FORCE_STRIPE_SIMULATE", "").strip() in ("1", "true", "yes"):
+        if os.environ.get("SOLVENT_FORCE_STRIPE_SIMULATE", "").strip() in (
+            "1",
+            "true",
+            "yes",
+        ):
             self.key = ""
         self.webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
-        self.poll_timeout = float(os.environ.get("STRIPE_PAYMENT_POLL_TIMEOUT", DEFAULT_POLL_TIMEOUT))
-        self.poll_interval = float(os.environ.get("STRIPE_PAYMENT_POLL_INTERVAL", DEFAULT_POLL_INTERVAL))
+        self.poll_timeout = float(
+            os.environ.get("STRIPE_PAYMENT_POLL_TIMEOUT", DEFAULT_POLL_TIMEOUT)
+        )
+        self.poll_interval = float(
+            os.environ.get("STRIPE_PAYMENT_POLL_INTERVAL", DEFAULT_POLL_INTERVAL)
+        )
         self._catalog: dict | None = None
         self._webhook_payments: dict[str, dict] = {}
         self._issuing_available: bool | None = None
@@ -210,14 +217,16 @@ class StripeClient:
         if self.live:
             session = stripe.checkout.Session.create(
                 mode="payment",
-                line_items=[{
-                    "price_data": {
-                        "currency": "usd",
-                        "unit_amount": amount_cents,
-                        "product_data": {"name": name[:500]},
-                    },
-                    "quantity": 1,
-                }],
+                line_items=[
+                    {
+                        "price_data": {
+                            "currency": "usd",
+                            "unit_amount": amount_cents,
+                            "product_data": {"name": name[:500]},
+                        },
+                        "quantity": 1,
+                    }
+                ],
                 metadata={
                     "job_id": job_id,
                     "customer_email": customer_email,
@@ -255,7 +264,11 @@ class StripeClient:
             price_id = self._get_or_create_price(amount_cents)
             link = stripe.PaymentLink.create(
                 line_items=[{"price": price_id, "quantity": 1}],
-                metadata={"customer_email": customer_email, "agent": "SOLVENT", "brief": name[:500]},
+                metadata={
+                    "customer_email": customer_email,
+                    "agent": "SOLVENT",
+                    "brief": name[:500],
+                },
             )
             return {
                 "id": link.id,
@@ -359,17 +372,31 @@ class StripeClient:
             return {
                 "paid": True,
                 "stripe_ref": f"pi_sim_{sim_suffix}",
-            "checkout_session_id": link.get("id", f"cs_sim_{sim_suffix}"),
-            "payment_link_id": link.get("payment_link_id") or (link["id"] if str(link.get("id", "")).startswith("plink_") else None),
+                "checkout_session_id": link.get("id", f"cs_sim_{sim_suffix}"),
+                "payment_link_id": link.get("payment_link_id")
+                or (link["id"] if str(link.get("id", "")).startswith("plink_") else None),
                 "amount_cents": link["amount_cents"],
                 "simulated": True,
                 "job_id": job_id or link.get("job_id"),
                 "ts": time.time(),
             }
         if self.webhook_secret and link["id"] in self._webhook_payments:
-            cached = self._webhook_payments[link["id"]]
-            if cached.get("paid"):
+            cached: dict | None = self._webhook_payments[link["id"]]
+            if cached and cached.get("paid"):
                 return self._accept_payment(cached, link)
+        if job_id:
+            cached = self.get_cached_payment(job_id)
+            if cached:
+                return self._accept_payment(cached, link)
+        if os.environ.get("SOLVENT_ALLOW_POLL", "").strip() != "1":
+            return {
+                "paid": False,
+                "reason": "awaiting webhook confirmation (set SOLVENT_ALLOW_POLL=1 to poll)",
+                "payment_link_id": link["id"],
+                "amount_cents": link["amount_cents"],
+                "job_id": job_id or link.get("job_id"),
+                "ts": time.time(),
+            }
         return self._poll_checkout_session(link["id"], link)
 
     # ---- SPEND (Issuing) --------------------------------------------
@@ -408,7 +435,9 @@ class StripeClient:
         self._save_catalog()
         return holder.id
 
-    def pay_vendor(self, vendor: str, amount_cents: int, memo: str) -> dict:
+    def pay_vendor(
+        self, vendor: str, amount_cents: int, memo: str, job_id: str | None = None
+    ) -> dict:
         """Outbound payment for a resource the agent provisions for itself."""
         if self.live and self._issuing_enabled():
             try:
@@ -423,7 +452,12 @@ class StripeClient:
                             {"amount": amount_cents, "interval": "per_authorization"},
                         ],
                     },
-                    metadata={"vendor": vendor, "memo": memo[:500], "agent": "SOLVENT"},
+                    metadata={
+                        "vendor": vendor,
+                        "memo": memo[:500],
+                        "agent": "SOLVENT",
+                        "job_id": job_id or "",
+                    },
                 )
                 return {
                     "id": card.id,
@@ -433,6 +467,7 @@ class StripeClient:
                     "simulated": False,
                     "issuing": True,
                     "card_last4": getattr(card, "last4", None),
+                    "job_id": job_id,
                     "ts": time.time(),
                 }
             except Exception:
@@ -445,11 +480,14 @@ class StripeClient:
             "memo": memo,
             "simulated": True,
             "issuing": False,
+            "job_id": job_id,
             "ts": time.time(),
         }
 
     # ---- REFUND -----------------------------------------------------
-    def refund_payment(self, payment_intent_id: str, amount_cents: int, job_id: str | None = None) -> dict:
+    def refund_payment(
+        self, payment_intent_id: str, amount_cents: int, job_id: str | None = None
+    ) -> dict:
         """Refund a verified PaymentIntent (test mode or simulated)."""
         if self.live:
             if not payment_intent_id or not str(payment_intent_id).startswith("pi_"):
