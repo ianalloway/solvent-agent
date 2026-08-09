@@ -89,12 +89,12 @@ class TestHostedBriefs(unittest.TestCase):
         self.report_path.write_text(f"# Private brief\n{secret}", encoding="utf-8")
 
         client = TestClient(create_app(fresh=True))
-        status = client.get("/api/status")
+        status = client.get("/api/status", headers={"X-Solvent-Dashboard-Token": "d" * 32})
         self.assertEqual(status.status_code, 200)
         self.assertEqual(status.json()["briefs"].get("victim-job"), "")
         self.assertNotIn(secret, status.text)
 
-        dash = client.get("/")
+        dash = client.get("/?token=" + "d" * 32)
         self.assertEqual(dash.status_code, 200)
         self.assertIn('"victim-job": ""', dash.text)
         self.assertNotIn(secret, dash.text)
