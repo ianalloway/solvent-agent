@@ -1,0 +1,40 @@
+name: Dependabot auto-merge
+
+# Uses `pull_request` (not pull_request_target) deliberately: this workflow never
+# checks out PR code, so it does not need elevated context, and pull_request
+# avoids the injection risk of running with the base repo's secrets.
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Patch and minor bumps are auto-merged once required checks pass.
+      # Major bumps are deliberately left for human review.
+      - name: Enable auto-merge for patch/minor
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Flag major bumps for review
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "🚧 **Major version bump — not auto-merged.** Needs manual review before merge."
+          gh pr edit "$PR_URL" --add-label "needs-review" || true
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
