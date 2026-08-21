@@ -106,8 +106,18 @@ class TestReconcileStripeIntegration(unittest.TestCase):
             self._mock_stripe,
         )
         self._stripe_mod.start()
+        # Patching stripe_sdk alone is not enough: reconcile() gates the whole
+        # Stripe path on the module-level _HAS_STRIPE flag, which is False
+        # whenever the optional `stripe` extra is not installed (this is exactly
+        # the case in the "zero-dependency core" CI job). Without also forcing
+        # the flag True, reconcile() short-circuits to mode="ledger_only" and
+        # every assertion in this class fails -- but only in environments
+        # without stripe, so the suite passes locally and breaks in CI.
+        self._has_stripe = mock.patch("solvent.reconcile._HAS_STRIPE", True)
+        self._has_stripe.start()
 
     def tearDown(self):
+        self._has_stripe.stop()
         self._stripe_mod.stop()
 
     # ------------------------------------------------------------------
