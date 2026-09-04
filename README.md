@@ -51,7 +51,8 @@ nothing extra and gives you a `solvent` command:
 
 ```bash
 pip install -e .                 # editable install from a checkout
-# or once published:  pipx install solvent-agent
+# PyPI / pipx publish pending — not on PyPI yet:
+#   pip install git+https://github.com/ianalloway/solvent-agent.git
 
 solvent                          # run the demo
 solvent finance                  # financial report (income, runway, forecast)
@@ -88,14 +89,13 @@ open treasury_dashboard.html   # macOS
 
 ![SOLVENT Treasury Dashboard — live P&L, job cards, resource allocation, transaction log](docs/dashboard.png)
 
-A typical batch session:
+A typical **offline demo** batch (illustrative numbers from the simulated run — not production revenue):
 
-| Metric | Value |
+| Metric | Demo value |
 |---|---|
-| Revenue | **$223.00** |
-| Operating spend | $13.35 |
-| **Net profit** | **$209.65** |
-| Margin | **94%** |
+| Revenue | ~$223 |
+| Operating spend | ~$13 |
+| Net profit | high-margin demo loop |
 | Jobs declined | 1 (below margin floor) |
 
 ---
