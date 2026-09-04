@@ -36,23 +36,12 @@ Every job is **profit-gated before it starts**. Unprofitable work is declined wi
 
 **Zero dependencies. No API keys. Works right now.**
 
-```bash
-git clone https://github.com/ianalloway/solvent-agent.git
-cd solvent-agent
-python3 run_demo.py
-```
-
-The agent will run a full batch of 4 analyst jobs — complete with margin gating, Stripe payment simulation, NVIDIA Nemotron fulfillment, guardrail screening, and live P&L — in about 30 seconds.
-
-### Install as a package (optional)
-
-The core runs on the **standard library alone**, so a bare install pulls in
-nothing extra and gives you a `solvent` command:
+Install from PyPI:
 
 ```bash
-pip install -e .                 # editable install from a checkout
-# PyPI / pipx publish pending — not on PyPI yet:
-#   pip install git+https://github.com/ianalloway/solvent-agent.git
+pip install solvent-agent
+# or, for an isolated CLI install:
+pipx install solvent-agent
 
 solvent                          # run the demo
 solvent finance                  # financial report (income, runway, forecast)
@@ -60,15 +49,26 @@ solvent --help                   # list all commands
 solvent --version
 ```
 
+Or clone and run from source:
+
+```bash
+git clone https://github.com/ianalloway/solvent-agent.git
+cd solvent-agent
+python3 run_demo.py
+pip install -e .                 # editable install from a checkout
+```
+
+The agent will run a full batch of 4 analyst jobs — complete with margin gating, Stripe payment simulation, NVIDIA Nemotron fulfillment, guardrail screening, and live P&L — in about 30 seconds.
+
 Third-party features are **opt-in extras** — install only what you need:
 
 ```bash
-pip install -e ".[stripe]"       # real Stripe test-mode payment links
-pip install -e ".[serve]"        # FastAPI webhooks + hosted briefs
-pip install -e ".[telegram]"     # Telegram bot channel
-pip install -e ".[qr]"           # scannable QR codes for OpenClaw pairing
-pip install -e ".[dev]"          # pytest, for running the test suite
-pip install -e ".[all]"          # everything
+pip install "solvent-agent[stripe]"    # real Stripe test-mode payment links
+pip install "solvent-agent[serve]"     # FastAPI webhooks + hosted briefs
+pip install "solvent-agent[telegram]"  # Telegram bot channel
+pip install "solvent-agent[qr]"        # scannable QR codes for OpenClaw pairing
+pip install "solvent-agent[dev]"       # pytest, for running the test suite
+pip install "solvent-agent[all]"       # everything
 ```
 
 When run from a source checkout, runtime data stays under `<repo>/data`. When
@@ -194,7 +194,7 @@ print(snap["balance_cents"], snap["margin_pct"])
 ### Production mode (webhooks + async worker)
 
 ```bash
-pip install -e ".[serve]"
+pip install "solvent-agent[serve]"
 export SOLVENT_DASHBOARD_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 
 python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
@@ -237,7 +237,7 @@ forecast also render as a **Financial Statement** panel in the HTML dashboard.
 To use live Nemotron inference and real Stripe test-mode payment links:
 
 ```bash
-pip install -e ".[stripe]"
+pip install "solvent-agent[stripe]"
 
 export NVIDIA_API_KEY=nvapi-...        # from build.nvidia.com
 export STRIPE_API_KEY=sk_test_...      # Stripe test mode only (live keys refused)
@@ -297,7 +297,7 @@ Product/Price objects are cached in `.solvent/stripe_catalog.json` so repeated r
 Full chat on Telegram with OpenClaw-style pairing and Hermes-style tool/memory patterns. See **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
 
 ```bash
-pip install -e ".[telegram]"
+pip install "solvent-agent[telegram]"
 export TELEGRAM_BOT_TOKEN=...
 
 python -m solvent serve &    # Stripe webhooks + checkout
@@ -317,7 +317,7 @@ Personality and operating rules come from the **agent workspace** (`SOUL.md`, `B
 ## 🧪 Tests
 
 ```bash
-pip install -e ".[dev]"
+pip install "solvent-agent[dev]"
 python3 -m pytest tests/ -v
 ```
 
