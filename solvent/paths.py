@@ -66,7 +66,9 @@ def base_dir() -> Path:
     """The application home directory (created if necessary)."""
     env = os.environ.get("SOLVENT_HOME")
     if env:
-        base = Path(env).expanduser().resolve()
+        # Same MSYS drive-prefix translation we apply to $HOME — otherwise
+        # SOLVENT_HOME=/c/Users/... on Git-Bash writes to a junk path.
+        base = _normalise_home(env).expanduser().resolve()
     elif _is_source_checkout():
         base = _REPO_ROOT
     else:

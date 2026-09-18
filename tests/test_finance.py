@@ -3,6 +3,8 @@
 import unittest
 
 from solvent.finance import (
+    format_ledger_csv,
+    ledger_rows,
     balance_series,
     build_report,
     forecast,
@@ -210,3 +212,31 @@ class TestReport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLedgerExport(unittest.TestCase):
+    def test_ledger_rows_include_running_balance(self):
+        entries = [
+            _e("capital", 10000, ts=T_JAN1),
+            _e("revenue", 5000, job_id="J1", ts=T_JAN1 + 1),
+            _e("expense", 1500, job_id="J1", vendor="nvidia-nemotron", ts=T_JAN1 + 2),
+        ]
+        rows = ledger_rows(entries)
+        self.assertEqual([r["balance_after_cents"] for r in rows], [10000, 15000, 13500])
+        self.assertEqual(rows[-1]["vendor"], "nvidia-nemotron")
+        self.assertEqual(rows[-1]["signed_cents"], -1500)
+
+    def test_format_ledger_csv_has_header_and_rows(self):
+        entries = [_e("capital", 1000, ts=T_JAN1)]
+        csv_text = format_ledger_csv(entries)
+        lines = csv_text.strip().splitlines()
+        self.assertIn("balance_after_cents", lines[0])
+        self.assertEqual(len(lines), 2)
+        self.assertIn("capital", lines[1])
+
+    def test_empty_ledger_csv_is_header_only(self):
+        csv_text = format_ledger_csv([])
+        lines = [ln for ln in csv_text.splitlines() if ln]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("id", lines[0])
+

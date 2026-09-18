@@ -186,6 +186,22 @@ class TestGuardrailDecision(unittest.TestCase):
                 self.guard.approve(amount, vendor),
             )
 
+    def test_rejects_zero_and_negative_amounts(self) -> None:
+        """Zero/negative spends must never be approved — they would credit the ledger."""
+        for amount in (0, -1, -500):
+            d = self.guard.evaluate(amount, "nvidia-nemotron")
+            self.assertFalse(d.allowed)
+            self.assertEqual(d.rule, "positive_amount")
+            self.assertIn("positive", d.reason)
+            self.assertFalse(self.guard.approve(amount, "nvidia-nemotron"))
+            with self.assertRaises(GuardrailError):
+                self.guard.check_spend(amount, "nvidia-nemotron")
+
+    def test_positive_amount_rule_beats_vendor_allowlist(self) -> None:
+        # Invalid amount is more fundamental than an unknown vendor.
+        d = self.guard.evaluate(-50, "rogue-vendor")
+        self.assertEqual(d.rule, "positive_amount")
+
 
 if __name__ == "__main__":
     unittest.main()

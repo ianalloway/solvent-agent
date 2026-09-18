@@ -39,6 +39,17 @@ class TestPaths(unittest.TestCase):
                 self.assertTrue((Path(home) / ".solvent").is_dir())
 
 
+    def test_solvent_home_msys_drive_prefix(self):
+        """SOLVENT_HOME=/c/Users/... must translate on Windows like $HOME does."""
+        with mock.patch.object(paths.os, "name", "nt"):
+            normalised = paths._normalise_home("/c/Users/demo/.solvent-home")
+            self.assertEqual(normalised, Path("C:/Users/demo/.solvent-home"))
+        # Non-Windows leaves the POSIX form alone (no drive to map).
+        with mock.patch.object(paths.os, "name", "posix"):
+            normalised = paths._normalise_home("/c/Users/demo/.solvent-home")
+            self.assertEqual(normalised, Path("/c/Users/demo/.solvent-home"))
+
+
 class TestTreasuryHonorsHome(unittest.TestCase):
     def test_treasury_default_path_follows_solvent_home(self):
         with tempfile.TemporaryDirectory() as d:

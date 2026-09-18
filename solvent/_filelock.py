@@ -54,29 +54,44 @@ def _rewind(handle: FileOrFd, fd: int) -> None:
             pass
 
 
-def acquire(handle: FileOrFd, *, blocking: bool = True) -> None:
+def acquire(
+    handle: FileOrFd, *, blocking: bool = True, timeout: float | None = None
+) -> None:
     """Take an exclusive advisory lock on ``handle``.
 
     Args:
         handle: An open file object or a raw file descriptor.
         blocking: Wait for the lock (default, matching ``flock``) or raise
             ``BlockingIOError`` immediately when it is already held.
+        timeout: Optional seconds to wait when ``blocking`` is True. ``None``
+            waits indefinitely (the historical behaviour). On Windows the
+            lock path is a poll loop, so without a timeout a stuck peer could
+            hang a caller forever; pass a finite value to bound that wait.
 
     Raises:
-        BlockingIOError: If ``blocking`` is False and the lock is held.
+        BlockingIOError: If ``blocking`` is False and the lock is held, or if
+            ``timeout`` expires before the lock is acquired.
         OSError: On unrecoverable locking errors (e.g. a vanished fd).
     """
     fd = _fd_of(handle)
+    deadline = None if timeout is None else time.monotonic() + timeout
+
+    def _timed_out() -> bool:
+        return deadline is not None and time.monotonic() >= deadline
 
     if os.name != "nt":
-        flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
-        try:
-            fcntl.flock(fd, flags)
-        except OSError as exc:
-            if not blocking:
-                raise BlockingIOError(str(exc)) from exc
-            raise
-        return
+        # Fast path: unbounded blocking flock matches historical semantics.
+        if blocking and timeout is None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            return
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except OSError as exc:
+                if not blocking or _timed_out():
+                    raise BlockingIOError(str(exc)) from exc
+                time.sleep(_POLL_SECONDS)
 
     _rewind(handle, fd)
     while True:
@@ -84,7 +99,7 @@ def acquire(handle: FileOrFd, *, blocking: bool = True) -> None:
             msvcrt.locking(fd, msvcrt.LK_NBLCK, _LOCK_BYTES)
             return
         except OSError as exc:
-            if not blocking:
+            if not blocking or _timed_out():
                 raise BlockingIOError(str(exc)) from exc
             # Held by someone else: wait and try again.
             time.sleep(_POLL_SECONDS)
