@@ -85,3 +85,19 @@ def test_margin_pct_is_zero_when_no_revenue(treasury):
     treasury.seed(10_000)
     assert treasury.revenue_cents() == 0
     assert treasury.margin_pct() == 0.0
+
+
+def test_record_rejects_non_positive_amounts(treasury):
+    """Ledger amounts are always positive; kind carries the sign."""
+    import pytest
+
+    with pytest.raises(ValueError, match="positive"):
+        treasury.seed(0)
+    with pytest.raises(ValueError, match="positive"):
+        treasury.earn(-100, "bogus credit")
+    with pytest.raises(ValueError, match="positive"):
+        treasury.spend(-50, "bogus debit")
+    # A rejected write must not touch the ledger.
+    assert treasury.balance_cents() == 0
+    assert treasury.entries == []
+

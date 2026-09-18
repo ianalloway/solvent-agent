@@ -12,12 +12,14 @@ ledger into the numbers a business actually steers by:
 
 Everything is computed from ``LedgerEntry`` records, so the functions are
 pure and trivially testable without a database. Exposed on the CLI as
-``python -m solvent finance`` (alias ``report``).
+``python -m solvent finance`` (alias ``report``); ``--export-ledger`` dumps the raw ledger as CSV (or JSON with ``--json``).
 """
 
 from __future__ import annotations
 
+import csv
 import datetime
+import io
 import json
 import sys
 from collections.abc import Iterable
@@ -374,16 +376,66 @@ def format_report(report: dict) -> str:
     return "\n".join(lines)
 
 
+
+def ledger_rows(entries: Iterable[LedgerEntry]) -> list[dict]:
+    """Flatten ledger entries into CSV/JSON-friendly row dicts (oldest first)."""
+    rows: list[dict] = []
+    running = 0
+    for e in sorted(entries, key=lambda x: (x.ts, x.id)):
+        signed = _signed(e)
+        running += signed
+        rows.append(
+            {
+                "id": e.id,
+                "ts": datetime.datetime.fromtimestamp(
+                    e.ts, tz=datetime.timezone.utc
+                ).isoformat(),
+                "kind": e.kind,
+                "amount_cents": e.amount_cents,
+                "signed_cents": signed,
+                "balance_after_cents": running,
+                "memo": e.memo,
+                "job_id": e.job_id or "",
+                "vendor": e.vendor or "",
+                "stripe_ref": e.stripe_ref or "",
+            }
+        )
+    return rows
+
+
+def format_ledger_csv(entries: Iterable[LedgerEntry]) -> str:
+    """Render the ledger as CSV with a running balance column."""
+    rows = ledger_rows(entries)
+    fieldnames = [
+        "id",
+        "ts",
+        "kind",
+        "amount_cents",
+        "signed_cents",
+        "balance_after_cents",
+        "memo",
+        "job_id",
+        "vendor",
+        "stripe_ref",
+    ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
 def main() -> None:
-    """CLI: ``python -m solvent finance [--json] [--reserve USD] [--period P]``."""
+    """CLI: ``python -m solvent finance [--json] [--export-ledger] [--reserve USD]``."""
     args = sys.argv[1:]
     as_json = "--json" in args
+    export_ledger = "--export-ledger" in args
     reserve_cents = 0
     period = "day"
     horizon_days = 30
     usage = (
-        "Usage: python -m solvent finance [--json] [--reserve <usd>] "
-        "[--period day|week|month] [--horizon <days>]"
+        "Usage: python -m solvent finance [--json] [--export-ledger] "
+        "[--reserve <usd>] [--period day|week|month] [--horizon <days>]"
     )
     if "--reserve" in args:
         try:
@@ -411,6 +463,12 @@ def main() -> None:
             sys.exit(1)
 
     entries = Treasury().entries
+    if export_ledger:
+        if as_json:
+            print(json.dumps(ledger_rows(entries), indent=2))
+        else:
+            sys.stdout.write(format_ledger_csv(entries))
+        return
     report = build_report(
         entries, reserve_cents=reserve_cents, period=period, horizon_days=horizon_days
     )

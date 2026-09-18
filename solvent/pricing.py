@@ -16,7 +16,9 @@ or a narrower scope it can deliver inside the customer's existing budget.
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -81,9 +83,6 @@ class PricingPolicy:
 
 def get_resource_costs() -> dict[str, int]:
     """Return effective resource costs, applying overrides from .solvent/pricing_overrides.json if present."""
-    import json
-    from pathlib import Path
-
     costs = dict(RESOURCE_COSTS_CENTS)
     override_path = Path(".solvent/pricing_overrides.json")
     if override_path.is_file():

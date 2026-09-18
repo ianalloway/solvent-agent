@@ -152,6 +152,28 @@ def test_broken_override_file_never_widens_the_policy(tmp_path, content):
     assert load_spend_policy(path).max_txn_cents == SpendPolicy().max_txn_cents
 
 
+
+
+def test_load_spend_policy_ignores_negative_vendor_overrides(tmp_path):
+    """Negative per-vendor caps are malformed, not a way to widen/break policy."""
+    path = tmp_path / "spend_policy.json"
+    path.write_text(
+        json.dumps(
+            {
+                "vendor_daily_overrides": {
+                    "nvidia-nemotron": -1,
+                    "web-search-api": 500,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    policy = load_spend_policy(path)
+    assert "nvidia-nemotron" not in policy.vendor_daily_overrides
+    assert policy.vendor_daily_overrides["web-search-api"] == 500
+    # Negative override must not shrink the effective cap below the default either.
+    assert policy.vendor_daily_cap_cents("nvidia-nemotron") == policy.per_vendor_daily_cents
+
 # --- `solvent guardrails` report -------------------------------------------
 
 

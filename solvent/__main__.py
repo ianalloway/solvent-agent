@@ -26,7 +26,7 @@ Commands:
   serve         webhooks + job API + hosted briefs
   worker        resume incomplete jobs, process the queue
   telegram      long-poll the Telegram bot
-  finance       income statement, unit economics, runway, forecast (alias: report)
+  finance       income statement, runway, forecast; --export-ledger for CSV (alias: report)
   guardrails    spend policy in force: caps, vendor exposure, blocked spends
   reconcile     Stripe <-> ledger drift check
   doctor        stack diagnostics

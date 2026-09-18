@@ -115,7 +115,12 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
         policy.vendor_daily_overrides = {
             k: int(v)
             for k, v in overrides.items()
-            if isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool)
+            if (
+                isinstance(k, str)
+                and isinstance(v, (int, float))
+                and not isinstance(v, bool)
+                and v >= 0
+            )
         }
     return policy
 
@@ -241,6 +246,17 @@ class Guardrails:
             "vendor_spent_24h_cents": vendor_spent_24h,
             "txns_last_hour": txns_last_hour,
         }
+
+        # Amount is always positive; kind carries the sign on the ledger. A
+        # zero/negative "spend" would silently *credit* the treasury if booked,
+        # so reject it before any other rule can approve it.
+        if amount_cents <= 0:
+            return Decision(
+                False,
+                "positive_amount",
+                f"amount must be positive, got {amount_cents}c",
+                **ctx,
+            )
 
         if vendor not in self.policy.vendor_allowlist:
             return Decision(False, "vendor_allowlist", f"vendor '{vendor}' not on allowlist", **ctx)
