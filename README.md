@@ -239,6 +239,9 @@ python3 -m solvent simulate               # run the policy over synthetic demand
 python3 -m solvent optimize               # search margin floor x min order for the best policy
 python3 -m solvent checkouts              # unpaid links: age, reminders, expiry
 python3 -m solvent intake                 # the screen inbound jobs pass before pricing
+python3 -m solvent capacity               # jobs/day ceiling and which rule binds it
+python3 -m solvent alerts                 # one health sweep; non-zero exit on critical
+python3 -m solvent export --since 30d     # ledger/jobs/metrics/customers + period close
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
@@ -429,6 +432,39 @@ picks the reckless cell.
 
 (that run is `--cost-multiplier 8`: the same search under a vendor price shock)
 
+### Operating it day to day
+
+**`solvent capacity` — how much work can this policy get through?** The
+simulator found the ceiling the expensive way; this derives it in closed form.
+Every spend rule implies a maximum number of jobs per day — daily budget ÷ cost
+per job, spendable cash ÷ cost per job, payments per hour ÷ payments per job,
+each vendor cap ÷ that vendor's share — and the lowest one is the real ceiling.
+Unit costs come from what jobs *actually* cost when there is history and from
+the pricing model when there is not, and the report names the one rule worth
+changing:
+
+```
+  Ceiling              250.0 jobs/day
+  Bound by             vendor_daily_budget:pdf-render-saas
+                       $100.00 cap ÷ $0.40 of pdf-render-saas per job
+  → Raise the cap for pdf-render-saas via vendor_daily_overrides in .solvent/spend_policy.json.
+```
+
+**`solvent alerts` — the checks you'd run every morning.** Runway, cash against
+the reserve, paid-but-undelivered work, spend headroom, vendor exposure,
+guardrail blocks, unpaid pipeline, and cost-model drift, in one sweep with
+severities. It exits non-zero on anything critical, so it works as a cron job
+or a CI step (`solvent alerts || page-someone`), `--notify` pushes problems to a
+chat channel, and every alert says what to do about it — an alert nobody can
+act on is noise.
+
+**`solvent export` — the books, in a form a spreadsheet can read.** Writes the
+ledger, jobs, per-job metrics and customer book as CSV (one file per table) or
+a single JSON document, over a period given as `7d`, `24h`, `2w`, `3m` or
+`YYYY-MM-DD`. The period is closed on the ledger rather than the job table —
+revenue and cost counted when the money moved — so the printed summary ties out
+against the rows it ships, with refunds separated from cost of sales.
+
 ---
 
 ## 🔑 Make It Real
@@ -545,6 +581,9 @@ solvent/
   optimize.py      policy search under a risk budget (`solvent optimize`)
   checkout.py      payment reminders and link expiry (`solvent checkouts`)
   intake.py        commercial screen on inbound jobs (`solvent intake`)
+  capacity.py      throughput ceiling and binding rule (`solvent capacity`)
+  alerts.py        health sweep with exit codes (`solvent alerts`)
+  export.py        books export + period close (`solvent export`)
   stripe_client.py two-sided Stripe layer (earn + spend)
   nemotron.py      NVIDIA Nemotron client (+ offline stub)
   service.py       the product: an on-demand research brief

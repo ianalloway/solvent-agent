@@ -32,6 +32,12 @@ unreachable customers) before it is quoted. Unpaid checkouts are chased and
 then expired by `checkout.py`, swept on every worker pass. Policy files:
 `.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy}.json`.
 
+`capacity.py` derives the jobs/day ceiling each spend rule implies and names the
+binding one; `alerts.py` runs the health sweep (cash, runway, stuck jobs, spend
+headroom, vendor exposure, blocks, unpaid pipeline, cost drift) and exits
+non-zero on critical; `export.py` closes a period on the ledger and writes the
+books as CSV or JSON.
+
 Nemotron may chat and plan; treasury writes and Stripe stay in stages/guardrails.
 
 ## Commands
@@ -44,6 +50,7 @@ python -m solvent quote "<topic>" --budget 49   # dry-run the margin gate
 python -m solvent backlog|guardrails            # ranked queue / spend policy in force
 python -m solvent customers|costs|simulate     # customer book / cost model / policy sim
 python -m solvent checkouts|intake|optimize    # unpaid links / intake screen / policy search
+python -m solvent capacity|alerts|export       # throughput ceiling / health sweep / books
 ```
 
 ## Conventions

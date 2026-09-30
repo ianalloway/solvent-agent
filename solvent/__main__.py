@@ -27,6 +27,9 @@ Commands:
   checkouts     unpaid links: age, reminders, expiry (--sweep to chase now)
   intake        the screen inbound jobs pass before they are quoted
   optimize      search margin floor x min order for the best policy
+  capacity      jobs/day ceiling and which spend rule binds it
+  alerts        one health sweep; exits non-zero on anything critical
+  export        ledger/jobs/metrics/customers to CSV or JSON, with a period close
   logs          tail the structured event log; -f to follow, --job/--stage to filter
   config        show/get/set/reset local configuration values
   serve         webhooks + job API + hosted briefs
@@ -118,6 +121,21 @@ def main() -> None:
         from .optimize import main as optimize_main
 
         optimize_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "capacity":
+        sys.argv.pop(1)
+        from .capacity import main as capacity_main
+
+        capacity_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "alerts":
+        sys.argv.pop(1)
+        from .alerts import main as alerts_main
+
+        alerts_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "export":
+        sys.argv.pop(1)
+        from .export import main as export_main
+
+        export_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "logs":
         sys.argv.pop(1)
         from .logs import main as logs_main
