@@ -27,8 +27,16 @@ outflow, not operating spend. `simulate.py` runs pricing + guardrails over
 synthetic demand without touching the treasury, and `optimize.py` searches the
 policy grid under a risk budget.
 
+Jobs may name a `products.py` catalogue product instead of a budget; the price
+list is checked against calibrated costs so a stale list price surfaces as
+such. Fulfilment passes `quality.py` (sections, length, figures, no
+scaffolding, topic coverage) — one retry on a failure, the better draft always
+ships, the score lands in `job_metrics`.
+
 Inbound work passes `intake.py` (duplicates, bursts, oversized orders,
-unreachable customers) before it is quoted. Unpaid checkouts are chased and
+unreachable customers) before it is quoted; anything it holds goes to
+`review.py`, where an operator approves (a one-off exemption on that job) or
+rejects it, both recorded as events. Unpaid checkouts are chased and
 then expired by `checkout.py`, swept on every worker pass. Policy files:
 `.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy}.json`.
 
@@ -51,6 +59,7 @@ python -m solvent backlog|guardrails            # ranked queue / spend policy in
 python -m solvent customers|costs|simulate     # customer book / cost model / policy sim
 python -m solvent checkouts|intake|optimize    # unpaid links / intake screen / policy search
 python -m solvent capacity|alerts|export       # throughput ceiling / health sweep / books
+python -m solvent products|quality|review      # price list / brief scores / approval queue
 ```
 
 ## Conventions

@@ -18,6 +18,8 @@ Commands:
   init          first-run setup: create dirs, DB, and workspace files
   status        live summary: balance, jobs, API key presence; --watch to auto-refresh
   quote         dry-run the margin gate on a job (price, cost, counter-offer)
+  products      the price list, checked against current fulfilment cost
+  quality       scores the quality gate gave the briefs it shipped
   upgrade       check for newer version on PyPI; --check exits 1 if outdated
   jobs          list/show/retry/cancel jobs (jobs --help for sub-commands)
   backlog       rank open jobs by return on capital and fundability
@@ -26,6 +28,7 @@ Commands:
   simulate      run pricing + spend policy over synthetic demand, many times
   checkouts     unpaid links: age, reminders, expiry (--sweep to chase now)
   intake        the screen inbound jobs pass before they are quoted
+  review        approve or reject the jobs intake held for a human
   optimize      search margin floor x min order for the best policy
   capacity      jobs/day ceiling and which spend rule binds it
   alerts        one health sweep; exits non-zero on anything critical
@@ -76,6 +79,16 @@ def main() -> None:
         from .quote_cmd import main as quote_main
 
         quote_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "products":
+        sys.argv.pop(1)
+        from .products import main as products_main
+
+        products_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "quality":
+        sys.argv.pop(1)
+        from .quality import main as quality_main
+
+        quality_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "jobs":
         sys.argv.pop(1)
         from .job_cmd import main as jobs_main
@@ -136,6 +149,11 @@ def main() -> None:
         from .export import main as export_main
 
         export_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "review":
+        sys.argv.pop(1)
+        from .review import main as review_main
+
+        review_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "logs":
         sys.argv.pop(1)
         from .logs import main as logs_main

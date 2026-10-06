@@ -242,6 +242,9 @@ python3 -m solvent intake                 # the screen inbound jobs pass before 
 python3 -m solvent capacity               # jobs/day ceiling and which rule binds it
 python3 -m solvent alerts                 # one health sweep; non-zero exit on critical
 python3 -m solvent export --since 30d     # ledger/jobs/metrics/customers + period close
+python3 -m solvent products               # the price list, checked against current cost
+python3 -m solvent quality                # scores the quality gate gave shipped briefs
+python3 -m solvent review                 # approve/reject the jobs intake held for a human
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
@@ -465,6 +468,54 @@ a single JSON document, over a period given as `7d`, `24h`, `2w`, `3m` or
 revenue and cost counted when the money moved — so the printed summary ties out
 against the rows it ships, with refunds separated from cost of sales.
 
+### Selling, not just quoting
+
+**`solvent products` — a price list.** A shop that cannot say what it charges
+cannot be ordered from. A product is a named scope at a list price (how much
+reasoning, how many data pulls, how many searches), and a job can name one
+instead of pricing itself:
+
+```bash
+python3 -m solvent quote "Edge-AI in robotics" --product standard
+curl -X POST localhost:8787/jobs -d '{"topic": "...", "product": "deep-dive", ...}'
+```
+
+The catalogue is priced against *current* costs — calibration included — so a
+list price that has quietly stopped clearing the margin floor shows up as a
+stale price rather than as a run of unprofitable work. The command exits
+non-zero when any product has gone stale, so cron can catch it.
+
+**`solvent quality` — a gate on the product, not just the margin.** Every other
+gate here asks whether the money is sound; this one asks whether the brief is.
+Deterministic checks — required sections, length, figures cited, no prompt
+scaffolding, topic coverage — score each brief out of 100 with a named reason
+for every point lost. A model grading its own homework is the one judge you
+cannot audit, which is why none of this asks an LLM.
+
+Two failures are gates rather than tariffs, because points cannot buy them
+back: scaffolding in the text is what a customer notices first, and a brief
+matching none of the topic's keywords is not about what they asked for. Either
+can score 85 on structure alone; neither is worth a pass. A failing brief gets
+one regeneration attempt and the better draft ships — it always ships, because
+the customer has paid and withholding the work is worse than delivering it with
+the shortfall recorded.
+
+**`solvent review` — the queue only a human can clear.** The intake screen
+refuses an order above the automatic ceiling with "needs an operator", which
+was honest and incomplete: there was no way to approve one. Now held jobs sit
+in a queue with the rule that caught them, and the operator decides:
+
+```bash
+python3 -m solvent review                      # what is held, and why
+python3 -m solvent review approve BIG          # back into the pipeline
+python3 -m solvent review reject BIG --reason "could not verify funds"
+```
+
+Approval writes a one-off exemption onto that job — it does not loosen the
+policy, which stays a deliberate edit — and both decisions are recorded as
+events, because "who let this $5,000 order through" is a question that gets
+asked later.
+
 ---
 
 ## 🔑 Make It Real
@@ -584,6 +635,9 @@ solvent/
   capacity.py      throughput ceiling and binding rule (`solvent capacity`)
   alerts.py        health sweep with exit codes (`solvent alerts`)
   export.py        books export + period close (`solvent export`)
+  products.py      the price list (`solvent products`)
+  quality.py       deliverable quality gate (`solvent quality`)
+  review.py        operator approval queue (`solvent review`)
   stripe_client.py two-sided Stripe layer (earn + spend)
   nemotron.py      NVIDIA Nemotron client (+ offline stub)
   service.py       the product: an on-demand research brief
