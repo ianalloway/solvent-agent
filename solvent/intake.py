@@ -122,6 +122,11 @@ def screen_job(
     job_id = str(job.get("id") or "")
     email = str(job.get("customer_email") or "").strip().lower()
 
+    # An operator has already looked at this one and said yes (see review.py).
+    # The exemption rides on the job, so it covers this job and no other.
+    if job.get("intake_approved"):
+        return Screen(True, None, "approved by an operator")
+
     if rules.require_email and not _EMAIL_RE.match(email):
         return Screen(
             False, "unreachable_customer", f"no usable customer email ({email or 'blank'})"

@@ -35,6 +35,25 @@ EntryKind = Literal["revenue", "expense", "capital"]
 REFUND_VENDOR = "customer-refund"
 
 
+#: Columns `upsert_metrics` accepts, in one place rather than per code path.
+METRIC_COLUMNS = (
+    "est_cost_cents",
+    "actual_cost_cents",
+    "est_margin_pct",
+    "actual_margin_pct",
+    "margin_drift_cents",
+    "fulfillment_seconds",
+    "refunded",
+    "tool_calls",
+    "decline_reason",
+    "block_rule",
+    "block_reason",
+    "quality_score",
+    "quality_grade",
+    "quality_flags",
+)
+
+
 @dataclass
 class LedgerEntry:
     kind: EntryKind  # revenue (money in), expense (money out), capital (seed)
@@ -161,6 +180,9 @@ class Treasury:
                 """)
             self._ensure_column(conn, "job_metrics", "block_rule", "TEXT")
             self._ensure_column(conn, "job_metrics", "block_reason", "TEXT")
+            self._ensure_column(conn, "job_metrics", "quality_score", "REAL")
+            self._ensure_column(conn, "job_metrics", "quality_grade", "TEXT")
+            self._ensure_column(conn, "job_metrics", "quality_flags", "TEXT")
             conn.execute("""
                     CREATE TABLE IF NOT EXISTS stripe_checkout (
                         job_id TEXT PRIMARY KEY,
@@ -623,19 +645,7 @@ class Treasury:
                     if existing:
                         fields = ["ts = ?"]
                         params: list = [ts]
-                        for col in (
-                            "est_cost_cents",
-                            "actual_cost_cents",
-                            "est_margin_pct",
-                            "actual_margin_pct",
-                            "margin_drift_cents",
-                            "fulfillment_seconds",
-                            "refunded",
-                            "tool_calls",
-                            "decline_reason",
-                            "block_rule",
-                            "block_reason",
-                        ):
+                        for col in METRIC_COLUMNS:
                             if col in kwargs:
                                 fields.append(f"{col} = ?")
                                 params.append(kwargs[col])
@@ -647,19 +657,7 @@ class Treasury:
                     else:
                         cols = ["job_id", "ts"]
                         vals: list = [job_id, ts]
-                        for col in (
-                            "est_cost_cents",
-                            "actual_cost_cents",
-                            "est_margin_pct",
-                            "actual_margin_pct",
-                            "margin_drift_cents",
-                            "fulfillment_seconds",
-                            "refunded",
-                            "tool_calls",
-                            "decline_reason",
-                            "block_rule",
-                            "block_reason",
-                        ):
+                        for col in METRIC_COLUMNS:
                             if col in kwargs:
                                 cols.append(col)
                                 vals.append(kwargs[col])

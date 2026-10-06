@@ -12,6 +12,7 @@ from typing import Any
 from . import delivery, service, tools
 from .guardrails import GuardrailError, Guardrails
 from .intake import decline_reason, screen_job
+from .products import UnknownProduct, apply_product
 from .observability import log_event
 from .pricing import PricingPolicy, quote
 from .security import SOLVENTSecurityError, sanitise_job
@@ -46,6 +47,14 @@ def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None,
     except SOLVENTSecurityError as exc:
         treasury.upsert_job(job_id, "failed", error_reason=str(exc))
         return None, f"security violation: {exc}"
+
+    # A job may name a product instead of pricing itself; the product fills in
+    # the scope and list price, and everything below validates it as normal.
+    try:
+        job = apply_product(job)
+    except UnknownProduct as exc:
+        treasury.upsert_job(job_id, "failed", error_reason=str(exc))
+        return None, str(exc)
 
     topic = job.get("topic")
     if not topic or not isinstance(topic, str) or not topic.strip():
@@ -462,6 +471,23 @@ class StageRunner:
                 deliverable=result["deliverable_path"],
                 tokens=result.get("tokens", 0),
             )
+
+            score = result.get("quality")
+            if score is not None:
+                self.t.upsert_metrics(
+                    job_id,
+                    quality_score=score.score,
+                    quality_grade=score.grade,
+                    quality_flags=",".join(score.failures),
+                )
+                self._emit(
+                    stage="quality_checked",
+                    job_id=job_id,
+                    score=score.score,
+                    grade=score.grade,
+                    failures=score.failures,
+                    attempts=result.get("quality_attempts", 1),
+                )
 
             cogs = service.reconcile_cogs(q, result)
             self.t.upsert_metrics(

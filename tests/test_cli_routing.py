@@ -87,6 +87,9 @@ class TestCliRouting(unittest.TestCase):
         self.assertIn("capacity", out)
         self.assertIn("alerts", out)
         self.assertIn("export", out)
+        self.assertIn("products", out)
+        self.assertIn("quality", out)
+        self.assertIn("review", out)
         mock_demo.assert_not_called()
 
     # ── additional subcommand routes ──────────────────────────────────────
@@ -188,6 +191,21 @@ class TestCliRouting(unittest.TestCase):
 
     def test_export_routes_to_export(self):
         target, demo = self._routes_to(["solvent", "export"], "export")
+        target.assert_called_once()
+        demo.assert_not_called()
+
+    def test_products_routes_to_products(self):
+        target, demo = self._routes_to(["solvent", "products"], "products")
+        target.assert_called_once()
+        demo.assert_not_called()
+
+    def test_quality_routes_to_quality(self):
+        target, demo = self._routes_to(["solvent", "quality"], "quality")
+        target.assert_called_once()
+        demo.assert_not_called()
+
+    def test_review_routes_to_review(self):
+        target, demo = self._routes_to(["solvent", "review"], "review")
         target.assert_called_once()
         demo.assert_not_called()
 
