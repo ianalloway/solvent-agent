@@ -16,6 +16,7 @@ from dataclasses import asdict
 from typing import Any
 
 from .pricing import PricingPolicy, Quote, quote
+from .products import BY_SLUG, UnknownProduct, get_product
 from .treasury import fmt
 
 _LABELS = {
@@ -88,8 +89,12 @@ def main() -> None:
     parser.add_argument(
         "--budget",
         type=float,
-        required=True,
-        help="customer budget in USD (e.g. --budget 49)",
+        help="customer budget in USD (e.g. --budget 49); omit when using --product",
+    )
+    parser.add_argument(
+        "--product",
+        choices=sorted(BY_SLUG),
+        help="price a catalogue product instead of a bespoke budget",
     )
     parser.add_argument("--tokens", type=int, default=8_000, help="estimated Nemotron tokens")
     parser.add_argument("--market-calls", type=int, default=2, help="market-data pulls")
@@ -103,7 +108,27 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", dest="as_json", help="output as JSON")
     args = parser.parse_args()
 
-    budget_cents = int(round(args.budget * 100))
+    if args.product:
+        try:
+            product = get_product(args.product)
+        except UnknownProduct as exc:
+            print(str(exc), file=sys.stderr)
+            sys.exit(2)
+        fields = product.as_job_fields()
+        # An explicit --budget still wins: that is the customer haggling.
+        budget_cents = (
+            int(round(args.budget * 100)) if args.budget is not None else fields["budget_cents"]
+        )
+        tokens = fields["est_tokens"]
+        market_calls = fields["market_data_calls"]
+        search_calls = fields["web_search_calls"]
+    elif args.budget is None:
+        print("Pass --budget, or --product to price a catalogue product.", file=sys.stderr)
+        sys.exit(2)
+    else:
+        budget_cents = int(round(args.budget * 100))
+        tokens, market_calls, search_calls = args.tokens, args.market_calls, args.search_calls
+
     if budget_cents <= 0:
         print("Budget must be greater than 0.", file=sys.stderr)
         sys.exit(1)
@@ -112,9 +137,9 @@ def main() -> None:
     job = build_job(
         args.topic,
         budget_cents,
-        est_tokens=args.tokens,
-        market_data_calls=args.market_calls,
-        web_search_calls=args.search_calls,
+        est_tokens=tokens,
+        market_data_calls=market_calls,
+        web_search_calls=search_calls,
     )
     q = quote(job, policy)
 
