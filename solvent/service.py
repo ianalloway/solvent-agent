@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 
-from . import nemotron
+from . import nemotron, quality
 from .paths import reports_dir
 from .pricing import get_resource_costs
 from .security import (
@@ -71,6 +71,27 @@ def fulfill(job: dict) -> dict:
 
     started = time.time()
     text, usage, tool_ctx = nemotron.research_brief(topic, context)
+    score = quality.score_brief(text, topic)
+    attempts = 1
+
+    if quality.should_retry(score):
+        # One more attempt, told exactly what was wrong. The better draft ships;
+        # a deterministic model that returns the same text costs us one call and
+        # changes nothing, which is why this is capped at a single retry.
+        retry_context = f"{context}\n\n{quality.retry_instruction(score)}"
+        retry_text, retry_usage, retry_ctx = nemotron.research_brief(topic, retry_context)
+        attempts = 2
+        text, score = quality.better(
+            (text, score), (retry_text, quality.score_brief(retry_text, topic))
+        )
+        if text is retry_text:
+            tool_ctx = retry_ctx
+        # Both attempts were paid for, so both are billed.
+        usage = {
+            key: (usage.get(key, 0) or 0) + (retry_usage.get(key, 0) or 0)
+            for key in set(usage) | set(retry_usage)
+        }
+
     fulfillment_seconds = time.time() - started
 
     resources = _resources_from_usage(usage, tool_ctx)
@@ -89,6 +110,8 @@ def fulfill(job: dict) -> dict:
     return {
         "deliverable_path": str(path),
         "text": text,
+        "quality": score,
+        "quality_attempts": attempts,
         "resources_used": resources,
         "tokens": usage.get("total_tokens", 0),
         "usage": usage,

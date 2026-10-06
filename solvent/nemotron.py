@@ -115,7 +115,15 @@ def _live_complete(system: str, user: str) -> tuple[str, dict]:
 
 def _stub_complete(system: str, user: str) -> str:
     """Deterministic offline analyst. Good enough to demo the money loop."""
-    topic = user.strip().splitlines()[0][:120] if user.strip() else "the requested topic"
+    first_line = user.strip().splitlines()[0] if user.strip() else ""
+    # The transcript's first line is "Research topic: <topic>"; without stripping
+    # the label the brief is titled "Research Brief: Research topic: ...".
+    topic = (
+        first_line.split(":", 1)[1].strip()
+        if first_line.lower().startswith("research topic:")
+        else first_line
+    )
+    topic = topic[:120] or "the requested topic"
     return (
         f"# Research Brief: {topic}\n\n"
         "## Executive summary\n"
