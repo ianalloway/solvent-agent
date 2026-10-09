@@ -39,7 +39,7 @@ python3 -m solvent worker
 1. Set `STRIPE_API_KEY=sk_test_...` or restricted `rk_test_...`
 2. Create webhook endpoint: `POST {SOLVENT_BASE_URL}/webhooks/stripe`
 3. Subscribe to `checkout.session.completed`
-4. Set `STRIPE_WEBHOOK_SECRET=whsec_...`
+4. Set `STRIPE_WEBHOOK_SECRET=whsec_...` (required: with no secret `/webhooks/stripe` rejects every request, and requests with a bad signature are rejected without being stored)
 5. Submit jobs via `POST /jobs` — response includes `checkout_url`
 
 Polling is disabled by default. For CLI-only test flows:
@@ -86,7 +86,7 @@ python3 -m solvent reconcile --since 7d
 | `STRIPE_WEBHOOK_SECRET` | Webhook signature verification |
 | `SOLVENT_BASE_URL` | Checkout success URLs + hosted briefs |
 | `SOLVENT_DELIVERY_SECRET` | HMAC token for `/briefs/{id}`; required, at least 32 characters, high entropy, and not a placeholder |
-| `SOLVENT_DASHBOARD_TOKEN` | Bearer-style shared secret for `/`, `/api/status`, `/api/events`, `/api/chat`, and `/api/job`; set to a high-entropy value before serving the dashboard |
+| `SOLVENT_DASHBOARD_TOKEN` | Bearer-style shared secret for `/`, `/api/status`, `/api/events`, `/api/chat`, `/api/job`, and the webhook admin routes (`/api/webhooks`, `/api/webhooks/stats`, `/api/webhooks/{event_id}/replay`); set to a high-entropy value before serving the dashboard |
 | `SOLVENT_ASYNC` | Non-blocking payment (worker resumes jobs) |
 | `SOLVENT_ALLOW_POLL` | Legacy payment polling |
 | `SOLVENT_LOG_JSON` | JSON lines to stderr + `data/solvent.log` |

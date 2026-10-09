@@ -1,8 +1,16 @@
 """
 webhook_log.py — durable log of received Stripe webhook events.
 
-Stores every event received with: event_id, type, received_at, status
-(processed/error/skipped), error_message.  Allows replaying failed events.
+Stores events received with: event_id, type, received_at, status
+(received/processed/error/skipped), error_message.  Allows replaying failed
+events.
+
+SECURITY: the server only stores events whose Stripe signature has already been
+verified, and marks them ``verified=1``.  Only verified rows can be replayed.
+Rows written before the ``verified`` column existed (or by callers that did not
+pass ``verified=True``) are never replayable.  An event id can be recorded only
+once; a second ``record()`` for the same id is ignored and never overwrites the
+stored payload.
 
 Schema:
     webhook_events(
@@ -11,7 +19,8 @@ Schema:
         payload    BLOB,
         received_at REAL,
         status     TEXT,
-        error      TEXT
+        error      TEXT,
+        verified   INTEGER   -- 1 = Stripe signature verified on receipt
     )
 """
 
@@ -36,7 +45,8 @@ class WebhookLog:
             payload     BLOB NOT NULL DEFAULT (x''),
             received_at REAL NOT NULL DEFAULT 0.0,
             status      TEXT NOT NULL DEFAULT 'received',
-            error       TEXT NOT NULL DEFAULT ''
+            error       TEXT NOT NULL DEFAULT '',
+            verified    INTEGER NOT NULL DEFAULT 0
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_wh_status      ON webhook_events (status)",
@@ -55,6 +65,14 @@ class WebhookLog:
         self._conn.row_factory = sqlite3.Row
         for stmt in self._DDL:
             self._conn.execute(stmt)
+        # Databases created before signature-verified storage have no
+        # ``verified`` column; add it with DEFAULT 0 so legacy (possibly
+        # unauthenticated) rows can never be replayed.
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(webhook_events)")}
+        if "verified" not in cols:
+            self._conn.execute(
+                "ALTER TABLE webhook_events ADD COLUMN verified INTEGER NOT NULL DEFAULT 0"
+            )
         self._conn.commit()
 
     # ------------------------------------------------------------------
@@ -68,22 +86,38 @@ class WebhookLog:
         payload: bytes,
         status: str,
         error: str = "",
-    ) -> None:
-        """Insert or replace an event record."""
-        self._conn.execute(
+        verified: bool = False,
+    ) -> bool:
+        """Insert an event record unless *event_id* already exists.
+
+        Returns ``True`` if a new row was written and ``False`` if the id was
+        already present.  An existing row is never overwritten, so a caller
+        cannot replace a stored event's payload by reusing its id.  Pass
+        ``verified=True`` only for events whose Stripe signature was checked.
+        """
+        cur = self._conn.execute(
             """
-            INSERT OR REPLACE INTO webhook_events
-                (event_id, event_type, payload, received_at, status, error)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO webhook_events
+                (event_id, event_type, payload, received_at, status, error, verified)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (event_id, event_type, payload, time.time(), status, error),
+            (event_id, event_type, payload, time.time(), status, error, 1 if verified else 0),
         )
         self._conn.commit()
+        return cur.rowcount == 1
 
     def mark_processed(self, event_id: str) -> None:
         """Update status → 'processed'."""
         self._conn.execute(
             "UPDATE webhook_events SET status = 'processed', error = '' WHERE event_id = ?",
+            (event_id,),
+        )
+        self._conn.commit()
+
+    def mark_skipped(self, event_id: str) -> None:
+        """Update status → 'skipped' (verified event that was intentionally not applied)."""
+        self._conn.execute(
+            "UPDATE webhook_events SET status = 'skipped', error = '' WHERE event_id = ?",
             (event_id,),
         )
         self._conn.commit()
@@ -128,6 +162,28 @@ class WebhookLog:
             "SELECT * FROM webhook_events WHERE status = 'error' ORDER BY received_at DESC"
         )
         return [self._row_to_dict(r) for r in cur.fetchall()]
+
+    def get_status(self, event_id: str) -> str | None:
+        """Return the status of a stored event, or None if the id is unknown."""
+        row = self._conn.execute(
+            "SELECT status FROM webhook_events WHERE event_id = ?", (event_id,)
+        ).fetchone()
+        return row["status"] if row else None
+
+    def is_verified(self, event_id: str) -> bool:
+        """True only for a stored event that was signature-verified when received."""
+        row = self._conn.execute(
+            "SELECT verified FROM webhook_events WHERE event_id = ?", (event_id,)
+        ).fetchone()
+        return bool(row and row["verified"])
+
+    def list_public(self, limit: int = 50) -> list[dict]:
+        """Like :meth:`list_recent` but without the raw payload (no customer data)."""
+        out = []
+        for row in self.list_recent(limit):
+            row.pop("payload", None)
+            out.append(row)
+        return out
 
     def get_payload(self, event_id: str) -> bytes | None:
         """Retrieve the raw stored payload for replay, or None if not found."""

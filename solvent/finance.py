@@ -23,6 +23,7 @@ import sys
 from collections.abc import Iterable
 
 from .treasury import LedgerEntry, Treasury, fmt
+from .money import dollars_to_cents
 
 _PERIODS = ("day", "week", "month")
 
@@ -387,7 +388,7 @@ def main() -> None:
     )
     if "--reserve" in args:
         try:
-            reserve_cents = int(float(args[args.index("--reserve") + 1]) * 100)
+            reserve_cents = dollars_to_cents(args[args.index("--reserve") + 1])
         except (ValueError, IndexError):
             print(usage)
             sys.exit(1)

@@ -14,6 +14,7 @@ from .agent import Solvent
 from .delivery import is_safe_job_id, markdown_to_html, verify_delivery_token
 from .event_hub import EventHub
 from .gateway import Gateway, register_outbound
+from .money import dollars_to_cents
 from .paths import data_dir
 from .paths import reports_dir as reports_dir_fn
 from .stripe_client import StripeClient
@@ -320,13 +321,39 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     @app.post("/webhooks/stripe")
     async def stripe_webhook(req: Request):
+        """Receive a Stripe event.
+
+        The signature is verified FIRST.  Nothing from an unauthenticated body
+        is parsed for logging, stored or applied: a bad/missing signature (or a
+        missing ``STRIPE_WEBHOOK_SECRET``) is rejected and leaves no trace in the
+        webhook log.  Only verified events are stored, and an event id is stored
+        once, so a repeated id can never overwrite an earlier event.
+        """
+        if not stripe.webhook_secret:
+            # Fail closed: with no secret we cannot authenticate anything.
+            raise HTTPException(503, "stripe webhook endpoint is not configured")
         payload = await req.body()
         sig = req.headers.get("Stripe-Signature", "")
-        event_id = json.loads(payload).get("id", "unknown") if payload else "unknown"
-        event_type = json.loads(payload).get("type", "") if payload else ""
-        webhook_log.record(event_id, event_type, payload, "received")
         try:
-            payment = stripe.process_webhook(payload, sig, treasury=agent.t)
+            event = stripe.verify_webhook(payload, sig)
+        except Exception:
+            raise HTTPException(400, "invalid webhook signature") from None
+
+        event_id = event["id"]
+        event_type = str(event.get("type", ""))
+        if not webhook_log.record(event_id, event_type, payload, "received", verified=True):
+            # Already seen.  Acknowledge (so Stripe stops retrying) unless the
+            # earlier attempt did not finish, in which case process it again.
+            if webhook_log.is_verified(event_id) and webhook_log.get_status(event_id) in (
+                "processed",
+                "skipped",
+            ):
+                return {"received": True, "duplicate": True}
+        if not stripe.live:
+            webhook_log.mark_skipped(event_id)
+            return {"received": True, "ignored": True}
+        try:
+            payment = stripe.apply_webhook_event(event, treasury=agent.t)
             if payment and payment.get("job_id"):
                 agent._runner.handle_webhook_payment(payment)
                 _publish_status()
@@ -406,20 +433,31 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     # ------------------------------------------------------------------
 
     @app.get("/api/webhooks")
-    def api_webhooks_list():
-        return JSONResponse(webhook_log.list_recent(50))
+    def api_webhooks_list(req: Request):
+        _require_dashboard_auth(req)
+        # Metadata only: raw payloads contain customer emails and are not exposed.
+        return JSONResponse(webhook_log.list_public(50))
 
     @app.get("/api/webhooks/stats")
-    def api_webhooks_stats():
+    def api_webhooks_stats(req: Request):
+        _require_dashboard_auth(req)
         return JSONResponse(webhook_log.stats())
 
     @app.post("/api/webhooks/{event_id}/replay")
-    async def api_webhooks_replay(event_id: str):
+    async def api_webhooks_replay(event_id: str, req: Request):
+        _require_dashboard_auth(req)
         stored = webhook_log.get_payload(event_id)
         if stored is None:
             raise HTTPException(404, f"No stored payload for event_id={event_id!r}")
+        if not webhook_log.is_verified(event_id):
+            raise HTTPException(409, "stored event was not signature-verified; refusing to replay")
+        if not stripe.live:
+            raise HTTPException(409, "stripe is not live; nothing to replay")
         try:
-            payment = stripe.process_webhook(stored, sig_header="", treasury=agent.t)
+            # The stored body was signature-verified when it was received, so it
+            # is re-dispatched internally; there is no signature bypass for
+            # external callers (the public webhook route always verifies).
+            payment = stripe.apply_webhook_event(json.loads(stored), treasury=agent.t)
             if payment and payment.get("job_id"):
                 agent._runner.handle_webhook_payment(payment)
                 _publish_status()
@@ -445,7 +483,7 @@ def main():
         import uvicorn
     except ImportError as exc:
         raise RuntimeError('uvicorn required: pip install -e ".[serve]"') from exc
-    app = create_app(seed_cents=int(args.seed * 100), fresh=not args.keep_balance)
+    app = create_app(seed_cents=dollars_to_cents(args.seed), fresh=not args.keep_balance)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

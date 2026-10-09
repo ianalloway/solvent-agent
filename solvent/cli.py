@@ -29,6 +29,7 @@ from solvent.config import (
     load_config,
 )
 from solvent.jobs import SAMPLE_JOBS
+from solvent.money import dollars_to_cents
 from solvent.onboarding import run_wizard, should_skip_onboarding, wants_reconfigure
 from solvent.treasury import fmt
 
@@ -205,7 +206,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
                 continue
             try:
                 fund_amt = float(parts[1])
-                fund_cents = int(fund_amt * 100)
+                fund_cents = dollars_to_cents(fund_amt)
                 if fund_cents <= 0:
                     print(f"{C_RED}Fund amount must be positive.{C_RESET}\n")
                     continue
@@ -233,7 +234,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
 
         budget_str = input(f"{C_CYAN}Client Budget in USD (e.g. 50.00):{C_RESET} $").strip()
         try:
-            budget_cents = int(float(budget_str) * 100)
+            budget_cents = dollars_to_cents(budget_str)
             if budget_cents <= 0:
                 print(f"{C_RED}Budget must be greater than 0.{C_RESET}\n")
                 continue
@@ -341,7 +342,7 @@ def main():
     cfg = resolve_config(args)
     apply_config(cfg)
 
-    seed_cents = int(args.seed * 100)
+    seed_cents = dollars_to_cents(args.seed)
     fresh = not args.keep_balance
 
     if args.interactive:

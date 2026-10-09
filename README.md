@@ -561,7 +561,7 @@ With both keys set:
 | `SOLVENT_HOME` | Where runtime data and `.solvent` configuration (treasury DB, policies, reports, dashboard, logs) are stored. Defaults to the repo when run from a checkout, else `~/.solvent` |
 | `NVIDIA_API_KEY` | Live Nemotron inference (`nvapi-...`) |
 | `STRIPE_API_KEY` | Stripe test key (`sk_test_...`) |
-| `STRIPE_WEBHOOK_SECRET` | Optional webhook verification |
+| `STRIPE_WEBHOOK_SECRET` | Required to accept `/webhooks/stripe` events (signature is verified before anything is stored) |
 | `STRIPE_PAYMENT_POLL_TIMEOUT` | Seconds to wait for payment (default `120`) |
 | `STRIPE_PAYMENT_POLL_INTERVAL` | Poll interval in seconds (default `2`) |
 | `SOLVENT_FORCE_STRIPE_SIMULATE` | Force offline simulate mode even with a key |
