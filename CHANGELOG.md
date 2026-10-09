@@ -4,7 +4,7 @@ All notable changes to SOLVENT are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] (planned 0.2.0)
+## [0.2.0] - 2026-10-09
 
 This is everything on `main` since the 0.1.0 PyPI upload on 2026-09-04.
 The headline: the agent's commercial judgement grew from a single margin gate
@@ -51,14 +51,21 @@ into a full set of operating tools, and every one of them ships as a CLI command
 - The README separates the offline demo from production revenue and documents
   every new command. (#74)
 
-### Known issues to resolve before tagging 0.2.0
-- `solvent serve`: job-submission routes raise `RecursionError` (#77, fix in #86).
-- Spend policy and other `.solvent` config resolve relative to the working
-  directory, so limits can silently fail open (#78, fix in #87).
-- COGS accounting under-bills tool-loop tokens, and the drift check is
-  one-sided (#79).
-- Open security findings from the 2026-09-30 review (webhook handling,
-  dashboard escaping, cents rounding) should be fixed before release.
+### Fixed
+- Config and spend policy are pinned to the Solvent home instead of the working
+  directory, so limits can no longer silently fail open (#78, #87).
+- Every inference call is now billed, and COGS drift is flagged in both
+  directions (#79, #90).
+- Operator dashboard escapes customer-supplied job data (#92).
+- README demo figures regenerated from a real run (#80, #89).
+
+### Known issues
+- `solvent serve`: job-submission routes can raise `RecursionError` (#77; fix in #86).
+- Webhook handling: events are logged before the Stripe signature is checked, and
+  the webhook list, stats and replay routes are not authenticated. Run `serve`
+  only on a trusted network until this is fixed.
+- Some dollars-to-cents conversions truncate instead of rounding ($19.99 can
+  become 1998 cents).
 
 ## [0.1.0] - 2026-09-04
 
@@ -68,5 +75,5 @@ earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
-[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/33cb136cfd04...main
+[0.2.0]: https://github.com/ianalloway/solvent-agent/compare/33cb136cfd04...v0.2.0
 [0.1.0]: https://github.com/ianalloway/solvent-agent/tree/33cb136cfd04
