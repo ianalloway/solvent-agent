@@ -26,6 +26,30 @@ All notable changes to SOLVENT are recorded here. The format follows
   budgets, `/fund`, interactive budgets, `--seed`, and `finance --reserve`
   ($19.99 was 1998 cents; it is now 1999).
 
+- **Pairing tokens can no longer be minted anonymously.** `GET /api/pair/qr`
+  now needs the dashboard token (use `?token=` in the browser). `POST
+  /api/pair/verify` stays open (the token is the credential) but is now
+  attempt-limited (`429` after repeated failures), body-limited, answers
+  malformed bodies with `400` instead of a 500, and redeems a token atomically.
+  `/pair qr` over Telegram is refused when the DM policy is `open`.
+- **`POST /jobs` is hardened.** It stays the public intake endpoint, but bodies
+  over 32 KB get `413`, only documented fields are read (an anonymous caller
+  could previously set `intake_approved` and skip the intake screen), an
+  existing job id returns `409` instead of being overwritten, ids must match
+  `[A-Za-z0-9_-]{1,64}`, and the reply no longer includes costs, margins or
+  other customers' job ids.
+- **`GET /jobs/{id}` no longer exposes customer emails or costs.** Anonymous
+  callers get `{"job": {"id", "status"}}`; the full row and metrics need the
+  dashboard token.
+- **`GET /health` no longer reports the treasury balance** unless the dashboard
+  token is supplied; it returns `{"status", "version"}`.
+- **Local-only routes can't be opened by a reverse proxy.** `/api/briefs`,
+  `/api/briefs/{id}` and `/api/receipt/{id}` treat a request as local only when
+  the peer is loopback *and* it carries no proxy header (`X-Forwarded-For`,
+  `Forwarded`, `X-Real-IP`, ...). New `SOLVENT_LOCAL_ACCESS` (`auto` | `never` |
+  `peer`) overrides this; see `docs/PRODUCTION.md`.
+- A non-ASCII `X-Solvent-Dashboard-Token` now gets `403` instead of a 500.
+
 ### Changed
 - `WebhookLog.record()` no longer replaces an existing event id; it returns
   `False` instead. Stored events carry a `verified` flag (existing databases are

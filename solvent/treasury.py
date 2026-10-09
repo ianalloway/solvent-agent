@@ -934,18 +934,20 @@ class Treasury:
         return token
 
     def verify_openclaw_token(self, token: str) -> bool:
-        """Return True and mark used if the token is valid and unexpired."""
+        """Return True and mark used if the token is valid, unused and unexpired.
+
+        The check and the single-use mark are one UPDATE, so two concurrent (or
+        cross-process) redemptions of the same token cannot both succeed.
+        """
         now = time.time()
         with self.lock(), self._conn() as conn:
-            row = conn.execute(
-                "SELECT expires_at, used FROM openclaw_tokens WHERE token = ?",
-                (token,),
-            ).fetchone()
-            if not row or row["used"] or row["expires_at"] < now:
-                return False
             with conn:
-                conn.execute("UPDATE openclaw_tokens SET used = 1 WHERE token = ?", (token,))
-            return True
+                cur = conn.execute(
+                    "UPDATE openclaw_tokens SET used = 1 "
+                    "WHERE token = ? AND used = 0 AND expires_at >= ?",
+                    (token, now),
+                )
+            return cur.rowcount == 1
 
 
 def fmt(cents: int) -> str:

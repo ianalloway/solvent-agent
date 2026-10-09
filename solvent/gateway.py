@@ -107,6 +107,13 @@ class Gateway:
                 f"{j['id']}: {j.get('status')} — {(j.get('topic') or '')[:40]}" for j in jobs
             )
         if cmd == "/pair" and arg.strip().lower() == "qr":
+            if channel == "telegram" and pairing.dm_policy() == "open":
+                # With an open DM policy any Telegram user reaches this command;
+                # minting a pairing token is an operator action.
+                return (
+                    "Pairing QR codes are not available over an open Telegram DM policy. "
+                    "Use /pair qr from the dashboard chat, or set SOLVENT_TELEGRAM_DM_POLICY=pairing."
+                )
             token = self.agent.t.create_openclaw_token(ttl=600)
             from . import qr as _qr
 

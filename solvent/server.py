@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
 
+from . import __version__
+from .access import FailureLimiter, is_local_request, peer_host
 from .agent import Solvent
 from .delivery import is_safe_job_id, markdown_to_html, verify_delivery_token
 from .event_hub import EventHub
@@ -29,6 +32,92 @@ try:
     from pydantic import BaseModel
 except ImportError:
     BaseModel = object  # type: ignore[misc,assignment]
+
+
+#: Largest request body accepted on the public intake / pairing routes.
+MAX_JOB_BODY_BYTES = 32 * 1024
+MAX_PAIR_BODY_BYTES = 1024
+
+#: Fields a public ``POST /jobs`` caller may set.  Anything else in the body is
+#: dropped, so an anonymous caller cannot set internal flags such as
+#: ``intake_approved`` (which skips the intake screen) or ``job_owner_session_id``.
+PUBLIC_JOB_FIELDS = (
+    "id",
+    "topic",
+    "budget_cents",
+    "customer_email",
+    "est_tokens",
+    "market_data_calls",
+    "web_search_calls",
+    "context",
+    "product",
+)
+_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_MAX_FIELD_CHARS = 4_000
+
+#: What the public intake says when it declines.  The internal reason (margin
+#: floors, treasury state, other customers' job ids) is never returned.
+_PUBLIC_INTAKE_DECLINES = {
+    "duplicate": "an identical request was already submitted recently",
+    "customer_burst": "too many recent requests from this customer; try again later",
+    "blocked_domain": "this customer email domain is not accepted",
+    "unreachable_customer": "a valid customer email is required",
+    "oversized_order": "this order is above the automatic limit and needs manual review",
+}
+_PUBLIC_DECLINE_PREFIXES = (
+    "security violation",
+    "missing or",
+    "missing ",
+    "invalid ",
+    "budget_cents must",
+    "est_tokens",
+    "market_data_calls",
+    "web_search_calls",
+    "unknown product",
+    "order $",
+)
+_GENERIC_DECLINE = "this request can't be accepted right now"
+
+
+def public_decline_reason(reason: object) -> str:
+    """Map an internal decline reason to text that is safe to show an anonymous caller."""
+    text = str(reason or "")
+    if text.startswith("intake:"):
+        rule = text.split(":", 1)[1].split("\u2014", 1)[0].strip()
+        return _PUBLIC_INTAKE_DECLINES.get(rule, _GENERIC_DECLINE)
+    if text.startswith(_PUBLIC_DECLINE_PREFIXES):
+        return text
+    return _GENERIC_DECLINE
+
+
+def public_job_result(result: dict, job_id: str) -> dict:
+    """The intake response for an anonymous caller: no costs, margins or emails."""
+    if result.get("stage") == "declined":
+        return {
+            "stage": "declined",
+            "job_id": job_id,
+            "reason": public_decline_reason(result.get("reason")),
+        }
+    if result.get("url"):
+        return {
+            "stage": "invoice",
+            "job_id": job_id,
+            "status": "awaiting_payment",
+            "url": result["url"],
+            "checkout_url": result["url"],
+            "session_id": result.get("session_id"),
+            "amount_cents": result.get("amount_cents"),
+            "simulated": result.get("simulated", False),
+        }
+    return {"stage": str(result.get("stage") or "received"), "job_id": job_id}
+
+
+def public_job_view(row: dict, cancelled: bool = False) -> dict:
+    """The unauthenticated view of a job: id and status only."""
+    view: dict = {"job": {"id": row.get("id"), "status": row.get("status")}}
+    if cancelled:
+        view["cancelled"] = True
+    return view
 
 
 class ChatBody(BaseModel):
@@ -72,10 +161,39 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     last_status_json = ""
     dashboard_token = os.environ.get("SOLVENT_DASHBOARD_TOKEN", "").strip()
 
-    def _require_dashboard_auth(req: Request) -> None:
+    def _has_dashboard_auth(req: Request) -> bool:
         token = req.headers.get("X-Solvent-Dashboard-Token", "") or req.query_params.get("token", "")
-        if not dashboard_token or not secrets.compare_digest(token, dashboard_token):
+        # Compare as bytes: compare_digest raises TypeError on non-ASCII str.
+        return bool(dashboard_token) and secrets.compare_digest(
+            token.encode("utf-8"), dashboard_token.encode("utf-8")
+        )
+
+    def _require_dashboard_auth(req: Request) -> None:
+        if not _has_dashboard_auth(req):
             raise HTTPException(403, "invalid dashboard token")
+
+    async def _read_limited_json(req: Request, limit: int) -> object:
+        """Read and parse a JSON body, refusing anything over ``limit`` bytes."""
+        declared = req.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > limit:
+            raise HTTPException(413, "request body too large")
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in req.stream():
+            size += len(chunk)
+            if size > limit:
+                raise HTTPException(413, "request body too large")
+            chunks.append(chunk)
+        try:
+            return json.loads(b"".join(chunks) or b"null")
+        except (ValueError, UnicodeDecodeError):
+            raise HTTPException(400, "request body must be valid JSON") from None
+
+    # Pairing tokens are short, so guessing them is slowed down: a few failed
+    # verifications per peer, and a generous global ceiling (the peer address is
+    # the proxy's when behind one, so a per-peer cap alone is not enough).
+    pair_fail_peer = FailureLimiter(max_failures=5, window=300.0)
+    pair_fail_global = FailureLimiter(max_failures=60, window=600.0)
 
     def _sanitize_status_data(data: dict) -> dict:
         sanitized = dict(data)
@@ -164,16 +282,23 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     app = FastAPI(title="SOLVENT", version="2.1", lifespan=_app_lifespan)
     app.state.webhook_log = webhook_log
+    app.state.agent = agent
 
     @app.get("/health")
-    def health():
-        return {"status": "ok", "balance_cents": agent.t.balance_cents()}
+    def health(req: Request):
+        # Public liveness probe: no financial detail unless the caller is authenticated.
+        data: dict = {"status": "ok", "version": __version__}
+        if _has_dashboard_auth(req):
+            data["balance_cents"] = agent.t.balance_cents()
+        return data
 
     @app.get("/api/pair/qr")
-    def api_pair_qr():
-        """Generate an OpenClaw pairing token and return a QR code PNG (or JSON fallback)."""
-        import os
+    def api_pair_qr(req: Request):
+        """Generate an OpenClaw pairing token and return a QR code PNG (or JSON fallback).
 
+        Minting a token is an operator action, so it needs the dashboard token.
+        """
+        _require_dashboard_auth(req)
         token = agent.t.create_openclaw_token(ttl=600)
         base_url = os.environ.get("SOLVENT_BASE_URL", "")
         host = base_url.replace("https://", "").replace("http://", "").split("/")[0]
@@ -194,12 +319,17 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     @app.post("/api/pair/verify")
     async def api_pair_verify(req: Request):
-        body = await req.json()
-        token = (body.get("token") or "").strip()
-        if not token:
+        """Redeem a single-use pairing token (no login: the token is the credential)."""
+        peer = peer_host(req) or "unknown"
+        if pair_fail_peer.blocked(peer) or pair_fail_global.blocked("*"):
+            raise HTTPException(429, "too many failed attempts; try again later", headers={"Retry-After": "300"})
+        body = await _read_limited_json(req, MAX_PAIR_BODY_BYTES)
+        token = body.get("token") if isinstance(body, dict) else None
+        if not isinstance(token, str) or not token.strip():
             raise HTTPException(400, "token required")
-        ok = agent.t.verify_openclaw_token(token)
-        if not ok:
+        if not agent.t.verify_openclaw_token(token.strip()):
+            pair_fail_peer.record_failure(peer)
+            pair_fail_global.record_failure("*")
             raise HTTPException(403, "invalid or expired token")
         return {"verified": True}
 
@@ -266,29 +396,53 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return JSONResponse(result)
 
     @app.post("/jobs")
-    async def create_job(body: JobBody):
-        payload = body.model_dump(exclude_none=True)
-        if not payload.get("id"):
+    async def create_job(req: Request):
+        """Public intake endpoint: anyone may order a brief.
+
+        Input is size-limited and restricted to ``PUBLIC_JOB_FIELDS`` (so internal
+        flags cannot be set), an existing job id cannot be re-submitted, and the
+        response carries only the checkout link / a sanitized decline: never costs,
+        margins, treasury state or other customers' data.
+        """
+        raw = await _read_limited_json(req, MAX_JOB_BODY_BYTES)
+        if not isinstance(raw, dict):
+            raise HTTPException(422, "request body must be a JSON object")
+        fields = {k: raw[k] for k in PUBLIC_JOB_FIELDS if raw.get(k) is not None}
+        for key, value in fields.items():
+            if isinstance(value, str) and len(value) > _MAX_FIELD_CHARS:
+                raise HTTPException(422, f"{key} is too long")
+        try:
+            payload = JobBody(**fields).model_dump(exclude_none=True)
+        except Exception:
+            raise HTTPException(422, "invalid job fields") from None
+        if payload.get("id"):
+            if not _JOB_ID_RE.fullmatch(payload["id"]):
+                raise HTTPException(422, "id must be 1-64 letters, digits, '_' or '-'")
+            if agent.t.get_job(payload["id"]):
+                raise HTTPException(409, "job id already exists; omit id to get a new one")
+        else:
             import uuid
 
             payload["id"] = "J" + uuid.uuid4().hex[:8]
         result = agent.enqueue_job(payload)
         _publish_status()
-        return JSONResponse(result)
+        return JSONResponse(public_job_result(result, payload["id"]))
 
     @app.get("/jobs/{job_id}")
-    def get_job(job_id: str):
+    def get_job(job_id: str, req: Request):
+        """Job status.  Anonymous callers (e.g. a customer returning from Stripe) get
+        the id and status only; the full row and metrics need the dashboard token."""
         row = agent.t.get_job(job_id)
         if not row:
             raise HTTPException(404, "job not found")
+        if not _has_dashboard_auth(req):
+            return public_job_view(row, cancelled=req.query_params.get("cancelled") == "1")
         metrics = agent.t.get_metrics(job_id)
         return {"job": dict(row), "metrics": metrics}
 
     def _is_local_request(request: Request | None) -> bool:
-        if request is None:
-            return False
-        client_host = getattr(request.client, "host", "") if request.client else ""
-        return client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+        """Local-only gate; see :func:`solvent.access.is_local_request`."""
+        return is_local_request(request)
 
     @app.get("/api/receipt/{job_id}")
     def get_receipt(job_id: str, token: str = "", request: Request = None):  # type: ignore[assignment]
