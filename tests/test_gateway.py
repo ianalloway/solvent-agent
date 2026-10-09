@@ -45,6 +45,36 @@ class TestGateway(unittest.TestCase):
         reply = self.gw.handle_inbound("telegram", "pairing-user-2", "/start")
         self.assertIn("TG-", reply)
 
+    def test_banned_user_is_refused_even_for_commands(self):
+        gateway._rate_limiter.ban("cli:banned-user", 3600, "abuse")
+        with patch("solvent.gateway.handle_message") as model:
+            for text in ("/status", "/help", "/quote topic | 50", "/unknown", "hello"):
+                reply = self.gw.handle_inbound("cli", "banned-user", text)
+                self.assertIn("blocked", reply)
+                self.assertNotIn("Balance", reply)
+            model.assert_not_called()
+
+    def test_unknown_slash_command_never_reaches_the_model(self):
+        with patch("solvent.gateway.handle_message") as model:
+            reply = self.gw.handle_inbound("cli", "u1", "/write me a 5000 word report")
+            self.assertIn("Unknown command", reply)
+            reply = self.gw.handle_inbound("cli", "u1", "/quote no budget given")
+            self.assertIn("Usage", reply)
+            model.assert_not_called()
+
+    def test_quote_counts_against_the_rate_limit_but_cheap_commands_do_not(self):
+        limiter = RateLimiter(db_path=":memory:", burst_limit=2)
+        with patch.object(gateway, "_rate_limiter", limiter), patch(
+            "solvent.gateway.handle_message", return_value="quoted"
+        ) as model:
+            replies = [self.gw.handle_inbound("cli", "u2", "/quote chips | 50") for _ in range(4)]
+            self.assertEqual(replies[:2], ["quoted", "quoted"])
+            self.assertTrue(all("Rate limit" in r for r in replies[2:]))
+            self.assertEqual(model.call_count, 2)
+
+            for _ in range(5):
+                self.assertIn("Balance", self.gw.handle_inbound("cli", "u2", "/status"))
+
     def test_notify_outbound(self):
         sent = []
 

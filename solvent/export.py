@@ -228,8 +228,44 @@ _TABLES = {
 }
 
 
+#: Free-text columns that can carry customer- or vendor-supplied strings. Only
+#: these are neutralised, so numeric columns stay numeric for the spreadsheet.
+_UNTRUSTED_TEXT_COLUMNS = {
+    "ledger": frozenset(
+        {"memo", "job_id", "vendor", "stripe_ref", "stripe_session_id", "stripe_link_id"}
+    ),
+    "jobs": frozenset(
+        {"id", "status", "topic", "customer_email", "current_stage", "error_reason", "deliverable_url"}
+    ),
+    "metrics": frozenset({"job_id", "decline_reason", "block_rule"}),
+    "customers": frozenset({"email"}),
+}
+
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+_LEADING_NOISE = re.compile(r"^[\s\x00-\x1f\x7f\u200b-\u200f\u2060\ufeff]*")
+
+
+def neutralise_cell(value: Any) -> Any:
+    """Stop a spreadsheet from evaluating a text cell as a formula.
+
+    A string whose first significant character (after any leading whitespace
+    or control characters) is ``= + - @``, or that starts with a tab or
+    carriage return, is prefixed with a single quote. Non-strings pass through.
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    significant = _LEADING_NOISE.sub("", value, count=1)
+    if value.startswith(_FORMULA_TRIGGERS) or significant.startswith(_FORMULA_TRIGGERS):
+        return "'" + value
+    return value
+
+
 def write_csv(data: dict[str, Any], out_dir: Path) -> list[Path]:
-    """Write one CSV per table; returns the files written."""
+    """Write one CSV per table; returns the files written.
+
+    Untrusted text columns are passed through `neutralise_cell` so a job topic
+    or memo like ``=HYPERLINK(...)`` is shown as text, not run as a formula.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for table, columns in _TABLES.items():
@@ -237,8 +273,14 @@ def write_csv(data: dict[str, Any], out_dir: Path) -> list[Path]:
         with path.open("w", encoding="utf-8", newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=list(columns), extrasaction="ignore")
             writer.writeheader()
+            text_columns = _UNTRUSTED_TEXT_COLUMNS.get(table, frozenset())
             for row in data[table]:
-                writer.writerow(row)
+                writer.writerow(
+                    {
+                        key: neutralise_cell(value) if key in text_columns else value
+                        for key, value in row.items()
+                    }
+                )
         written.append(path)
     return written
 

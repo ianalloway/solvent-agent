@@ -29,51 +29,50 @@ def _job_id_of(submitted: Any, validated: dict | None) -> str:
     for candidate in (validated, submitted):
         if isinstance(candidate, dict):
             job_id = candidate.get("id")
-            if isinstance(job_id, str) and job_id.strip():
+            if isinstance(job_id, str) and delivery.is_safe_job_id(job_id):
                 return job_id
     return "unknown"
 
 
-def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None, str | None]:
-    """Return (coerced_job, error_reason)."""
+def _coerce_job(job: Any) -> tuple[dict | None, str | None, str | None]:
+    """Field validation with no side effects.
+
+    Returns ``(coerced_job, error, recorded_reason)``; ``recorded_reason`` is
+    what the worker path stores on the job row for that error, or ``None`` when
+    the error has never been recorded.
+    """
     if not isinstance(job, dict):
-        return None, "job must be a dictionary"
+        return None, "job must be a dictionary", None
     job_id = job.get("id")
-    if not job_id or not isinstance(job_id, str):
-        return None, "missing or invalid job ID"
+    if not job_id or not isinstance(job_id, str) or not delivery.is_safe_job_id(job_id):
+        return None, "missing or invalid job ID", None
     try:
         job = dict(job)
         sanitise_job(job)
     except SOLVENTSecurityError as exc:
-        treasury.upsert_job(job_id, "failed", error_reason=str(exc))
-        return None, f"security violation: {exc}"
+        return None, f"security violation: {exc}", str(exc)
 
     # A job may name a product instead of pricing itself; the product fills in
     # the scope and list price, and everything below validates it as normal.
     try:
         job = apply_product(job)
     except UnknownProduct as exc:
-        treasury.upsert_job(job_id, "failed", error_reason=str(exc))
-        return None, str(exc)
+        return None, str(exc), str(exc)
 
     topic = job.get("topic")
     if not topic or not isinstance(topic, str) or not topic.strip():
-        treasury.upsert_job(job_id, "failed", error_reason="missing or blank topic")
-        return None, "missing or blank topic"
+        return None, "missing or blank topic", "missing or blank topic"
 
     budget_cents = job.get("budget_cents")
     if budget_cents is None:
-        treasury.upsert_job(job_id, "failed", error_reason="missing budget_cents")
-        return None, "missing budget_cents"
+        return None, "missing budget_cents", "missing budget_cents"
     try:
         budget_cents = int(float(budget_cents))
-        if budget_cents < 0 or budget_cents > 1_000_000:
-            treasury.upsert_job(job_id, "failed", error_reason="invalid budget")
-            return None, "invalid budget"
-        job["budget_cents"] = budget_cents
     except (ValueError, TypeError):
-        treasury.upsert_job(job_id, "failed", error_reason="budget_cents must be numeric")
-        return None, "budget_cents must be a valid numeric value"
+        return None, "budget_cents must be a valid numeric value", "budget_cents must be numeric"
+    if budget_cents < 0 or budget_cents > 1_000_000:
+        return None, "invalid budget", "invalid budget"
+    job["budget_cents"] = budget_cents
 
     for param, default_val in [
         ("est_tokens", 8_000),
@@ -85,18 +84,29 @@ def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None,
             val = default_val
         try:
             val = int(float(val))
-            if val < 0:
-                return None, f"{param} cannot be negative"
-            if param == "est_tokens" and val > 100_000:
-                return None, "est_tokens exceeds maximum limit"
-            if param in ("market_data_calls", "web_search_calls") and val > 50:
-                return None, f"{param} exceeds maximum limit"
-            job[param] = val
         except (ValueError, TypeError):
-            return None, f"{param} must be a valid numeric value"
+            return None, f"{param} must be a valid numeric value", None
+        if val < 0:
+            return None, f"{param} cannot be negative", None
+        if param == "est_tokens" and val > 100_000:
+            return None, "est_tokens exceeds maximum limit", None
+        if param in ("market_data_calls", "web_search_calls") and val > 50:
+            return None, f"{param} exceeds maximum limit", None
+        job[param] = val
 
     job.setdefault("customer_email", "client@example.com")
+    return job, None, None
 
+
+def coerce_job(job: Any) -> tuple[dict | None, str | None]:
+    """Validate and normalise a submitted job without writing anything."""
+    coerced, err, _recorded = _coerce_job(job)
+    return coerced, err
+
+
+def screen_and_record(job: dict, treasury: Treasury) -> tuple[dict | None, str | None]:
+    """Run the intake screen on a coerced job and record the outcome on its row."""
+    job_id = job["id"]
     # Commercial screen: duplicates, bursts, oversized orders, unreachable
     # customers. Runs before pricing, so a screened-out job costs nothing.
     screen = screen_job(job, treasury)
@@ -126,6 +136,17 @@ def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None,
         job_owner_session_id=job.get("job_owner_session_id"),
     )
     return job, None
+
+
+def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None, str | None]:
+    """Return (coerced_job, error_reason), recording failures on the job row."""
+    coerced, err, recorded = _coerce_job(job)
+    if err:
+        if recorded is not None:
+            treasury.upsert_job(job["id"], "failed", error_reason=recorded)
+        return None, err
+    assert coerced is not None
+    return screen_and_record(coerced, treasury)
 
 
 class StageRunner:

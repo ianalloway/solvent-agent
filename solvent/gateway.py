@@ -38,6 +38,11 @@ def notify(channel: str, external_id: str, text: str) -> None:
             pass
 
 
+#: Commands that answer from local state without calling the model; only these
+#: skip the per-user rate limit. Everything else, /quote included, is counted.
+RATE_EXEMPT_COMMANDS = frozenset({"/help", "/status", "/jobs"})
+
+
 def _rate_ok(user_key: str) -> bool:
     allowed, _reason = _rate_limiter.check(user_key)
     return allowed
@@ -56,10 +61,16 @@ class Gateway:
         *,
         user_label: str | None = None,
     ) -> str:
-        session = self.memory.get_or_create(channel, external_id, user_label)
-        is_command = text.strip().startswith("/")
+        user_key = f"{channel}:{external_id}"
+        if _rate_limiter.is_banned(user_key):
+            return "You are temporarily blocked from messaging this bot."
 
-        if not is_command and not _rate_ok(f"{channel}:{external_id}"):
+        session = self.memory.get_or_create(channel, external_id, user_label)
+        stripped = text.strip()
+        is_command = stripped.startswith("/")
+        command = stripped.split(maxsplit=1)[0].lower() if is_command else ""
+
+        if command not in RATE_EXEMPT_COMMANDS and not _rate_ok(user_key):
             return "Rate limit exceeded. Please wait before sending more messages."
 
         if channel == "telegram" and not pairing.is_allowed(external_id, user_label):
@@ -83,7 +94,7 @@ class Gateway:
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
 
-        if cmd == "/help":
+        if cmd in ("/help", "/start"):
             return (
                 "SOLVENT research business bot.\n"
                 "/status — treasury snapshot\n"
@@ -130,13 +141,14 @@ class Gateway:
                 port = 443
             return _qr.render_token(token, host=host, port=port)
 
-        if cmd == "/quote" and "|" in arg:
+        if cmd == "/quote":
+            if "|" not in arg:
+                return "Usage: /quote topic | 50.00"
             topic, budget_s = [x.strip() for x in arg.split("|", 1)]
             try:
                 cents = dollars_to_cents(budget_s)
             except ValueError:
                 return "Usage: /quote topic | 50.00"
-            from .chat import handle_message
 
             prompt = f"Quote a brief on '{topic}' with budget_cents={cents}. Use quote_brief tool."
             return handle_message(
@@ -147,9 +159,7 @@ class Gateway:
                 channel=channel,
             )
 
-        return handle_message(
-            session["id"], text, agent=self.agent, memory=self.memory, channel=channel
-        )
+        return f"Unknown command {cmd[:32]}. Send /help for the list of commands."
 
     def on_job_event(self, event: dict) -> None:
         """Push job lifecycle updates to sessions watching a job."""

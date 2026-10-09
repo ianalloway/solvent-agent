@@ -22,7 +22,7 @@ from collections.abc import Callable
 from .calibration import calibration_factor
 from .guardrails import Guardrails
 from .pricing import PricingPolicy
-from .stages import StageRunner, _job_id_of, validate_and_coerce_job
+from .stages import StageRunner, _job_id_of, coerce_job, screen_and_record
 from .stripe_client import StripeClient
 from .treasury import Treasury
 
@@ -79,10 +79,21 @@ class Solvent:
         return self._runner.advance_job(job_id)
 
     def enqueue_job(self, job: dict) -> dict:
-        """Validate and persist a job for async worker processing."""
-        validated, err = validate_and_coerce_job(job, self.t)
+        """Validate and persist a new job for async worker processing.
+
+        Invalid input is declined before anything is written. A valid job then
+        claims its id with an atomic insert, so a submission can never
+        overwrite or restart an existing job.
+        """
+        coerced, err = coerce_job(job)
         if err:
-            return self._emit(stage="declined", job_id=_job_id_of(job, validated), reason=err)
+            return self._emit(stage="declined", job_id=_job_id_of(job, None), reason=err)
+        assert coerced is not None
+        if not self.t.insert_job(coerced["id"], "received"):
+            return {"stage": "declined", "job_id": coerced["id"], "reason": "job id already exists"}
+        validated, err = screen_and_record(coerced, self.t)
+        if err:
+            return self._emit(stage="declined", job_id=coerced["id"], reason=err)
         assert validated is not None
         q = self._runner._stage_quote(validated)
         if q.get("stage") == "declined" or not q.get("accept"):

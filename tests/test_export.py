@@ -14,6 +14,7 @@ from solvent.export import (
     collect,
     format_summary,
     ledger_rows,
+    neutralise_cell,
     parse_period,
     period_summary,
     write_csv,
@@ -179,3 +180,50 @@ def test_format_summary_reports_the_close_and_the_files(treasury, tmp_path):
     assert "PERIOD CLOSE" in rendered
     assert "$49.00" in rendered
     assert "ledger.csv" in rendered
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "=HYPERLINK(\"http://evil.example\",\"x\")",
+        "+1+cmd|' /C calc'!A0",
+        "-2+3",
+        "@SUM(A1:A9)",
+        "\t=1+1",
+        "\r=1+1",
+        "   =1+1",
+        "\x00\u200b=1+1",
+    ],
+)
+def test_formula_like_text_is_neutralised(raw):
+    assert neutralise_cell(raw) == "'" + raw
+
+
+@pytest.mark.parametrize("value", ["a brief", "a@x.example", "", None, 4_900, -600, 12.5])
+def test_ordinary_values_pass_through(value):
+    assert neutralise_cell(value) == value
+
+
+def test_write_csv_neutralises_untrusted_text_but_keeps_numbers(tmp_path):
+    t = Treasury(path=tmp_path / "ledger.db")
+    t.seed(10_000)
+    t.upsert_job(
+        "J1",
+        "completed",
+        topic='=HYPERLINK("http://evil.example","open")',
+        budget_cents=4_900,
+        customer_email="a@x.example",
+    )
+    t.spend(600, "@SUM(1+1)", job_id="J1", vendor="-vendor")
+    write_csv(collect(t), tmp_path / "books")
+
+    with (tmp_path / "books" / "jobs.csv").open(encoding="utf-8") as fh:
+        job = next(csv.DictReader(fh))
+    assert job["topic"] == '\'=HYPERLINK("http://evil.example","open")'
+    assert job["budget_cents"] == "4900"
+
+    with (tmp_path / "books" / "ledger.csv").open(encoding="utf-8") as fh:
+        expense = next(r for r in csv.DictReader(fh) if r["kind"] == "expense")
+    assert expense["memo"] == "'@SUM(1+1)"
+    assert expense["vendor"] == "'-vendor"
+    assert expense["signed_cents"] == "-600"

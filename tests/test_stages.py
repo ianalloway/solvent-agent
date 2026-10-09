@@ -93,3 +93,17 @@ class TestStagesIdempotency(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_validation_rejects_job_ids_unsafe_for_html_or_paths(tmp_path):
+    from solvent.stages import validate_and_coerce_job
+    from solvent.treasury import Treasury
+
+    t = Treasury(path=tmp_path / "t.db")
+    for bad in ('<img src=x onerror="alert(1)">', "../../etc/passwd", "a b", ""):
+        job, err = validate_and_coerce_job(
+            {"id": bad, "topic": "t", "budget_cents": 4900, "customer_email": "a@x.example"}, t
+        )
+        assert job is None
+        assert err == "missing or invalid job ID"
+    assert t.list_jobs() == []
