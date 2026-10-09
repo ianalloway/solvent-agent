@@ -88,8 +88,11 @@ def fulfill(job: dict) -> dict:
             tool_ctx = retry_ctx
         # Both attempts were paid for, so both are billed.
         usage = {
-            key: (usage.get(key, 0) or 0) + (retry_usage.get(key, 0) or 0)
-            for key in set(usage) | set(retry_usage)
+            **{
+                key: (usage.get(key, 0) or 0) + (retry_usage.get(key, 0) or 0)
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            },
+            "estimated": bool(usage.get("estimated")) or bool(retry_usage.get("estimated")),
         }
 
     fulfillment_seconds = time.time() - started
@@ -129,7 +132,8 @@ def reconcile_cogs(quote, result: dict) -> dict:
     actual_margin = price - actual
     actual_margin_pct = round(100 * actual_margin / price, 1) if price else 0.0
     drift = actual - est
-    warning = drift > est * 0.15 if est > 0 else False
+    warning = abs(drift) > est * 0.15 if est > 0 else actual > 0
+    direction = "underestimated" if drift > 0 else "overestimated" if drift < 0 else "matched"
     return {
         "est_cost_cents": est,
         "actual_cost_cents": actual,
@@ -137,6 +141,7 @@ def reconcile_cogs(quote, result: dict) -> dict:
         "actual_margin_pct": actual_margin_pct,
         "margin_drift_cents": drift,
         "cost_warning": warning,
+        "cost_drift_direction": direction,
         "fulfillment_seconds": result.get("fulfillment_seconds", 0),
         "tool_calls": (tc.total_calls if (tc := result.get("tool_ctx")) else 0),
     }

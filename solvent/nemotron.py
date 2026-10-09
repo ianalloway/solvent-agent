@@ -356,6 +356,20 @@ def parse_tool_calls(text: str) -> list[tuple[str, dict]]:
 def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.ToolContext]:
     """Bounded tool-calling loop: plan → tools → final brief."""
     ctx = tools.ToolContext()
+    usage_totals = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "estimated": False,
+    }
+
+    def tracked_complete(system_prompt: str, user_prompt: str) -> tuple[str, dict]:
+        text, usage = complete(system_prompt, user_prompt)
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            usage_totals[key] += usage.get(key, 0) or 0
+        usage_totals["estimated"] = usage_totals["estimated"] or bool(usage.get("estimated"))
+        return text, usage
+
     live_search = bool(os.environ.get("SOLVENT_LIVE_SEARCH", "").strip() in ("1", "true", "yes"))
     notes: list[str] = []
     system = (
@@ -373,14 +387,14 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
     transcript = f"Research topic: {topic}\nClient context: {context}\n\nBegin research."
 
     for _round in range(tools.MAX_TOOL_ROUNDS):
-        text, usage = complete(system, transcript)
+        text, _ = tracked_complete(system, transcript)
         matches = parse_tool_calls(text)
 
         if not matches:
             # The model answered without tools: a finished brief ends the loop;
             # anything else gets one nudge toward synthesis.
             if "# " in text or "## " in text:
-                return text, usage, ctx
+                return text, usage_totals, ctx
             transcript += (
                 f"\n\nAssistant: {text}"
                 "\n\nWrite the final research brief now with markdown headings."
@@ -398,7 +412,7 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
                     name,
                     args,
                     ctx,
-                    lambda s, u: complete(s, u)[0],
+                    tracked_complete,
                     live_search=live_search,
                 )
             except (ValueError, RuntimeError):
@@ -422,5 +436,5 @@ def research_brief(topic: str, context: str = "n/a") -> tuple[str, dict, tools.T
         + f"\n\nNo more tools. Write the final decision-ready research brief for: {topic} "
         "with markdown headings."
     )
-    text, usage = complete(system, final_user)
-    return text, usage, ctx
+    text, _ = tracked_complete(system, final_user)
+    return text, usage_totals, ctx
