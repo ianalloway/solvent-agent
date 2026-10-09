@@ -79,9 +79,21 @@ class Solvent:
         return self._runner.advance_job(job_id)
 
     def enqueue_job(self, job: dict) -> dict:
-        """Validate and persist a job for async worker processing."""
+        """Validate and persist a new job for async worker processing.
+
+        The job id must be unused: the row is claimed with an atomic insert
+        first, so a submission can never overwrite or restart an existing job.
+        """
+        job_id = job.get("id") if isinstance(job, dict) else None
+        if isinstance(job_id, str) and job_id:
+            if not self.t.insert_job(job_id, "received"):
+                return {"stage": "declined", "job_id": job_id, "reason": "job id already exists"}
         validated, err = validate_and_coerce_job(job, self.t)
         if err:
+            if isinstance(job_id, str) and job_id:
+                row = self.t.get_job(job_id)
+                if row and row.get("status") == "received":
+                    self.t.upsert_job(job_id, "failed", error_reason=err)
             return self._emit(stage="declined", job_id=_job_id_of(job, validated), reason=err)
         assert validated is not None
         q = self._runner._stage_quote(validated)

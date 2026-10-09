@@ -486,19 +486,34 @@ class Treasury:
                 params.append(job_id)
                 conn.execute(f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", params)
             else:
-                cols = ["id", "status", "created_at", "updated_at"]
-                vals = [job_id, status, ts, ts]
-                for col in self._JOB_COLS:
-                    cols.append(col)
-                    val = kwargs.get(col)
-                    if col == "job_payload_json" and isinstance(val, dict):
-                        val = json.dumps(val)
-                    vals.append(val)
-                placeholders = ", ".join(["?"] * len(cols))
-                conn.execute(
-                    f"INSERT INTO jobs ({', '.join(cols)}) VALUES ({placeholders})",
-                    vals,
-                )
+                self._insert_job_row(conn, job_id, status, ts, kwargs, verb="INSERT")
+
+    def _insert_job_row(
+        self, conn: sqlite3.Connection, job_id: str, status: str, ts: float, kwargs: dict, *, verb: str
+    ) -> int:
+        cols = ["id", "status", "created_at", "updated_at"]
+        vals = [job_id, status, ts, ts]
+        for col in self._JOB_COLS:
+            cols.append(col)
+            val = kwargs.get(col)
+            if col == "job_payload_json" and isinstance(val, dict):
+                val = json.dumps(val)
+            vals.append(val)
+        placeholders = ", ".join(["?"] * len(cols))
+        cur = conn.execute(f"{verb} INTO jobs ({', '.join(cols)}) VALUES ({placeholders})", vals)
+        return cur.rowcount
+
+    def insert_job(self, job_id: str, status: str, **kwargs) -> bool:
+        """Create a new job row atomically; return False if the id is already taken.
+
+        Unlike `upsert_job` this never touches an existing record, so it is the
+        only write a fresh submission may make before it owns the row.
+        """
+        with self.lock(), self._conn() as conn, conn:
+            inserted = self._insert_job_row(
+                conn, job_id, status, time.time(), kwargs, verb="INSERT OR IGNORE"
+            )
+            return inserted == 1
 
     def get_job(self, job_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:

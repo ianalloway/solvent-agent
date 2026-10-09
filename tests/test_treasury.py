@@ -85,3 +85,12 @@ def test_margin_pct_is_zero_when_no_revenue(treasury):
     treasury.seed(10_000)
     assert treasury.revenue_cents() == 0
     assert treasury.margin_pct() == 0.0
+
+
+def test_insert_job_never_overwrites_an_existing_row(treasury):
+    assert treasury.insert_job("J-new", "received", topic="first") is True
+    treasury.upsert_job("J-new", "in_progress")
+    assert treasury.insert_job("J-new", "received", topic="second") is False
+    row = treasury.get_job("J-new")
+    assert row["status"] == "in_progress"
+    assert row["topic"] == "first"
