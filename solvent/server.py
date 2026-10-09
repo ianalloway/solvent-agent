@@ -98,11 +98,10 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         hub.publish("status", {"data": data})
 
     def _on_agent_event(event: dict) -> None:
-        agent._capture_event(event)
         data = _refresh_status()
         hub.publish("agent_event", {"event": event, "data": data})
 
-    agent._runner.on_event = _on_agent_event
+    # The runner already calls agent._capture_event, which logs then forwards here.
     agent.on_event = _on_agent_event
 
     def _dashboard_outbound(external_id: str, text: str) -> None:
