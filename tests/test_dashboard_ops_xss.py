@@ -102,3 +102,27 @@ def test_client_renders_job_fields_as_text_not_markup(tmp_path, monkeypatch):
         assert "metaHTML" not in body
         assert "container.innerHTML = html" not in body
         assert "onclick=" not in body
+
+
+def test_rendered_inline_scripts_parse_as_javascript(tmp_path, monkeypatch):
+    import re
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    monkeypatch.setenv("SOLVENT_HOME", str(tmp_path))
+    monkeypatch.setattr(dashboard, "OUT", tmp_path / "treasury_dashboard.html")
+    page = dashboard.render(_snapshot(), []).read_text()
+
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+    assert scripts
+    for index, script in enumerate(scripts):
+        path = tmp_path / f"inline-{index}.js"
+        path.write_text(script, encoding="utf-8")
+        result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+    assert "html.split(/\\n\\n+/)" in page

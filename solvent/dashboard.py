@@ -1518,13 +1518,13 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       html = html.replace(/\\*(.*?)\\*/g, '<em>$1</em>');
 
       // Double line breaks to paragraphs
-      const paragraphs = html.split(/\n\n+/);
+      const paragraphs = html.split(/\\n\\n+/);
       html = paragraphs.map(p => {{
         p = p.trim();
         if (!p) return '';
         if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<li')) return p;
-        return `<p>${{p.replace(/\n/g, '<br>')}}</p>`;
-      }}).join('\n');
+        return `<p>${{p.replace(/\\n/g, '<br>')}}</p>`;
+      }}).join("\\n");
 
       return html;
     }}
