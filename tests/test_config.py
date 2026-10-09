@@ -4,11 +4,9 @@ import json
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from solvent.config import (
-    CONFIG_PATH,
     SolventConfig,
     apply_config,
     config_exists,
@@ -16,22 +14,17 @@ from solvent.config import (
     load_config,
     save_config,
 )
+from solvent.paths import config_path
 
 
 class TestConfig(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
-        self._orig_path = CONFIG_PATH
-        import solvent.config as cfg_mod
-
-        cfg_mod.CONFIG_DIR = Path(self._tmpdir.name) / ".solvent"
-        cfg_mod.CONFIG_PATH = cfg_mod.CONFIG_DIR / "config.json"
+        self._home_patch = mock.patch.dict(os.environ, {"SOLVENT_HOME": self._tmpdir.name})
+        self._home_patch.start()
 
     def tearDown(self):
-        import solvent.config as cfg_mod
-
-        cfg_mod.CONFIG_DIR = self._orig_path.parent
-        cfg_mod.CONFIG_PATH = self._orig_path
+        self._home_patch.stop()
         self._tmpdir.cleanup()
 
     def test_default_config(self):
@@ -90,9 +83,7 @@ class TestConfig(unittest.TestCase):
 
     def test_saved_json_shape(self):
         save_config(default_config())
-        import solvent.config as cfg_mod
-
-        data = json.loads(cfg_mod.CONFIG_PATH.read_text())
+        data = json.loads(config_path("config.json").read_text())
         self.assertIn("onboarded", data)
         self.assertIn("interaction_mode", data)
 

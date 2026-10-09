@@ -323,6 +323,12 @@ to widen the policy):
 }
 ```
 
+The `.solvent` configuration directory is inside the resolved runtime home:
+the source checkout by default, or `$SOLVENT_HOME` when set. Run
+`solvent guardrails` or `solvent doctor` to see the active spend-policy path.
+If an older installation kept its `.solvent` files in a different launch
+directory, move them into this resolved directory before upgrading.
+
 `python3 -m solvent guardrails` prints the policy in force, how much of each
 rolling window is used, per-vendor exposure against its cap, and every spend
 the policy blocked.
@@ -550,7 +556,7 @@ With both keys set:
 
 | Variable | Purpose |
 |---|---|
-| `SOLVENT_HOME` | Where runtime data (treasury DB, reports, dashboard, logs) is stored. Defaults to the repo when run from a checkout, else `~/.solvent` |
+| `SOLVENT_HOME` | Where runtime data and `.solvent` configuration (treasury DB, policies, reports, dashboard, logs) are stored. Defaults to the repo when run from a checkout, else `~/.solvent` |
 | `NVIDIA_API_KEY` | Live Nemotron inference (`nvapi-...`) |
 | `STRIPE_API_KEY` | Stripe test key (`sk_test_...`) |
 | `STRIPE_WEBHOOK_SECRET` | Optional webhook verification |
