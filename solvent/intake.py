@@ -29,9 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .paths import config_path
 from .treasury import Treasury, fmt
-
-POLICY_OVERRIDE_PATH = Path(".solvent/intake_policy.json")
 
 #: Prefix on the decline reason, so intake blocks are greppable in the ledger,
 #: the event log, and `solvent jobs`.
@@ -78,7 +77,7 @@ class Screen:
 def load_policy(path: Path | None = None) -> IntakePolicy:
     """Load the intake policy; anything unreadable falls back to defaults."""
     policy = IntakePolicy()
-    override = path or POLICY_OVERRIDE_PATH
+    override = path if path is not None else config_path("intake_policy.json")
     if not override.is_file():
         return policy
     try:

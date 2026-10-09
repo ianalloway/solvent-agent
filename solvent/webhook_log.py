@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .paths import config_path
+
 
 class WebhookLog:
     """SQLite-backed durable log of Stripe webhook events."""
@@ -41,7 +43,9 @@ class WebhookLog:
         "CREATE INDEX IF NOT EXISTS idx_wh_received_at ON webhook_events (received_at)",
     ]
 
-    def __init__(self, db_path: str = ".solvent/webhooks.db") -> None:
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        if db_path is None:
+            db_path = config_path("webhooks.db")
         if db_path == ":memory:":
             self._db_path = ":memory:"
         else:

@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .paths import config_path
 from .treasury import REFUND_VENDOR
 
 if TYPE_CHECKING:
@@ -72,10 +73,6 @@ class SpendPolicy:
         return self.vendor_daily_overrides.get(vendor, self.per_vendor_daily_cents)
 
 
-#: Operators tune the spend policy here rather than in code, mirroring
-#: ``.solvent/pricing_overrides.json`` on the pricing side.
-POLICY_OVERRIDE_PATH = Path(".solvent/spend_policy.json")
-
 _SCALAR_LIMITS = (
     "max_txn_cents",
     "daily_budget_cents",
@@ -93,7 +90,7 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     back to the built-in defaults.
     """
     policy = SpendPolicy()
-    override_path = path or POLICY_OVERRIDE_PATH
+    override_path = path if path is not None else config_path("spend_policy.json")
     if not override_path.is_file():
         return policy
     try:

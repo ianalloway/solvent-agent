@@ -15,6 +15,8 @@ import sqlite3
 import time
 from pathlib import Path
 
+from .paths import config_path
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS rate_events (
     user_key TEXT NOT NULL,
@@ -35,7 +37,7 @@ class RateLimiter:
 
     def __init__(
         self,
-        db_path: str = ".solvent/rate_limits.db",
+        db_path: str | Path | None = None,
         burst_limit: int = 5,
         burst_window: int = 60,
         hourly_limit: int = 30,
@@ -46,6 +48,8 @@ class RateLimiter:
         self.hourly_limit = hourly_limit
         self.daily_limit = daily_limit
 
+        if db_path is None:
+            db_path = config_path("rate_limits.db")
         if db_path == ":memory:":
             self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         else:

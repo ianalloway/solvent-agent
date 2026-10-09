@@ -5,18 +5,17 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-from pathlib import Path
 
+from .paths import config_path
 from .treasury import Treasury
-
-ALLOWLIST_PATH = Path(".solvent/telegram_allowlist.json")
 
 
 def _load_allowlist() -> set[str]:
-    if not ALLOWLIST_PATH.is_file():
+    path = config_path("telegram_allowlist.json")
+    if not path.is_file():
         return set()
     with contextlib.suppress(json.JSONDecodeError, OSError):
-        data = json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, list):
             return {str(x) for x in data}
     return set()
@@ -56,8 +55,9 @@ def approve(code: str) -> dict | None:
         return None
     allow = _load_allowlist()
     allow.add(str(row["user_id"]))
-    ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ALLOWLIST_PATH.write_text(json.dumps(sorted(allow), indent=2) + "\n", encoding="utf-8")
+    path = config_path("telegram_allowlist.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sorted(allow), indent=2) + "\n", encoding="utf-8")
     return row
 
 

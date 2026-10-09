@@ -58,14 +58,8 @@ class TestStripeClientSimulate(unittest.TestCase):
 class TestStripeClientLive(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
-        self._catalog = Path(self._tmpdir.name) / "stripe_catalog.json"
-        self._webhook_cache = Path(self._tmpdir.name) / "stripe_payments.json"
-        self._patch_paths = mock.patch.multiple(
-            "solvent.stripe_client",
-            CATALOG_PATH=self._catalog,
-            WEBHOOK_CACHE_PATH=self._webhook_cache,
-        )
-        self._patch_paths.start()
+        self._catalog = Path(self._tmpdir.name) / ".solvent" / "stripe_catalog.json"
+        self._webhook_cache = Path(self._tmpdir.name) / ".solvent" / "stripe_payments.json"
         self._has_stripe = mock.patch("solvent.stripe_client._HAS_STRIPE", True)
         self._has_stripe.start()
         self._env = mock.patch.dict(
@@ -75,6 +69,7 @@ class TestStripeClientLive(unittest.TestCase):
                 "SOLVENT_FORCE_STRIPE_SIMULATE": "",
                 "STRIPE_PAYMENT_POLL_TIMEOUT": "0.1",
                 "STRIPE_PAYMENT_POLL_INTERVAL": "0.01",
+                "SOLVENT_HOME": self._tmpdir.name,
             },
             clear=False,
         )
@@ -88,7 +83,6 @@ class TestStripeClientLive(unittest.TestCase):
         self._stripe_mod.stop()
         self._has_stripe.stop()
         self._env.stop()
-        self._patch_paths.stop()
         self._tmpdir.cleanup()
 
     def test_refuses_live_key(self):

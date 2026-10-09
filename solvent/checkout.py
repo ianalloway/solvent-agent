@@ -28,10 +28,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import delivery
+from .paths import config_path
 from .treasury import Treasury, fmt
-
-#: Where an operator tunes the chase, mirroring `.solvent/spend_policy.json`.
-POLICY_OVERRIDE_PATH = Path(".solvent/checkout_policy.json")
 
 #: Job status for a checkout nobody paid.
 EXPIRED_STATUS = "expired"
@@ -56,7 +54,7 @@ _NUMERIC_FIELDS = ("reminder_after_hours", "max_reminders", "expire_after_hours"
 def load_policy(path: Path | None = None) -> CheckoutPolicy:
     """Load the chase policy, falling back to defaults on anything unreadable."""
     policy = CheckoutPolicy()
-    override = path or POLICY_OVERRIDE_PATH
+    override = path if path is not None else config_path("checkout_policy.json")
     if not override.is_file():
         return policy
     try:

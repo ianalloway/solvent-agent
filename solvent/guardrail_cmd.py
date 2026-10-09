@@ -15,6 +15,7 @@ import sys
 import time
 
 from .guardrails import Guardrails, SpendPolicy, load_spend_policy
+from .paths import config_path
 from .treasury import Treasury, fmt
 
 
@@ -38,7 +39,10 @@ def gather(treasury: Treasury | None = None, policy: SpendPolicy | None = None) 
         for ev in t.list_events(limit=500)
         if ev.get("stage") == "spend_blocked"
     ]
+    policy_path = config_path("spend_policy.json")
     return {
+        "policy_path": str(policy_path),
+        "policy_override_present": policy_path.is_file(),
         "policy": {
             "vendor_allowlist": list(guard.policy.vendor_allowlist),
             "max_txn_cents": guard.policy.max_txn_cents,
@@ -66,6 +70,8 @@ def format_guardrails(data: dict) -> str:
         "",
         "  SPEND GUARDRAILS",
         f"  {'─' * 62}",
+        f"  Policy file          {data['policy_path']}"
+        f" ({'override' if data['policy_override_present'] else 'built-in defaults'})",
         f"  Per transaction      max {fmt(policy['max_txn_cents'])}",
         f"  Rolling 24h budget   {fmt(data['spent_24h_cents'])} of "
         f"{fmt(policy['daily_budget_cents'])} used "
