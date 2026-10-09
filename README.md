@@ -2,22 +2,90 @@
 
 # 🪙 SOLVENT
 
-**An AI agent that runs as a profitable, self-funding business.**
-
-It sells research briefs. It collects payment on Stripe. It spends its own revenue to provision the compute it needs. And it refuses any job that doesn't clear a margin.
-
-> **Demo by default.** `pip install solvent-agent` and `solvent` run an **offline, zero-key simulation** of that loop. Dollar figures in the demo are illustrative — **not production revenue**. Stripe test-mode Payment Links and live NVIDIA Nemotron are opt-in; see [Make It Real](#-make-it-real).
+**A Python agent that runs a tiny research business: it quotes each job against its own costs, gets paid through Stripe, pays its own vendor bills within a spend policy, and declines work that would lose money.**
 
 [![CI](https://github.com/ianalloway/solvent-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ianalloway/solvent-agent/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/solvent-agent.svg)](https://pypi.org/project/solvent-agent/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Zero dependencies](https://img.shields.io/badge/core%20deps-0-brightgreen)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Hackathon](https://img.shields.io/badge/NVIDIA%20%C3%97%20Stripe%20Hackathon-2024-76b900?logo=nvidia&logoColor=white)](https://www.nvidia.com)
 [![Stars](https://img.shields.io/github/stars/ianalloway/solvent-agent?style=social)](https://github.com/ianalloway/solvent-agent/stargazers)
 
 [**Quick Start**](#-quick-start) · [**How It Works**](#-how-it-works) · [**Live Demo**](#-the-demo) · [**Make It Real**](#-make-it-real)
 
+![SOLVENT in a terminal: the margin gate declines an $8 job with a counter-offer, then the offline demo runs five jobs end to end](docs/demo.gif)
+
+<sub>Recorded from the real CLI with no API keys and no network access: the Stripe checkout links and Nemotron output are the built-in offline stubs, and the dollar figures are simulated.</sub>
+
 </div>
+
+> **Demo by default.** With no keys set, `solvent` runs an **offline, zero-key simulation** of the whole loop. Dollar figures in the demo are illustrative, **not production revenue**. Stripe test-mode Payment Links and live NVIDIA Nemotron are opt-in; see [Make It Real](#-make-it-real).
+
+---
+
+## 🚀 Quick Start
+
+**30 seconds. No API keys. No dependencies beyond Python 3.10+.**
+
+```bash
+pipx install solvent-agent      # or: pip install solvent-agent
+solvent --no-onboard            # run the offline demo batch (skip the first-run wizard)
+solvent finance                 # income statement, unit economics, runway
+```
+
+Then open the dashboard path the demo prints (`~/.solvent/treasury_dashboard.html`
+for a pip/pipx install, or under `$SOLVENT_HOME` if you set it).
+
+> **Newer commands.** PyPI currently ships 0.1.0. Commands added since then (`quote`,
+> `products`, `backlog`, `customers`, `costs`, `simulate`, `guardrails`, …) need an
+> install from `main` until the next release:
+>
+> ```bash
+> pipx install git+https://github.com/ianalloway/solvent-agent
+> solvent quote "Edge-AI in industrial robotics" --budget 8   # dry-run the margin gate
+> ```
+
+| Command | What it does |
+|---|---|
+| `solvent` | batch demo (onboarding wizard on first run; `--no-onboard` skips it) |
+| `solvent init` | create data dirs, treasury DB, and workspace files |
+| `solvent status` | live treasury summary (`--watch` to auto-refresh) |
+| `solvent finance` | income statement, unit economics, runway, forecast |
+| `solvent doctor` | diagnostics: API keys, extras, workspace files |
+| `solvent serve` | webhooks + job API + hosted dashboard (`[serve]` extra) |
+| `solvent worker` | resume incomplete jobs / process the queue |
+| `solvent jobs` | list / show / retry / cancel jobs (`jobs --help`) |
+| `solvent help` | every command |
+
+Or run from a source checkout:
+
+```bash
+git clone https://github.com/ianalloway/solvent-agent.git
+cd solvent-agent
+python3 run_demo.py              # batch demo (onboarding wizard on first run)
+python3 run_demo.py --no-onboard # skip wizard when scripting
+pip install -e .                 # editable install from a checkout
+```
+
+The demo runs a batch of 5 sample analyst jobs (4 accepted, 1 declined by the margin gate) through margin gating, simulated Stripe payment, Nemotron fulfilment (offline stub), guardrail screening, and live P&L, in about 30 seconds.
+
+Third-party features are **opt-in extras**, so install only what you need:
+
+```bash
+pip install "solvent-agent[stripe]"    # real Stripe test-mode payment links
+pip install "solvent-agent[serve]"     # FastAPI webhooks + hosted briefs
+pip install "solvent-agent[telegram]"  # Telegram bot channel
+pip install "solvent-agent[qr]"        # scannable QR codes for OpenClaw pairing
+pip install "solvent-agent[dev]"       # pytest, for running the test suite
+pip install "solvent-agent[all]"       # everything
+```
+
+When run from a source checkout, runtime data stays under `<repo>/data`. When
+installed elsewhere, SOLVENT writes to `~/.solvent` instead of into
+`site-packages`; override either with `SOLVENT_HOME=/path/to/dir`.
+
+> **First run**: A short onboarding wizard asks you to choose a model, interaction mode, and whether to enable Stripe test mode. Preferences are saved to `.solvent/config.json` and never committed.
 
 ---
 
@@ -32,70 +100,9 @@ SOLVENT closes the full loop:
   → Agent pays its own vendor bills → P&L booked → balance sheet grows
 ```
 
-Every job is **profit-gated before it starts**. Unprofitable work is declined without touching Stripe. Vendor payments are screened by a NemoClaw-style policy sandbox. The agent literally cannot spend more than it earns.
+Every job is **profit-gated before it starts**. Unprofitable work is declined without touching Stripe. Vendor payments are screened by a NemoClaw-style policy sandbox, so the agent spends only out of revenue it has already collected.
 
 ---
-
-## 🚀 Quick Start
-
-**Zero dependencies. No API keys. Works right now.**
-
-Install from PyPI:
-
-```bash
-pip install solvent-agent
-# or, for an isolated CLI install:
-pipx install solvent-agent
-
-solvent                          # run the demo
-solvent finance                  # financial report (income, runway, forecast)
-solvent doctor                   # stack diagnostics (keys, extras, workspace)
-solvent --help                   # list all commands
-solvent --version
-```
-
-| Command | What it does |
-|---|---|
-| `solvent` | batch demo (onboarding wizard on first run) |
-| `solvent init` | create data dirs, treasury DB, and workspace files |
-| `solvent status` | live treasury summary (`--watch` to auto-refresh) |
-| `solvent finance` | income statement, unit economics, runway, forecast |
-| `solvent doctor` | diagnostics: API keys, extras, workspace files |
-| `solvent serve` | webhooks + job API + hosted dashboard (`[serve]` extra) |
-| `solvent worker` | resume incomplete jobs / process the queue |
-| `solvent jobs` | list / show / retry / cancel jobs (`jobs --help`) |
-
-Or clone and run from source:
-
-```bash
-git clone https://github.com/ianalloway/solvent-agent.git
-cd solvent-agent
-python3 run_demo.py              # batch demo (onboarding wizard on first run)
-python3 run_demo.py --no-onboard # skip wizard when scripting
-pip install -e .                 # editable install from a checkout
-```
-
-The agent will run a full batch of 4 analyst jobs — complete with margin gating, Stripe payment simulation, NVIDIA Nemotron fulfillment, guardrail screening, and live P&L — in about 30 seconds.
-
-Third-party features are **opt-in extras** — install only what you need:
-
-```bash
-pip install "solvent-agent[stripe]"    # real Stripe test-mode payment links
-pip install "solvent-agent[serve]"     # FastAPI webhooks + hosted briefs
-pip install "solvent-agent[telegram]"  # Telegram bot channel
-pip install "solvent-agent[qr]"        # scannable QR codes for OpenClaw pairing
-pip install "solvent-agent[dev]"       # pytest, for running the test suite
-pip install "solvent-agent[all]"       # everything
-```
-
-When run from a source checkout, runtime data stays under `<repo>/data`. When
-installed elsewhere, SOLVENT writes to `~/.solvent` instead of into
-`site-packages` — override either with `SOLVENT_HOME=/path/to/dir`.
-
-> **First run**: A short onboarding wizard asks you to choose a model, interaction mode, and whether to enable Stripe test mode. Preferences are saved to `.solvent/config.json` and never committed.
-
----
-
 ## 📊 The Demo
 
 After a run, the CLI prints the dashboard path. Open it in a browser:
