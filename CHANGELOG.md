@@ -4,6 +4,33 @@ All notable changes to SOLVENT are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+- **Stripe webhooks are verified before anything is logged or stored.**
+  `POST /webhooks/stripe` now checks the `Stripe-Signature` HMAC first and
+  rejects bad, stale or missing signatures with `400` and no trace in the
+  webhook log. With no `STRIPE_WEBHOOK_SECRET` configured it fails closed (`503`).
+  Only verified events are stored, an event id is stored once (a repeated id is
+  acknowledged and never overwrites the stored payload), and a failed event can
+  still be retried by Stripe.
+- **Webhook admin routes require the dashboard token.** `GET /api/webhooks`,
+  `GET /api/webhooks/stats` and `POST /api/webhooks/{event_id}/replay` now need
+  `SOLVENT_DASHBOARD_TOKEN` (`X-Solvent-Dashboard-Token` header or `?token=`),
+  like the rest of the dashboard API. The list route no longer returns raw
+  payloads (customer emails). Replay re-dispatches the stored, previously
+  verified event internally; rows written before this release are never
+  replayable.
+- **Dollar amounts are rounded to cents, not truncated.** One shared helper,
+  `solvent.money.dollars_to_cents`, replaces `int(x * 100)` in `/quote`, chat
+  budgets, `/fund`, interactive budgets, `--seed`, and `finance --reserve`
+  ($19.99 was 1998 cents; it is now 1999).
+
+### Changed
+- `WebhookLog.record()` no longer replaces an existing event id; it returns
+  `False` instead. Stored events carry a `verified` flag (existing databases are
+  migrated in place, with old rows marked unverified).
+
 ## [0.2.0] - 2026-10-09
 
 This is everything on `main` since the 0.1.0 PyPI upload on 2026-09-04.

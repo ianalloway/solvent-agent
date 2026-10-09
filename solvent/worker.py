@@ -6,6 +6,7 @@ import time
 
 from .agent import Solvent
 from .backlog import prioritise
+from .money import dollars_to_cents
 from .checkout import sweep as sweep_checkouts
 from .queue import list_claimable, resume_incomplete_jobs
 
@@ -58,7 +59,7 @@ def main():
     run_worker(
         once=args.once,
         poll_interval=args.poll_interval,
-        seed_cents=int(args.seed * 100),
+        seed_cents=dollars_to_cents(args.seed),
         fresh=not args.keep_balance,
     )
 

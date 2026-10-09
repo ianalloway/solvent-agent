@@ -39,12 +39,51 @@ class TestWebhookLog(unittest.TestCase):
         rows = self.wl.list_recent()
         self.assertNotEqual(rows[0]["received_at_fmt"], "")
 
-    def test_record_idempotent_via_replace(self):
-        self.wl.record("evt_dup", "ping", b"first", "received")
-        self.wl.record("evt_dup", "ping", b"second", "processed")
+    def test_record_never_overwrites_existing_event_id(self):
+        self.assertTrue(self.wl.record("evt_dup", "ping", b"first", "received", verified=True))
+        self.assertFalse(self.wl.record("evt_dup", "ping", b"second", "processed"))
         rows = self.wl.list_recent()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["status"], "processed")
+        self.assertEqual(rows[0]["status"], "received")
+        self.assertEqual(self.wl.get_payload("evt_dup"), b"first")
+        self.assertTrue(self.wl.is_verified("evt_dup"))
+
+    def test_record_defaults_to_unverified(self):
+        self.wl.record("evt_u", "ping", b"u", "received")
+        self.assertFalse(self.wl.is_verified("evt_u"))
+        self.assertFalse(self.wl.is_verified("evt_missing"))
+
+    def test_list_public_omits_payload(self):
+        self.wl.record("evt_pub", "ping", b'{"email":"a@b.com"}', "received", verified=True)
+        rows = self.wl.list_public()
+        self.assertEqual(rows[0]["event_id"], "evt_pub")
+        self.assertNotIn("payload", rows[0])
+
+    def test_legacy_database_rows_are_not_verified(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "legacy.db"
+            conn = sqlite3.connect(db)
+            conn.execute(
+                "CREATE TABLE webhook_events (event_id TEXT PRIMARY KEY, "
+                "event_type TEXT NOT NULL DEFAULT '', payload BLOB NOT NULL DEFAULT (x''), "
+                "received_at REAL NOT NULL DEFAULT 0.0, status TEXT NOT NULL DEFAULT 'received', "
+                "error TEXT NOT NULL DEFAULT '')"
+            )
+            conn.execute("INSERT INTO webhook_events (event_id, payload) VALUES ('evt_old', x'7b7d')")
+            conn.commit()
+            conn.close()
+            wl = WebhookLog(db_path=db)
+            self.assertEqual(wl.get_payload("evt_old"), b"{}")
+            self.assertFalse(wl.is_verified("evt_old"))
+
+    def test_mark_skipped(self):
+        self.wl.record("evt_s", "ping", b"s", "received", verified=True)
+        self.wl.mark_skipped("evt_s")
+        self.assertEqual(self.wl.get_status("evt_s"), "skipped")
 
     def test_mark_processed_changes_status(self):
         self.wl.record("evt_p", "charge.captured", b"p", "received")

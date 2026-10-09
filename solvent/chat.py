@@ -11,6 +11,7 @@ import uuid
 from . import nemotron, tools
 from .agent import Solvent
 from .memory import SessionMemory
+from .money import dollars_to_cents
 from .pricing import quote
 from .security import InputValidationError, PromptInjectionError, sanitise_prompt_input
 from .treasury import fmt
@@ -145,7 +146,7 @@ def _merge_commission_slots(agent: Solvent, session_id: str, text: str) -> dict:
         pending.setdefault("topic", text.strip()[:200])
     m = _BUDGET_RE.search(text)
     if m:
-        pending["budget_cents"] = int(float(m.group(1)) * 100)
+        pending["budget_cents"] = dollars_to_cents(m.group(1))
     em = _EMAIL_RE.search(text)
     if em:
         pending["customer_email"] = em.group(0)

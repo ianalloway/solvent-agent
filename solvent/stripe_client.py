@@ -22,6 +22,7 @@ import uuid
 
 from .paths import config_path
 from .security import (
+    WebhookAuthError,
     check_event_replay,
     validate_catalog_schema,
     validate_email,
@@ -36,6 +37,21 @@ try:
 except Exception:
     stripe = None  # type: ignore
     _HAS_STRIPE = False
+
+def _event_to_dict(event) -> dict:
+    """Plain-dict view of a Stripe event.
+
+    Newer stripe-python releases return a ``StripeObject`` that is not a dict
+    (``event.get`` raises), older ones return a dict subclass.
+    """
+    if type(event) is dict:
+        return event
+    for name in ("to_dict_recursive", "to_dict"):
+        fn = getattr(event, name, None)
+        if callable(fn):
+            return fn()
+    return dict(event)
+
 
 PRODUCT_NAME = "SOLVENT Research Brief"
 DEFAULT_POLL_INTERVAL = 2.0
@@ -150,6 +166,35 @@ class StripeClient:
         self._webhook_payments[plink_id] = payment
         self._save_webhook_cache()
 
+    def verify_webhook(self, payload: bytes, sig_header: str) -> dict:
+        """Authenticate a raw webhook request and return the parsed event.
+
+        AUTH: fails closed.  The HMAC-SHA256 signature is checked against
+        ``STRIPE_WEBHOOK_SECRET`` *before* the payload is parsed, logged or
+        stored.  There is no unsigned mode: if no webhook secret is configured
+        every request is rejected.
+
+        Raises:
+            WebhookAuthError: missing secret/signature, bad or stale signature,
+                or a verified body that is not a JSON event object with an id.
+        """
+        if not self.webhook_secret:
+            raise WebhookAuthError("webhook secret not configured")
+        verify_webhook_signature(payload, sig_header, self.webhook_secret)
+        if self.live and _HAS_STRIPE:
+            event = _event_to_dict(
+                stripe.Webhook.construct_event(payload, sig_header, self.webhook_secret)
+            )
+        else:
+            try:
+                event = json.loads(payload)
+            except (ValueError, UnicodeDecodeError) as exc:
+                raise WebhookAuthError("webhook body is not valid JSON") from exc
+        event_id = event.get("id") if isinstance(event, dict) else None
+        if not isinstance(event_id, str) or not event_id or len(event_id) > 255:
+            raise WebhookAuthError("webhook event has no valid id")
+        return event
+
     def process_webhook(self, payload: bytes, sig_header: str, treasury=None) -> dict | None:
         """Validate checkout.session.completed and cache verified payment.
 
@@ -159,11 +204,17 @@ class StripeClient:
         if not self.live or not self.webhook_secret:
             return None
 
-        verify_webhook_signature(payload, sig_header, self.webhook_secret)
-        event = stripe.Webhook.construct_event(payload, sig_header, self.webhook_secret)
-        event_id = event.get("id", "")
-        check_event_replay(event_id)
+        event = self.verify_webhook(payload, sig_header)
+        check_event_replay(event.get("id", ""))
+        return self.apply_webhook_event(event, treasury=treasury)
 
+    def apply_webhook_event(self, event, treasury=None) -> dict | None:
+        """Apply an event that has ALREADY been authenticated.
+
+        Internal entry point: it does no signature check, so it must only be
+        given events from :meth:`verify_webhook` or from the webhook log's
+        verified rows (operator replay).  Never expose it to request input.
+        """
         if event["type"] != "checkout.session.completed":
             return None
         session = event["data"]["object"]

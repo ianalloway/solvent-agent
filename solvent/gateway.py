@@ -10,6 +10,7 @@ from . import pairing
 from .agent import Solvent
 from .chat import format_job_notification, handle_message
 from .memory import SessionMemory
+from .money import dollars_to_cents
 from .rate_limit import RateLimiter
 from .treasury import fmt
 
@@ -125,7 +126,7 @@ class Gateway:
         if cmd == "/quote" and "|" in arg:
             topic, budget_s = [x.strip() for x in arg.split("|", 1)]
             try:
-                cents = int(float(budget_s) * 100)
+                cents = dollars_to_cents(budget_s)
             except ValueError:
                 return "Usage: /quote topic | 50.00"
             from .chat import handle_message
