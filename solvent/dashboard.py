@@ -31,6 +31,16 @@ def h(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
+def _script_json(value: object) -> str:
+    """JSON-encode for an inline <script> block without allowing tag breakout."""
+    return (
+        json.dumps(value)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+
+
 def safe_href(value: object) -> str:
     """Return an escaped HTTP(S) URL or a harmless placeholder."""
     url = str(value)
@@ -177,14 +187,18 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
         if stuck:
             ops_html += "<h3>Stuck jobs</h3><ul>"
             for j in stuck[:10]:
-                ops_html += f"<li>{j['id']}: {j.get('status')} — {j.get('topic', '')[:40]}</li>"
+                ops_html += (
+                    f"<li>{h(j.get('id', ''))}: {h(j.get('status'))} — "
+                    f"{h(str(j.get('topic') or '')[:40])}</li>"
+                )
             ops_html += "</ul>"
         if drift_rows:
             ops_html += "<h3>Margin drift</h3><ul>"
             for m in drift_rows[-10:]:
                 ops_html += (
-                    f"<li>{m['job_id']}: est {m.get('est_margin_pct')}% → "
-                    f"actual {m.get('actual_margin_pct')}% (drift {m.get('margin_drift_cents')}c)</li>"
+                    f"<li>{h(m.get('job_id', ''))}: est {h(m.get('est_margin_pct'))}% → "
+                    f"actual {h(m.get('actual_margin_pct'))}% "
+                    f"(drift {h(m.get('margin_drift_cents'))}c)</li>"
                 )
             ops_html += "</ul>"
         if not ops_html:
@@ -264,7 +278,7 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
 
         expense_total = sum(x["amount"] for x in job["expenses"])
         fin_pnl = job["price"] - expense_total if job["status"] == "completed" else 0
-        margin_str = f"{job['margin_pct']}%" if job["margin_pct"] else "N/A"
+        margin_str = f"{h(job['margin_pct'])}%" if job["margin_pct"] else "N/A"
 
         btn_html = ""
         if job["status"] == "completed":
@@ -1349,14 +1363,23 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
   </div>
 
   <script>
-    let briefs = {json.dumps(briefs)};
-    let jobsData = {json.dumps(jobs_data)};
+    let briefs = {_script_json(briefs)};
+    let jobsData = {_script_json(jobs_data)};
     let currentOpenJobId = null;
+
+    function esc(value) {{
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }}
 
     function openBriefModal(jobId) {{
       document.getElementById("modal-title").innerText = "Research Brief Preview: " + jobId;
       const iframe = document.getElementById("brief-iframe");
-      iframe.src = `http://localhost:8787/api/briefs/${{jobId}}`;
+      iframe.src = `http://localhost:8787/api/briefs/${{encodeURIComponent(jobId)}}`;
       document.getElementById("brief-modal").classList.add("open");
     }}
 
@@ -1382,10 +1405,10 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
         html += `
           <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--color-border); padding:10px 14px; border-radius:10px; margin-bottom: 8px;">
             <div style="display:flex; flex-direction:column; gap:2px; max-width:70%;">
-              <span style="font-size:11px; font-family:var(--font-mono); color:var(--color-text-muted);">${{jobId}}</span>
-              <span style="font-size:13px; font-weight:600; color:var(--color-text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${{title}}</span>
+              <span style="font-size:11px; font-family:var(--font-mono); color:var(--color-text-muted);">${{esc(jobId)}}</span>
+              <span style="font-size:13px; font-weight:600; color:var(--color-text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${{esc(title)}}</span>
             </div>
-            <button class="btn btn-outline btn-sm" onclick="openBriefModal('${{jobId}}')" style="padding:4px 8px; font-size:11px;">Preview</button>
+            <button class="btn btn-outline btn-sm" onclick="openBriefModal(${{esc(JSON.stringify(jobId))}})" style="padding:4px 8px; font-size:11px;">Preview</button>
           </div>
         `;
       }});
@@ -1409,12 +1432,12 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       document.getElementById("drawer-title").innerText = "Job Details: " + jobId;
 
       let metaHTML = `
-        <div class="meta-row"><strong>Title:</strong> <span>${{job.title || 'N/A'}}</span></div>
-        <div class="meta-row"><strong>Status:</strong> <span class="badge badge-${{job.status}}">${{job.status.toUpperCase()}}</span></div>
+        <div class="meta-row"><strong>Title:</strong> <span>${{esc(job.title || 'N/A')}}</span></div>
+        <div class="meta-row"><strong>Status:</strong> <span class="badge badge-${{esc(job.status)}}">${{esc(String(job.status).toUpperCase())}}</span></div>
         <div class="meta-row"><strong>Client Budget:</strong> <span>${{formatCents(job.price)}}</span></div>
         <div class="meta-row"><strong>Incurred COGS:</strong> <span>${{formatCents(getExpensesTotal(job.expenses))}}</span></div>
         <div class="meta-row"><strong>Net P&L:</strong> <span class="${{job.pnl >= 0 ? 'green' : 'red'}}">${{job.pnl >= 0 ? '+' : ''}}${{formatCents(job.pnl)}}</span></div>
-        <div class="meta-row"><strong>Est. Margin:</strong> <span>${{job.margin_pct}}%</span></div>
+        <div class="meta-row"><strong>Est. Margin:</strong> <span>${{esc(job.margin_pct)}}%</span></div>
       `;
 
       if (job.expenses.length > 0) {{
@@ -1423,7 +1446,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
           <ul class="drawer-expenses-list">
         `;
         job.expenses.forEach(e => {{
-          metaHTML += `<li><strong>${{e.vendor}}:</strong> -${{formatCents(e.amount)}} (${{e.memo}})</li>`;
+          metaHTML += `<li><strong>${{esc(e.vendor)}}:</strong> -${{formatCents(e.amount)}} (${{esc(e.memo)}})</li>`;
         }});
         metaHTML += '</ul>';
       }}
