@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable
 
 from .calibration import calibration_factor
+from .delivery import is_safe_job_id
 from .guardrails import Guardrails
 from .pricing import PricingPolicy
 from .stages import StageRunner, _job_id_of, validate_and_coerce_job
@@ -85,12 +86,14 @@ class Solvent:
         first, so a submission can never overwrite or restart an existing job.
         """
         job_id = job.get("id") if isinstance(job, dict) else None
-        if isinstance(job_id, str) and job_id:
+        if not (isinstance(job_id, str) and is_safe_job_id(job_id)):
+            job_id = None
+        if job_id:
             if not self.t.insert_job(job_id, "received"):
                 return {"stage": "declined", "job_id": job_id, "reason": "job id already exists"}
         validated, err = validate_and_coerce_job(job, self.t)
         if err:
-            if isinstance(job_id, str) and job_id:
+            if job_id:
                 row = self.t.get_job(job_id)
                 if row and row.get("status") == "received":
                     self.t.upsert_job(job_id, "failed", error_reason=err)

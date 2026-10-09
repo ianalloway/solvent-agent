@@ -29,7 +29,7 @@ def _job_id_of(submitted: Any, validated: dict | None) -> str:
     for candidate in (validated, submitted):
         if isinstance(candidate, dict):
             job_id = candidate.get("id")
-            if isinstance(job_id, str) and job_id.strip():
+            if isinstance(job_id, str) and delivery.is_safe_job_id(job_id):
                 return job_id
     return "unknown"
 
@@ -39,7 +39,7 @@ def validate_and_coerce_job(job: dict, treasury: Treasury) -> tuple[dict | None,
     if not isinstance(job, dict):
         return None, "job must be a dictionary"
     job_id = job.get("id")
-    if not job_id or not isinstance(job_id, str):
+    if not job_id or not isinstance(job_id, str) or not delivery.is_safe_job_id(job_id):
         return None, "missing or invalid job ID"
     try:
         job = dict(job)

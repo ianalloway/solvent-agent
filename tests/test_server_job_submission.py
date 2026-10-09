@@ -114,3 +114,18 @@ def test_enqueue_never_overwrites_a_job_that_appears_after_the_route_check(tmp_p
     assert result["stage"] == "declined"
     assert t.get_job("raced")["status"] == "in_progress"
     assert t.get_job("raced")["topic"] == "Original"
+
+
+PAYLOAD_ID = '<img src=x onerror="globalThis.__SOLVENT_XSS_POC=1">'
+
+
+def test_operator_submission_with_an_unsafe_job_id_is_declined_without_a_row(tmp_path, monkeypatch):
+    client, t = _client(tmp_path, monkeypatch)
+    response = client.post(
+        "/api/job",
+        json={"id": PAYLOAD_ID, "topic": "AI chip market", "budget_cents": 4900},
+        headers={"X-Solvent-Dashboard-Token": "d" * 32},
+    )
+    assert response.json()["stage"] == "declined"
+    assert response.json()["reason"] == "missing or invalid job ID"
+    assert t.list_jobs() == []

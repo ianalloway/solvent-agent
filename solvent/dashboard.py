@@ -38,6 +38,8 @@ def _script_json(value: object) -> str:
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
     )
 
 
@@ -1367,15 +1369,6 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     let jobsData = {_script_json(jobs_data)};
     let currentOpenJobId = null;
 
-    function esc(value) {{
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }}
-
     function openBriefModal(jobId) {{
       document.getElementById("modal-title").innerText = "Research Brief Preview: " + jobId;
       const iframe = document.getElementById("brief-iframe");
@@ -1398,21 +1391,28 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
         return;
       }}
 
-      let html = "";
+      container.replaceChildren();
       jobIds.forEach(jobId => {{
         const job = jobsData[jobId] || {{}};
-        const title = job.title || `Research Brief (${{jobId}})`;
-        html += `
-          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--color-border); padding:10px 14px; border-radius:10px; margin-bottom: 8px;">
-            <div style="display:flex; flex-direction:column; gap:2px; max-width:70%;">
-              <span style="font-size:11px; font-family:var(--font-mono); color:var(--color-text-muted);">${{esc(jobId)}}</span>
-              <span style="font-size:13px; font-weight:600; color:var(--color-text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${{esc(title)}}</span>
-            </div>
-            <button class="btn btn-outline btn-sm" onclick="openBriefModal(${{esc(JSON.stringify(jobId))}})" style="padding:4px 8px; font-size:11px;">Preview</button>
-          </div>
-        `;
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--color-border); padding:10px 14px; border-radius:10px; margin-bottom: 8px;";
+        const labels = document.createElement("div");
+        labels.style.cssText = "display:flex; flex-direction:column; gap:2px; max-width:70%;";
+        const idEl = document.createElement("span");
+        idEl.style.cssText = "font-size:11px; font-family:var(--font-mono); color:var(--color-text-muted);";
+        idEl.textContent = jobId;
+        const titleEl = document.createElement("span");
+        titleEl.style.cssText = "font-size:13px; font-weight:600; color:var(--color-text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;";
+        titleEl.textContent = job.title || `Research Brief (${{jobId}})`;
+        labels.append(idEl, titleEl);
+        const button = document.createElement("button");
+        button.className = "btn btn-outline btn-sm";
+        button.style.cssText = "padding:4px 8px; font-size:11px;";
+        button.textContent = "Preview";
+        button.addEventListener("click", () => openBriefModal(jobId));
+        row.append(labels, button);
+        container.appendChild(row);
       }});
-      container.innerHTML = html;
     }}
 
     // Auto-scroll terminal log to the bottom
@@ -1431,27 +1431,42 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
 
       document.getElementById("drawer-title").innerText = "Job Details: " + jobId;
 
-      let metaHTML = `
-        <div class="meta-row"><strong>Title:</strong> <span>${{esc(job.title || 'N/A')}}</span></div>
-        <div class="meta-row"><strong>Status:</strong> <span class="badge badge-${{esc(job.status)}}">${{esc(String(job.status).toUpperCase())}}</span></div>
-        <div class="meta-row"><strong>Client Budget:</strong> <span>${{formatCents(job.price)}}</span></div>
-        <div class="meta-row"><strong>Incurred COGS:</strong> <span>${{formatCents(getExpensesTotal(job.expenses))}}</span></div>
-        <div class="meta-row"><strong>Net P&L:</strong> <span class="${{job.pnl >= 0 ? 'green' : 'red'}}">${{job.pnl >= 0 ? '+' : ''}}${{formatCents(job.pnl)}}</span></div>
-        <div class="meta-row"><strong>Est. Margin:</strong> <span>${{esc(job.margin_pct)}}%</span></div>
-      `;
+      const meta = document.getElementById("drawer-metadata");
+      meta.replaceChildren();
+      const metaRow = (label, value, className) => {{
+        const row = document.createElement("div");
+        row.className = "meta-row";
+        const strong = document.createElement("strong");
+        strong.textContent = label;
+        const span = document.createElement("span");
+        if (className) span.className = className;
+        span.textContent = value;
+        row.append(strong, " ", span);
+        meta.appendChild(row);
+      }};
+      const status = String(job.status);
+      metaRow("Title:", job.title || "N/A");
+      metaRow("Status:", status.toUpperCase(), "badge badge-" + status.replace(/[^a-z_]/gi, ""));
+      metaRow("Client Budget:", formatCents(job.price));
+      metaRow("Incurred COGS:", formatCents(getExpensesTotal(job.expenses)));
+      metaRow("Net P&L:", (job.pnl >= 0 ? "+" : "") + formatCents(job.pnl), job.pnl >= 0 ? "green" : "red");
+      metaRow("Est. Margin:", String(job.margin_pct) + "%");
 
       if (job.expenses.length > 0) {{
-        metaHTML += `
-          <h4 style="margin-top: 16px; margin-bottom: 8px; font-size:12px; color:var(--color-text-muted)">ITEMIZED EXPENSES</h4>
-          <ul class="drawer-expenses-list">
-        `;
+        const heading = document.createElement("h4");
+        heading.style.cssText = "margin-top: 16px; margin-bottom: 8px; font-size:12px; color:var(--color-text-muted)";
+        heading.textContent = "ITEMIZED EXPENSES";
+        const list = document.createElement("ul");
+        list.className = "drawer-expenses-list";
         job.expenses.forEach(e => {{
-          metaHTML += `<li><strong>${{esc(e.vendor)}}:</strong> -${{formatCents(e.amount)}} (${{esc(e.memo)}})</li>`;
+          const item = document.createElement("li");
+          const vendor = document.createElement("strong");
+          vendor.textContent = String(e.vendor) + ":";
+          item.append(vendor, ` -${{formatCents(e.amount)}} (${{e.memo}})`);
+          list.appendChild(item);
         }});
-        metaHTML += '</ul>';
+        meta.append(heading, list);
       }}
-
-      document.getElementById("drawer-metadata").innerHTML = metaHTML;
 
       const hasBrief = Object.prototype.hasOwnProperty.call(briefs || {{}}, jobId);
       const reportText = hasBrief
