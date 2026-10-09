@@ -9,7 +9,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Zero dependencies](https://img.shields.io/badge/core%20deps-0-brightgreen)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Hackathon](https://img.shields.io/badge/NVIDIA%20%C3%97%20Stripe%20Hackathon-2024-76b900?logo=nvidia&logoColor=white)](https://www.nvidia.com)
+[![Hackathon](https://img.shields.io/badge/Hermes%20Agent%20Business%20Hackathon-June%202026-76b900?logo=nvidia&logoColor=white)](https://www.linkedin.com/posts/nousresearch_the-hermes-agent-accelerated-business-hackathon-activity-7472690765933072384-MW7G)
 [![Stars](https://img.shields.io/github/stars/ianalloway/solvent-agent?style=social)](https://github.com/ianalloway/solvent-agent/stargazers)
 
 [**Quick Start**](#-quick-start) · [**How It Works**](#-how-it-works) · [**Live Demo**](#-the-demo) · [**Make It Real**](#-make-it-real)
