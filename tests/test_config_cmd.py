@@ -55,9 +55,7 @@ def isolate_config(tmp_path, monkeypatch):
     cfg_dir = tmp_path / ".solvent"
     cfg_dir.mkdir()
     cfg_path = cfg_dir / "config.json"
-    monkeypatch.setattr("solvent.config.CONFIG_DIR", cfg_dir)
-    monkeypatch.setattr("solvent.config.CONFIG_PATH", cfg_path)
-    monkeypatch.setattr("solvent.config_cmd.CONFIG_PATH", cfg_path, raising=False)
+    monkeypatch.setenv("SOLVENT_HOME", str(tmp_path))
     yield cfg_path
 
 

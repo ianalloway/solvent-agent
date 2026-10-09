@@ -37,6 +37,8 @@ class TestDoctor(unittest.TestCase):
                 check = next(c for c in run_checks() if c["name"] == "data_home")
                 self.assertTrue(check["ok"])
                 self.assertIn(d, check["detail"])
+                policy = next(c for c in run_checks() if c["name"] == "spend_policy")
+                self.assertIn(os.path.join(d, ".solvent", "spend_policy.json"), policy["detail"])
 
     def test_optional_extras_never_fails(self):
         check = next(c for c in run_checks() if c["name"] == "optional_extras")

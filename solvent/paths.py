@@ -82,6 +82,16 @@ def data_dir() -> Path:
     return d
 
 
+def config_dir() -> Path:
+    """Directory for operator settings, policies, and agent workspace files."""
+    return base_dir() / ".solvent"
+
+
+def config_path(name: str) -> Path:
+    """Resolve a runtime configuration file independently of the process cwd."""
+    return config_dir() / name
+
+
 def reports_dir() -> Path:
     """Directory for generated research-brief deliverables."""
     d = data_dir() / "reports"

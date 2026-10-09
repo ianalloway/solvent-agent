@@ -14,12 +14,14 @@ class TestTelegramPairing(unittest.TestCase):
         self.db = Path(self.tmp.name) / "t.db"
         self.t = Treasury(path=self.db)
         self.t.reset()
-        pairing.ALLOWLIST_PATH = Path(self.tmp.name) / "allowlist.json"
+        self._home_patch = patch.dict(os.environ, {"SOLVENT_HOME": self.tmp.name})
+        self._home_patch.start()
         self._treasury_patch = patch("solvent.pairing.Treasury", return_value=self.t)
         self._treasury_patch.start()
 
     def tearDown(self):
         self._treasury_patch.stop()
+        self._home_patch.stop()
         self.tmp.cleanup()
 
     def test_pairing_flow(self):

@@ -12,8 +12,7 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-CONFIG_DIR = Path(".solvent")
-CONFIG_PATH = CONFIG_DIR / "config.json"
+from .paths import config_path
 
 VALID_MODELS = ("offline", "nemotron")
 VALID_MODES = ("batch", "interactive", "programmatic")
@@ -56,13 +55,13 @@ class SolventConfig:
 
 
 def config_exists() -> bool:
-    return CONFIG_PATH.is_file()
+    return config_path("config.json").is_file()
 
 
 def load_config() -> SolventConfig | None:
     if not config_exists():
         return None
-    with CONFIG_PATH.open(encoding="utf-8") as f:
+    with config_path("config.json").open(encoding="utf-8") as f:
         data = json.load(f)
     cfg = SolventConfig.from_dict(data)
     cfg.validate()
@@ -71,11 +70,12 @@ def load_config() -> SolventConfig | None:
 
 def save_config(config: SolventConfig) -> Path:
     config.validate()
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with CONFIG_PATH.open("w", encoding="utf-8") as f:
+    path = config_path("config.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
         json.dump(config.to_dict(), f, indent=2)
         f.write("\n")
-    return CONFIG_PATH
+    return path
 
 
 def default_config() -> SolventConfig:

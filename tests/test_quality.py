@@ -199,6 +199,21 @@ def test_a_failing_brief_is_retried_once_and_the_better_draft_ships(tmp_path, mo
     assert result["tokens"] == 400
 
 
+def test_retry_preserves_estimated_usage_flag(tmp_path, monkeypatch):
+    from solvent import service
+
+    monkeypatch.setattr(service, "OUTPUT_DIR", tmp_path)
+    attempts = [
+        ("# Brief\n\nToo short.", {"total_tokens": 100, "estimated": True}, _tool_ctx()),
+        (GOOD_BRIEF, {"total_tokens": 300, "estimated": False}, _tool_ctx()),
+    ]
+    with mock.patch("solvent.nemotron.research_brief", side_effect=attempts):
+        result = service.fulfill({"id": "J1", "topic": "AI inference chips, 2026"})
+
+    assert result["usage"]["total_tokens"] == 400
+    assert result["usage"]["estimated"] is True
+
+
 def test_a_brief_that_cannot_be_saved_still_ships(tmp_path, monkeypatch):
     """Two failures in, the customer still gets the best draft rather than nothing."""
     from solvent import service

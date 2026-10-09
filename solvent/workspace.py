@@ -18,10 +18,8 @@ import time
 from datetime import date, timedelta
 from pathlib import Path
 
-from .config import CONFIG_DIR
+from .paths import config_dir
 
-WORKSPACE_DIR = CONFIG_DIR / "workspace"
-SKILLS_DIR = CONFIG_DIR / "skills"
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "workspace"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,7 +51,11 @@ SOLVENT_CORE_RULES = (
 
 def workspace_path() -> Path:
     override = os.environ.get("SOLVENT_WORKSPACE", "").strip()
-    return Path(override) if override else WORKSPACE_DIR
+    return Path(override) if override else config_dir() / "workspace"
+
+
+def skills_dir() -> Path:
+    return config_dir() / "skills"
 
 
 def _truncate(text: str, limit: int = MAX_FILE_CHARS) -> str:
@@ -85,7 +87,7 @@ def seed_workspace(*, force: bool = False) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "memory").mkdir(exist_ok=True)
     (root / "skills").mkdir(exist_ok=True)
-    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    skills_dir().mkdir(parents=True, exist_ok=True)
 
     skills_src = TEMPLATES_DIR / "skills"
     if skills_src.is_dir():
@@ -141,7 +143,7 @@ def list_workspace_files() -> list[dict]:
                     "bytes": p.stat().st_size,
                 }
             )
-    for skills_root in (root / "skills", SKILLS_DIR):
+    for skills_root in (root / "skills", skills_dir()):
         if not skills_root.is_dir():
             continue
         for name, path in _iter_skills(skills_root):
@@ -216,7 +218,7 @@ def load_skills() -> str | None:
     sections: list[str] = []
     for label, skills_root in (
         ("workspace skills", workspace_path() / "skills"),
-        ("learned skills", SKILLS_DIR),
+        ("learned skills", skills_dir()),
     ):
         if not skills_root.is_dir():
             continue
@@ -309,9 +311,10 @@ def append_daily_memory(note: str, *, day: date | None = None) -> Path:
 
 def promote_skill(name: str, content: str) -> Path:
     """Write a learned skill (improver promotions) as skills/{name}/SKILL.md."""
-    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    root = skills_dir()
+    root.mkdir(parents=True, exist_ok=True)
     safe = re.sub(r"[^\w\-]+", "-", name.strip().lower()).strip("-") or "skill"
-    skill_dir = SKILLS_DIR / safe
+    skill_dir = root / safe
     skill_dir.mkdir(parents=True, exist_ok=True)
     path = skill_dir / "SKILL.md"
     path.write_text(content.strip() + "\n", encoding="utf-8")

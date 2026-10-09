@@ -11,7 +11,9 @@ class TestWorkspace(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.ws = Path(self.tmp.name) / "workspace"
-        self._env = patch.dict(os.environ, {"SOLVENT_WORKSPACE": str(self.ws)})
+        self._env = patch.dict(
+            os.environ, {"SOLVENT_WORKSPACE": str(self.ws), "SOLVENT_HOME": self.tmp.name}
+        )
         self._env.start()
 
     def tearDown(self):
@@ -62,7 +64,7 @@ class TestWorkspace(unittest.TestCase):
 
     def test_promote_skill(self):
         skills_dir = Path(self.tmp.name) / "skills"
-        with patch.object(workspace, "SKILLS_DIR", skills_dir):
+        with patch.object(workspace, "skills_dir", return_value=skills_dir):
             path = workspace.promote_skill("margin-hint", "# Margin\nAlways quote first.")
             self.assertTrue(path.name == "SKILL.md")
             self.assertTrue(path.is_file())

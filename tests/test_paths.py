@@ -16,6 +16,10 @@ class TestPaths(unittest.TestCase):
                 base = Path(d).resolve()
                 self.assertEqual(paths.base_dir(), base)
                 self.assertEqual(paths.data_dir(), base / "data")
+                self.assertEqual(paths.config_dir(), base / ".solvent")
+                self.assertEqual(
+                    paths.config_path("spend_policy.json"), base / ".solvent" / "spend_policy.json"
+                )
                 self.assertEqual(paths.db_path(), base / "data" / "solvent.db")
                 self.assertEqual(paths.reports_dir(), base / "data" / "reports")
                 self.assertEqual(paths.dashboard_html(), base / "treasury_dashboard.html")
@@ -26,6 +30,7 @@ class TestPaths(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertTrue(paths._is_source_checkout())  # repo has pyproject.toml
             self.assertEqual(paths.base_dir(), paths._REPO_ROOT)
+            self.assertEqual(paths.config_dir(), paths._REPO_ROOT / ".solvent")
 
     def test_installed_fallback_to_home(self):
         with tempfile.TemporaryDirectory() as home:
@@ -36,6 +41,7 @@ class TestPaths(unittest.TestCase):
                 mock.patch.object(paths, "_is_source_checkout", return_value=False),
             ):
                 self.assertEqual(paths.base_dir(), Path(home) / ".solvent")
+                self.assertEqual(paths.config_dir(), Path(home) / ".solvent" / ".solvent")
                 self.assertTrue((Path(home) / ".solvent").is_dir())
 
 

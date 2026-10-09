@@ -19,8 +19,8 @@ import json
 import os
 import time
 import uuid
-from pathlib import Path
 
+from .paths import config_path
 from .security import (
     check_event_replay,
     validate_catalog_schema,
@@ -37,8 +37,6 @@ except Exception:
     stripe = None  # type: ignore
     _HAS_STRIPE = False
 
-CATALOG_PATH = Path(".solvent/stripe_catalog.json")
-WEBHOOK_CACHE_PATH = Path(".solvent/stripe_payments.json")
 PRODUCT_NAME = "SOLVENT Research Brief"
 DEFAULT_POLL_INTERVAL = 2.0
 DEFAULT_POLL_TIMEOUT = 120.0
@@ -83,9 +81,10 @@ class StripeClient:
     def _load_catalog(self) -> dict:
         if self._catalog is not None:
             return self._catalog
-        if CATALOG_PATH.is_file():
+        catalog_path = config_path("stripe_catalog.json")
+        if catalog_path.is_file():
             try:
-                raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+                raw = json.loads(catalog_path.read_text(encoding="utf-8"))
                 # DATA PROTECTION — strip unknown / malformed keys before trusting
                 self._catalog = validate_catalog_schema(raw)
             except (json.JSONDecodeError, OSError):
@@ -97,8 +96,9 @@ class StripeClient:
     def _save_catalog(self) -> None:
         if self._catalog is None:
             return
-        CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CATALOG_PATH.write_text(json.dumps(self._catalog, indent=2) + "\n", encoding="utf-8")
+        catalog_path = config_path("stripe_catalog.json")
+        catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        catalog_path.write_text(json.dumps(self._catalog, indent=2) + "\n", encoding="utf-8")
 
     def _get_or_create_product(self) -> str:
         catalog = self._load_catalog()
@@ -128,18 +128,20 @@ class StripeClient:
 
     # ---- webhook cache ----------------------------------------------
     def _load_webhook_cache(self) -> None:
-        if not WEBHOOK_CACHE_PATH.is_file():
+        cache_path = config_path("stripe_payments.json")
+        if not cache_path.is_file():
             return
         try:
-            data = json.loads(WEBHOOK_CACHE_PATH.read_text(encoding="utf-8"))
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 self._webhook_payments = data
         except (json.JSONDecodeError, OSError):
             self._webhook_payments = {}
 
     def _save_webhook_cache(self) -> None:
-        WEBHOOK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        WEBHOOK_CACHE_PATH.write_text(
+        cache_path = config_path("stripe_payments.json")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(
             json.dumps(self._webhook_payments, indent=2) + "\n",
             encoding="utf-8",
         )

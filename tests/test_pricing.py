@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from solvent.pricing import (
     RESOURCE_COSTS_CENTS,
@@ -141,13 +142,13 @@ class TestResourceCostsOverrides(unittest.TestCase):
     """Coverage for get_resource_costs() loading .solvent/pricing_overrides.json."""
 
     def setUp(self) -> None:
-        self._cwd = os.getcwd()
         self._tmp = tempfile.TemporaryDirectory()
         os.makedirs(os.path.join(self._tmp.name, ".solvent"), exist_ok=True)
-        os.chdir(self._tmp.name)
+        self._env = mock.patch.dict(os.environ, {"SOLVENT_HOME": self._tmp.name})
+        self._env.start()
 
     def tearDown(self) -> None:
-        os.chdir(self._cwd)
+        self._env.stop()
         self._tmp.cleanup()
 
     def test_defaults_when_no_override_file(self) -> None:
@@ -158,7 +159,7 @@ class TestResourceCostsOverrides(unittest.TestCase):
         self.assertNotEqual(RESOURCE_COSTS_CENTS["nemotron_tokens_per_1k"], 999)
 
     def test_valid_override_applied(self) -> None:
-        Path(".solvent/pricing_overrides.json").write_text(
+        Path(self._tmp.name, ".solvent", "pricing_overrides.json").write_text(
             json.dumps({"nemotron_tokens_per_1k": 55, "pdf_render": 25})
         )
         costs = get_resource_costs()
@@ -170,17 +171,17 @@ class TestResourceCostsOverrides(unittest.TestCase):
         )
 
     def test_invalid_json_falls_back_to_defaults(self) -> None:
-        Path(".solvent/pricing_overrides.json").write_text("{not valid json")
+        Path(self._tmp.name, ".solvent", "pricing_overrides.json").write_text("{not valid json")
         costs = get_resource_costs()
         self.assertEqual(costs, RESOURCE_COSTS_CENTS)
 
     def test_non_dict_json_falls_back_to_defaults(self) -> None:
-        Path(".solvent/pricing_overrides.json").write_text("[1, 2, 3]")
+        Path(self._tmp.name, ".solvent", "pricing_overrides.json").write_text("[1, 2, 3]")
         costs = get_resource_costs()
         self.assertEqual(costs, RESOURCE_COSTS_CENTS)
 
     def test_unknown_keys_and_non_numeric_values_ignored(self) -> None:
-        Path(".solvent/pricing_overrides.json").write_text(
+        Path(self._tmp.name, ".solvent", "pricing_overrides.json").write_text(
             json.dumps({"unknown_key": 999, "web_search_call": "expensive"})
         )
         costs = get_resource_costs()

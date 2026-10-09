@@ -6,7 +6,7 @@ import importlib.util
 import os
 import sys
 
-from .paths import base_dir, data_dir
+from .paths import base_dir, config_path, data_dir
 from .treasury import Treasury
 from .workspace import ensure_workspace, list_workspace_files
 
@@ -51,6 +51,12 @@ def run_checks() -> list[dict]:
     home = base_dir()
     ddir = data_dir()
     add("data_home", os.access(ddir, os.W_OK), f"{home}  (set SOLVENT_HOME to relocate)")
+    policy_path = config_path("spend_policy.json")
+    add(
+        "spend_policy",
+        True,
+        f"{policy_path} ({'override' if policy_path.is_file() else 'built-in defaults'})",
+    )
 
     available = [f"{label} {'✓' if _module_available(mod) else '✗'}" for label, mod, _ in _EXTRAS]
     add("optional_extras", True, ", ".join(available))
