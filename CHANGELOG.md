@@ -4,7 +4,7 @@ All notable changes to SOLVENT are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.1] - 2026-10-09
 
 ### Security
 - **Stripe webhooks are verified before anything is logged or stored.**
@@ -126,5 +126,6 @@ earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
+[0.2.1]: https://github.com/ianalloway/solvent-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ianalloway/solvent-agent/compare/33cb136cfd04...v0.2.0
 [0.1.0]: https://github.com/ianalloway/solvent-agent/tree/33cb136cfd04
