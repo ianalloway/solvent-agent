@@ -46,8 +46,6 @@ into a full set of operating tools, and every one of them ships as a CLI command
 - The agent runs on Windows (`fcntl` import, path guard, home-directory
   fallback). (#73)
 - A refund is no longer booked as operating spend.
-- The rate limiter no longer blocks users after their ban expires.
-- Notification outbox paths resolve dynamically.
 
 ### Documentation
 - The README separates the offline demo from production revenue and documents
@@ -64,9 +62,11 @@ into a full set of operating tools, and every one of them ships as a CLI command
 
 ## [0.1.0] - 2026-09-04
 
-First PyPI release (`pip install solvent-agent`): the offline demo, Stripe
+First PyPI release (`pip install solvent-agent`), built by the publish workflow
+from `main` at `33cb136`. The older `v0.1.0` git tag (2026-07-25) points at an
+earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
-[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.1.0...main
-[0.1.0]: https://github.com/ianalloway/solvent-agent/releases/tag/v0.1.0
+[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/33cb136cfd04...main
+[0.1.0]: https://github.com/ianalloway/solvent-agent/tree/33cb136cfd04
