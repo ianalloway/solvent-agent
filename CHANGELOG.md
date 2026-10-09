@@ -43,6 +43,7 @@ into a full set of operating tools, and every one of them ships as a CLI command
   intake held for a human. (#85)
 
 ### Fixed
+- `solvent serve` job-submission routes no longer raise `RecursionError` (#77, #86).
 - The agent runs on Windows (`fcntl` import, path guard, home-directory
   fallback). (#73)
 - A refund is no longer booked as operating spend.
@@ -60,7 +61,6 @@ into a full set of operating tools, and every one of them ships as a CLI command
 - README demo figures regenerated from a real run (#80, #89).
 
 ### Known issues
-- `solvent serve`: job-submission routes can raise `RecursionError` (#77; fix in #86).
 - Webhook handling: events are logged before the Stripe signature is checked, and
   the webhook list, stats and replay routes are not authenticated. Run `serve`
   only on a trusted network until this is fixed.
