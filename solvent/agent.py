@@ -20,10 +20,9 @@ import time
 from collections.abc import Callable
 
 from .calibration import calibration_factor
-from .delivery import is_safe_job_id
 from .guardrails import Guardrails
 from .pricing import PricingPolicy
-from .stages import StageRunner, _job_id_of, validate_and_coerce_job
+from .stages import StageRunner, _job_id_of, coerce_job, screen_and_record
 from .stripe_client import StripeClient
 from .treasury import Treasury
 
@@ -82,22 +81,19 @@ class Solvent:
     def enqueue_job(self, job: dict) -> dict:
         """Validate and persist a new job for async worker processing.
 
-        The job id must be unused: the row is claimed with an atomic insert
-        first, so a submission can never overwrite or restart an existing job.
+        Invalid input is declined before anything is written. A valid job then
+        claims its id with an atomic insert, so a submission can never
+        overwrite or restart an existing job.
         """
-        job_id = job.get("id") if isinstance(job, dict) else None
-        if not (isinstance(job_id, str) and is_safe_job_id(job_id)):
-            job_id = None
-        if job_id:
-            if not self.t.insert_job(job_id, "received"):
-                return {"stage": "declined", "job_id": job_id, "reason": "job id already exists"}
-        validated, err = validate_and_coerce_job(job, self.t)
+        coerced, err = coerce_job(job)
         if err:
-            if job_id:
-                row = self.t.get_job(job_id)
-                if row and row.get("status") == "received":
-                    self.t.upsert_job(job_id, "failed", error_reason=err)
-            return self._emit(stage="declined", job_id=_job_id_of(job, validated), reason=err)
+            return self._emit(stage="declined", job_id=_job_id_of(job, None), reason=err)
+        assert coerced is not None
+        if not self.t.insert_job(coerced["id"], "received"):
+            return {"stage": "declined", "job_id": coerced["id"], "reason": "job id already exists"}
+        validated, err = screen_and_record(coerced, self.t)
+        if err:
+            return self._emit(stage="declined", job_id=coerced["id"], reason=err)
         assert validated is not None
         q = self._runner._stage_quote(validated)
         if q.get("stage") == "declined" or not q.get("accept"):
