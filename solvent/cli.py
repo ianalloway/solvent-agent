@@ -162,7 +162,7 @@ def print_results(snap: dict):
 
 def run_batch_demo(seed_cents: int = 10_000, fresh: bool = True):
     """Run the standard batch demo of 4 predefined jobs."""
-    print(f"\n🪙  {C_BOLD}SOLVENT — Standard Batch Run (4 Inbound Jobs){C_RESET}")
+    print(f"\n🪙  {C_BOLD}SOLVENT — Standard Batch Run ({len(SAMPLE_JOBS)} Inbound Jobs){C_RESET}")
     print(BAR)
 
     agent = Solvent(seed_cents=seed_cents, fresh=fresh, on_event=print_event)

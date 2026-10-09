@@ -119,10 +119,12 @@ A typical **offline demo** batch (illustrative numbers from the simulated run �
 
 | Metric | Demo value |
 |---|---|
-| Revenue | ~$223 |
-| Operating spend | ~$13 |
-| Net profit | high-margin demo loop |
-| Jobs declined | 1 (below margin floor) |
+| Revenue | $348.00 |
+| Operating spend | $2.20 (booked vendor spend) |
+| Net profit | $345.80 (99.4% margin) |
+| Jobs completed / declined | 4 / 1 (below minimum order size) |
+
+<sub>From `solvent --no-onboard` on a fresh `SOLVENT_HOME` with no API keys. The 99.4% margin is higher than the gate's 87–92% projections because offline fulfilment makes no market-data or web-search calls; see #79.</sub>
 
 ---
 
@@ -185,7 +187,7 @@ Revenue is **always collected before cost is incurred**, and no payment can viol
 python3 run_demo.py
 ```
 
-4 pre-loaded jobs. ~30 seconds. Shows margin gating, Stripe earn/spend, Nemotron fulfillment, and guardrails in action.
+5 pre-loaded jobs (4 accepted, 1 declined). ~30 seconds. Shows margin gating, Stripe earn/spend, Nemotron fulfillment, and guardrails in action.
 
 ### Interactive — your own jobs
 
@@ -285,11 +287,11 @@ python3 -m solvent quote "Edge-AI in industrial robotics" --budget 8 --tokens 30
 ```
 
 ```
-  Projected margin     $-7.93 (-99.1%)   floor 35.0%
+  Projected margin     $-4.33 (-54.1%)   floor 35.0%
   Verdict              DECLINE — order $8 below minimum order size $15
 
-  Counter-offer        $25.00 at 36.3% margin
-    can deliver this brief as specified for $25.00
+  Counter-offer        $19.00 at 35.1% margin
+    can deliver this brief as specified for $19.00
 ```
 
 Two shapes, in order of preference: a **narrower scope** the customer's
