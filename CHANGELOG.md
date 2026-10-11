@@ -4,6 +4,28 @@ All notable changes to SOLVENT are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-10-11
+
+### Security
+- **Job ids are claimed atomically.** A submission racing the existence check can
+  no longer overwrite or fail another job; `enqueue_job` claims the row with an
+  atomic `INSERT OR IGNORE` and declines an id that is already taken (#98).
+- **Dashboard renders job fields as text.** The brief list and job drawer build
+  DOM nodes with `textContent` instead of concatenating HTML, inline script JSON
+  also escapes U+2028/U+2029, and unsafe job ids are rejected on the operator and
+  chat paths too (#98).
+- **Bans and rate limits apply to slash commands.** A banned or throttled user can
+  no longer keep driving the model through `/quote` or unknown slash commands;
+  unknown commands are refused without calling the model (#98).
+- **CSV exports neutralise spreadsheet formulas.** Untrusted text cells that start
+  with `=`, `+`, `-` or `@` are prefixed with a single quote (#98).
+
+### Fixed
+- Invalid `POST /jobs` submissions no longer leave a permanent failed row behind;
+  validation runs before the job id is claimed (#98).
+- The dashboard's inline script parses again (escaped newlines in
+  `renderMarkdown`), restoring the drawer, brief list and live updates (#98).
+
 ## [0.2.1] - 2026-10-09
 
 ### Security
@@ -126,6 +148,7 @@ earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
+[0.2.2]: https://github.com/ianalloway/solvent-agent/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/ianalloway/solvent-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ianalloway/solvent-agent/compare/33cb136cfd04...v0.2.0
 [0.1.0]: https://github.com/ianalloway/solvent-agent/tree/33cb136cfd04
