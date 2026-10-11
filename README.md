@@ -254,6 +254,7 @@ python3 -m solvent export --since 30d     # ledger/jobs/metrics/customers + peri
 python3 -m solvent products               # the price list, checked against current cost
 python3 -m solvent quality                # scores the quality gate gave shipped briefs
 python3 -m solvent review                 # approve/reject the jobs intake held for a human
+python3 -m solvent funnel --since 7d      # win rate: submitted → quoted → paid → delivered
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
@@ -483,6 +484,40 @@ a single JSON document, over a period given as `7d`, `24h`, `2w`, `3m` or
 revenue and cost counted when the money moved — so the printed summary ties out
 against the rows it ships, with refunds separated from cost of sales.
 
+### Knowing the win rate
+
+**`solvent funnel`.** The treasury has always known the margin on the jobs it
+took; it never knew the win rate. Those are different businesses — a 90% margin
+on one job in ten is a worse shop than a 60% margin on eight, and nothing here
+could tell them apart.
+
+Every stage already leaves a trace, so the funnel is a read over data the agent
+keeps anyway: submitted → quoted → accepted → checkout → paid → delivered. What
+falls out at each step is the point, and the three failures want three
+different fixes:
+
+| Exit | What it means |
+|---|---|
+| `screened` | held before pricing — cost nothing |
+| `declined` | a customer who wanted to pay and was turned away by the margin gate |
+| `abandoned` | a customer who said yes at checkout and then did not pay |
+| `refunded` | paid, then refunded when fulfilment failed — the expensive loss |
+
+Lost pipeline is reported at the price the customer named, because that is the
+money that was on the table. Win rate is broken down by product and price band,
+and counter-offers are tracked separately, so "does the counter-offer actually
+convert?" finally has an answer.
+
+```
+  Submitted                 9  ████████████████████████ 100.0%
+  Accepted by the gate      6  ████████████████········ 66.7%
+  Paid                      5  █████████████··········· 55.6%
+
+  Gate acceptance      85.7%   ·  payment conversion 83.3%
+  Won $373.00  ·  left on the table $9,130.00
+  Counter-offers       1 made, 0 won (0.0%)
+```
+
 ### Selling, not just quoting
 
 **`solvent products` — a price list.** A shop that cannot say what it charges
@@ -653,6 +688,7 @@ solvent/
   products.py      the price list (`solvent products`)
   quality.py       deliverable quality gate (`solvent quality`)
   review.py        operator approval queue (`solvent review`)
+  funnel.py        order funnel and win rate (`solvent funnel`)
   stripe_client.py two-sided Stripe layer (earn + spend)
   nemotron.py      NVIDIA Nemotron client (+ offline stub)
   service.py       the product: an on-demand research brief

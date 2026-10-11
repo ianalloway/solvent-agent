@@ -40,6 +40,10 @@ rejects it, both recorded as events. Unpaid checkouts are chased and
 then expired by `checkout.py`, swept on every worker pass. Policy files:
 `.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy}.json`.
 
+`funnel.py` reads the submitted → quoted → accepted → checkout → paid →
+delivered funnel off the jobs, ledger and events, naming each exit (screened,
+declined, abandoned, refunded) and the win rate by product and price band.
+
 `capacity.py` derives the jobs/day ceiling each spend rule implies and names the
 binding one; `alerts.py` runs the health sweep (cash, runway, stuck jobs, spend
 headroom, vendor exposure, blocks, unpaid pipeline, cost drift) and exits
@@ -60,6 +64,7 @@ python -m solvent customers|costs|simulate     # customer book / cost model / po
 python -m solvent checkouts|intake|optimize    # unpaid links / intake screen / policy search
 python -m solvent capacity|alerts|export       # throughput ceiling / health sweep / books
 python -m solvent products|quality|review      # price list / brief scores / approval queue
+python -m solvent funnel                       # win rate and where orders are lost
 ```
 
 ## Conventions
