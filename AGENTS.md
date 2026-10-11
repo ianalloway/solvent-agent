@@ -44,7 +44,9 @@ then expired by `checkout.py`, swept on every worker pass. Policy files:
 
 `funnel.py` reads the submitted → quoted → accepted → checkout → paid →
 delivered funnel off the jobs, ledger and events, naming each exit (screened,
-declined, abandoned, refunded) and the win rate by product and price band.
+declined, abandoned, refunded) and the win rate by product and price band. The
+dashboard's Commercial panel (`dashboard._commercial_html`) shows that with the
+customer book, brief quality and the throughput ceiling.
 
 `capacity.py` derives the jobs/day ceiling each spend rule implies and names the
 binding one; `alerts.py` runs the health sweep (cash, runway, stuck jobs, spend

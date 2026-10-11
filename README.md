@@ -518,6 +518,10 @@ convert?" finally has an answer.
   Counter-offers       1 made, 0 won (0.0%)
 ```
 
+The same picture now has a **Commercial** panel in the HTML dashboard — win
+rate, customer book, brief quality and the throughput ceiling beside the P&L —
+so the business reads in one place instead of across six commands.
+
 ### Selling, not just quoting
 
 **`solvent products` — a price list.** A shop that cannot say what it charges
