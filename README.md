@@ -532,8 +532,29 @@ curl -X POST localhost:8787/jobs -d '{"topic": "...", "product": "deep-dive", ..
 
 The catalogue is priced against *current* costs — calibration included — so a
 list price that has quietly stopped clearing the margin floor shows up as a
-stale price rather than as a run of unprofitable work. The command exits
-non-zero when any product has gone stale, so cron can catch it.
+stale price rather than as a run of unprofitable work.
+
+Changing what the shop sells is a business decision, not a code change, so the
+built-in list is overridable in `.solvent/products.json` beside the spend and
+intake policies. Entries merge by slug — naming only a price keeps the built-in
+scope — `retire` drops a product, and `replace: true` makes the file the whole
+list:
+
+```json
+{
+  "products": [
+    { "slug": "express", "list_price_cents": 3500 },
+    { "slug": "retainer", "name": "Monthly retainer", "list_price_cents": 49900,
+      "est_tokens": 60000, "market_data_calls": 12, "web_search_calls": 40 }
+  ],
+  "retire": ["deep-dive"]
+}
+```
+
+A malformed entry is dropped rather than sold — a half-read product is a price
+nobody agreed to — and `solvent products --validate` reports it. The command
+exits non-zero when any product has gone stale *or* the file is broken, so cron
+catches either without reading the output.
 
 **`solvent quality` — a gate on the product, not just the margin.** Every other
 gate here asks whether the money is sound; this one asks whether the brief is.

@@ -16,7 +16,7 @@ from dataclasses import asdict
 from typing import Any
 
 from .pricing import PricingPolicy, Quote, quote
-from .products import BY_SLUG, UnknownProduct, get_product
+from .products import UnknownProduct, by_slug, get_product
 from .treasury import fmt
 
 _LABELS = {
@@ -93,7 +93,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--product",
-        choices=sorted(BY_SLUG),
+        choices=sorted(by_slug()),
         help="price a catalogue product instead of a bespoke budget",
     )
     parser.add_argument("--tokens", type=int, default=8_000, help="estimated Nemotron tokens")

@@ -29,7 +29,9 @@ policy grid under a risk budget.
 
 Jobs may name a `products.py` catalogue product instead of a budget; the price
 list is checked against calibrated costs so a stale list price surfaces as
-such. Fulfilment passes `quality.py` (sections, length, figures, no
+such, and the catalogue itself is overridable in `.solvent/products.json`
+(merge by slug, `retire`, `replace`) with malformed entries dropped and
+reported by `solvent products --validate`. Fulfilment passes `quality.py` (sections, length, figures, no
 scaffolding, topic coverage) — one retry on a failure, the better draft always
 ships, the score lands in `job_metrics`.
 
@@ -38,7 +40,7 @@ unreachable customers) before it is quoted; anything it holds goes to
 `review.py`, where an operator approves (a one-off exemption on that job) or
 rejects it, both recorded as events. Unpaid checkouts are chased and
 then expired by `checkout.py`, swept on every worker pass. Policy files:
-`.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy}.json`.
+`.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy,products}.json`.
 
 `funnel.py` reads the submitted → quoted → accepted → checkout → paid →
 delivered funnel off the jobs, ledger and events, naming each exit (screened,
