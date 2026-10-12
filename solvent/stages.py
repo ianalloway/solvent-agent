@@ -535,6 +535,7 @@ class StageRunner:
                     job_id,
                     Path(result["deliverable_path"]),
                     hosted,
+                    pdf_path=Path(result["pdf_path"]) if result.get("pdf_path") else None,
                 )
                 self.t.complete_stage(job_id, "deliver", deliver_key, {"hosted_url": hosted})
                 self.t.upsert_job(

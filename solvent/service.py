@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 
-from . import nemotron, quality
+from . import nemotron, pdf, quality
 from .paths import reports_dir
 from .pricing import get_resource_costs
 from .security import (
@@ -110,8 +110,23 @@ def fulfill(job: dict) -> dict:
     html_path = path.with_suffix(".html")
     html_path.write_text(html_content, encoding="utf-8")
 
+    # The cost model bills `pdf-render-saas` on every job, so a PDF had better
+    # exist. A render failure must not lose a brief the customer has paid for.
+    pdf_path = path.with_suffix(".pdf")
+    try:
+        pdf_path.write_bytes(
+            pdf.render(
+                text,
+                title=str(job.get("topic") or job["id"])[:120],
+                footer=f"SOLVENT · {job['id']}",
+            )
+        )
+    except Exception:
+        pdf_path = None
+
     return {
         "deliverable_path": str(path),
+        "pdf_path": str(pdf_path) if pdf_path else None,
         "text": text,
         "quality": score,
         "quality_attempts": attempts,

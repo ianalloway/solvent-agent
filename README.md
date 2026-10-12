@@ -484,6 +484,22 @@ a single JSON document, over a period given as `7d`, `24h`, `2w`, `3m` or
 revenue and cost counted when the money moved — so the printed summary ties out
 against the rows it ships, with refunds separated from cost of sales.
 
+### The deliverable
+
+Every job has been billed `pdf-render-saas` since the first commit, and no PDF
+was ever produced — the agent was paying itself for a deliverable it did not
+deliver. It renders one now: markdown, HTML **and** PDF, written beside each
+other in `data/reports/`, linked from the delivery email and served from the
+same token-gated route as the brief itself (`&format=pdf`), so nothing new is
+exposed. With SMTP configured the PDF is attached to the email.
+
+The renderer is `solvent/pdf.py`, about 250 lines of stdlib: a PDF is a text
+container with a byte-offset table, so a single-font document needs no library,
+only exact xref offsets. Base-14 Helvetica means nothing is embedded and a
+brief weighs a couple of kilobytes. A render failure is caught and logged
+rather than raised — losing a brief the customer has paid for would be far
+worse than shipping it without the PDF.
+
 ### Knowing the win rate
 
 **`solvent funnel`.** The treasury has always known the margin on the jobs it
@@ -717,6 +733,7 @@ solvent/
   stripe_client.py two-sided Stripe layer (earn + spend)
   nemotron.py      NVIDIA Nemotron client (+ offline stub)
   service.py       the product: an on-demand research brief
+  pdf.py           dependency-free PDF rendering of the brief
   jobs.py          sample inbound work
   dashboard.py     renders the treasury to HTML + JSON
   finance.py       income statement · unit economics · runway · forecast

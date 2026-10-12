@@ -8,6 +8,7 @@ import os
 import re
 import smtplib
 import time
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -362,21 +363,41 @@ def _esc(text: str) -> str:
     )
 
 
-def send_email(to_email: str, subject: str, body: str, *, outbox_name: str) -> dict:
+def send_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    *,
+    outbox_name: str,
+    attachment: Path | None = None,
+    attachment_name: str = "",
+) -> dict:
     """Send one message via SMTP, or write it to the outbox in simulate mode.
 
     Without `SMTP_HOST` the agent has no way to post mail, so the message is
-    written to `data/outbox/<name>.eml` instead of being silently dropped.
+    written to `data/outbox/<name>.eml` instead of being silently dropped. An
+    attachment is named in that file rather than inlined — the outbox is for
+    reading, not for parsing.
     """
     host = os.environ.get("SMTP_HOST", "").strip()
+    attached = False
     if not host:
         OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
         eml_path = OUTBOX_DIR / f"{outbox_name}.eml"
+        note = ""
+        if attachment is not None and Path(attachment).is_file():
+            note = f"X-Attachment: {Path(attachment).name}\n"
+            attached = True
         eml_path.write_text(
-            f"To: {to_email}\nSubject: {subject}\n\n{body}",
+            f"To: {to_email}\nSubject: {subject}\n{note}\n{body}",
             encoding="utf-8",
         )
-        return {"simulated": True, "path": str(eml_path), "to": to_email}
+        return {
+            "simulated": True,
+            "path": str(eml_path),
+            "to": to_email,
+            "attached": attached,
+        }
     port = int(os.environ.get("SMTP_PORT", "587"))
     user = os.environ.get("SMTP_USER", "")
     password = os.environ.get("SMTP_PASS", "")
@@ -386,12 +407,26 @@ def send_email(to_email: str, subject: str, body: str, *, outbox_name: str) -> d
     msg["To"] = to_email
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
+    if attachment is not None:
+        attached = _attach_pdf(msg, Path(attachment), attachment_name or Path(attachment).name)
     with smtplib.SMTP(host, port, timeout=30) as server:
         server.starttls()
         if user and password:
             server.login(user, password)
         server.sendmail(from_addr, [to_email], msg.as_string())
-    return {"simulated": False, "to": to_email}
+    return {"simulated": False, "to": to_email, "attached": attached}
+
+
+def _attach_pdf(msg: MIMEMultipart, pdf_path: Path, filename: str) -> bool:
+    """Attach a rendered brief. A missing file is not worth failing delivery over."""
+    try:
+        payload = Path(pdf_path).read_bytes()
+    except OSError:
+        return False
+    part = MIMEApplication(payload, _subtype="pdf")
+    part.add_header("Content-Disposition", "attachment", filename=filename)
+    msg.attach(part)
+    return True
 
 
 def send_payment_reminder(
@@ -431,32 +466,23 @@ def send_brief_email(
     job_id: str,
     brief_path: Path,
     hosted_url: str,
+    pdf_path: Path | None = None,
 ) -> dict:
-    """Send brief via SMTP or write to outbox in simulate mode."""
+    """Send the finished brief: hosted link, PDF, and the text inline."""
     text = brief_path.read_text(encoding="utf-8") if brief_path.is_file() else ""
+    has_pdf = pdf_path is not None and Path(pdf_path).is_file()
     subject = f"Your SOLVENT research brief ({job_id})"
-    body = f"Your research brief is ready.\n\nView online: {hosted_url}\n\n---\n{text[:8000]}"
-    host = os.environ.get("SMTP_HOST", "").strip()
-    if not host:
-        OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
-        eml_path = OUTBOX_DIR / f"{job_id}.eml"
-        eml_path.write_text(
-            f"To: {to_email}\nSubject: {subject}\n\n{body}",
-            encoding="utf-8",
-        )
-        return {"simulated": True, "path": str(eml_path), "to": to_email}
-    port = int(os.environ.get("SMTP_PORT", "587"))
-    user = os.environ.get("SMTP_USER", "")
-    password = os.environ.get("SMTP_PASS", "")
-    from_addr = os.environ.get("SMTP_FROM", user or "agent@solvent.local")
-    msg = MIMEMultipart()
-    msg["From"] = from_addr
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
-    with smtplib.SMTP(host, port, timeout=30) as server:
-        server.starttls()
-        if user and password:
-            server.login(user, password)
-        server.sendmail(from_addr, [to_email], msg.as_string())
-    return {"simulated": False, "to": to_email}
+    body = (
+        "Your research brief is ready.\n\n"
+        f"View online: {hosted_url}\n"
+        + (f"PDF: {hosted_url}&format=pdf\n" if has_pdf else "")
+        + f"\n---\n{text[:8000]}"
+    )
+    return send_email(
+        to_email,
+        subject,
+        body,
+        outbox_name=job_id,
+        attachment=Path(pdf_path) if has_pdf else None,
+        attachment_name=f"{job_id}.pdf",
+    )

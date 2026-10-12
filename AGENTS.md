@@ -54,6 +54,11 @@ headroom, vendor exposure, blocks, unpaid pipeline, cost drift) and exits
 non-zero on critical; `export.py` closes a period on the ledger and writes the
 books as CSV or JSON.
 
+Fulfilment writes the brief as markdown, HTML and PDF (`pdf.py`, stdlib-only,
+which makes the billed `pdf-render-saas` line honest); the PDF is attached to
+the delivery email and served from `/briefs/{id}?format=pdf` behind the same
+delivery token.
+
 Nemotron may chat and plan; treasury writes and Stripe stay in stages/guardrails.
 
 ## Commands
