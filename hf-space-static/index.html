@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOLVENT: AI agent that declines unprofitable work</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/pyodide/v0.28.3/full/pyodide.js"></script>
+</head>
+<body>
+<h1>🪙 SOLVENT: an AI agent that runs its own research business</h1>
+<p>SOLVENT quotes research jobs against its <b>own costs</b>, <b>declines the unprofitable ones</b> (offering a counter-offer instead),
+and books every job into a treasury P&amp;L. This page runs the <b>real <a href="https://pypi.org/project/solvent-agent/" target="_blank" rel="noopener">solvent-agent</a> package</b>
+inside your browser with <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>, in offline demo mode: simulated Stripe checkout, deterministic stub analyst,
+<b>no API keys, no server</b>. <a href="https://github.com/ianalloway/solvent-agent" target="_blank" rel="noopener">GitHub</a> · <code>pip install solvent-agent</code></p>
+<div id="status">Starting…</div>
+<nav>
+  <button class="active" data-tab="demo">▶ Run the 5-job demo</button>
+  <button data-tab="quote-tab">🧮 Try your own job</button>
+  <button data-tab="about">ℹ About</button>
+</nav>
+<main>
+<section id="demo">
+  <p>Runs the five built-in sample jobs end to end. <b>J3</b> is deliberately underpriced, so watch the margin gate decline it and counter-offer.</p>
+  <div class="row">
+    <label>Seed capital (USD)<input id="seed" type="number" value="100" min="15" max="100000"></label>
+    <button id="run" class="primary" disabled>Run the demo</button>
+  </div>
+  <div class="error"></div>
+  <div id="jobs"></div>
+  <div id="declined"></div>
+  <div id="pnl"></div>
+  <details id="logbox" hidden><summary>Event timeline</summary><pre id="log"></pre></details>
+</section>
+<section id="quote-tab" hidden>
+  <p>A <b>dry run of the margin gate</b>, same logic as <code>solvent quote</code> on the CLI. Nothing is stored and no payment is made. Try a $6 budget to see a decline.</p>
+  <div class="row">
+    <label style="flex:3">Topic<input id="topic" type="text" value="Competitive landscape for edge-AI chips, 2026" maxlength="200"></label>
+    <label>Customer budget (USD)<input id="budget" type="number" value="6" min="0.01" step="0.01"></label>
+  </div>
+  <details><summary>Job scope (optional)</summary>
+    <div class="row">
+      <label>Estimated analyst tokens<input id="tokens" type="number" value="8000" min="1000" max="40000" step="500"></label>
+      <label>Market-data pulls<input id="mcalls" type="number" value="2" min="0" max="10"></label>
+      <label>Web searches<input id="scalls" type="number" value="6" min="0" max="30"></label>
+      <label>Margin floor (%)<input id="floor" type="number" value="35" min="0" max="90"></label>
+    </div>
+  </details>
+  <div class="row"><button id="quote" class="primary" disabled>Quote this job</button></div>
+  <div class="error"></div>
+  <div id="verdict"></div>
+  <div id="costs"></div>
+  <details id="clibox" hidden><summary>CLI-style output</summary><pre id="cli"></pre></details>
+</section>
+<section id="about" hidden>
+  <ul>
+    <li><b>What is simulated?</b> Stripe checkout/payments and the analyst's brief. They are deterministic stubs, so numbers here are illustrative, not real revenue.</li>
+    <li><b>What runs where?</b> Everything runs in this browser tab. The page only downloads Pyodide (from the jsDelivr CDN) and the <code>solvent-agent</code> wheel (from PyPI); nothing you type leaves your machine.</li>
+    <li><b>Run it yourself:</b> <code>pip install solvent-agent &amp;&amp; solvent</code> (demo) or <code>solvent quote "topic" --budget 49</code>.</li>
+    <li><b>Live mode</b> (real Stripe test mode, real Nemotron) needs your own keys and is not part of this Space.</li>
+    <li>Not financial or investment advice; the sample jobs are fictional.</li>
+  </ul>
+</section>
+</main>
+<footer>Code: <a href="https://github.com/ianalloway/solvent-agent" target="_blank" rel="noopener">github.com/ianalloway/solvent-agent</a> · PyPI: <a href="https://pypi.org/project/solvent-agent/" target="_blank" rel="noopener">solvent-agent</a> · MIT licensed.</footer>
+<script src="app.js"></script>
+</body>
+</html>
