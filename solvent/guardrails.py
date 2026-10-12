@@ -28,6 +28,7 @@ same policy in plain Python so the behaviour is visible and testable.
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -82,6 +83,18 @@ _SCALAR_LIMITS = (
 )
 
 
+def _is_finite_number(value: object) -> bool:
+    """True for a real int/float that is not a bool, NaN or +/-Infinity.
+
+    JSON accepts ``Infinity``, ``NaN`` and overflowing literals such as
+    ``1e400``; ``int()`` on those raises, which used to crash every command
+    that loads the policy and print a traceback instead of falling back.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return isinstance(value, int) or math.isfinite(value)
+
+
 def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     """Build the spend policy, applying `.solvent/spend_policy.json` if present.
 
@@ -95,14 +108,14 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
         return policy
     try:
         data = json.loads(override_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (ValueError, OSError):  # JSONDecodeError and UnicodeDecodeError are ValueErrors
         return policy
     if not isinstance(data, dict):
         return policy
 
     for key in _SCALAR_LIMITS:
         value = data.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+        if _is_finite_number(value) and value >= 0:
             setattr(policy, key, int(value))
 
     allowlist = data.get("vendor_allowlist")
@@ -112,9 +125,7 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     overrides = data.get("vendor_daily_overrides")
     if isinstance(overrides, dict):
         policy.vendor_daily_overrides = {
-            k: int(v)
-            for k, v in overrides.items()
-            if isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool)
+            k: int(v) for k, v in overrides.items() if isinstance(k, str) and _is_finite_number(v)
         }
     return policy
 

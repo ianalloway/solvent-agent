@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,13 +60,18 @@ def load_policy(path: Path | None = None) -> CheckoutPolicy:
         return policy
     try:
         data = json.loads(override.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (ValueError, OSError):  # JSONDecodeError and UnicodeDecodeError are ValueErrors
         return policy
     if not isinstance(data, dict):
         return policy
     for field in _NUMERIC_FIELDS:
         value = data.get(field)
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and (isinstance(value, int) or math.isfinite(value))
+            and value >= 0
+        ):
             setattr(policy, field, type(getattr(policy, field))(value))
     try:
         policy.validate()
