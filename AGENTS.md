@@ -59,6 +59,10 @@ which makes the billed `pdf-render-saas` line honest); the PDF is attached to
 the delivery email and served from `/briefs/{id}?format=pdf` behind the same
 delivery token.
 
+`turnaround.py` measures paid-to-delivered time from the ledger and the event
+log, quotes a promise at a percentile (shown on accepted quotes), and defines
+"late" for `alerts.py` from the shop's own p95 where there is history.
+
 `ops.py` serves the business reports as operator-only slash commands on the
 chat surface (`/funnel`, `/customers`, `/capacity`, `/alerts`, `/products`,
 `/quality`, `/review`, `/costs`): the dashboard channel and ids in
@@ -79,7 +83,7 @@ python -m solvent customers|costs|simulate     # customer book / cost model / po
 python -m solvent checkouts|intake|optimize    # unpaid links / intake screen / policy search
 python -m solvent capacity|alerts|export       # throughput ceiling / health sweep / books
 python -m solvent products|quality|review      # price list / brief scores / approval queue
-python -m solvent funnel                       # win rate and where orders are lost
+python -m solvent funnel|turnaround             # win rate / measured delivery time
 ```
 
 ## Conventions

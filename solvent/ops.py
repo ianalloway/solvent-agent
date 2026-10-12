@@ -180,6 +180,23 @@ def _costs(t: Treasury) -> str:
     )
 
 
+def _turnaround(t: Treasury) -> str:
+    from .turnaround import format_turnaround, report
+
+    data = report(t)
+    if not data["stats"]["samples"]:
+        return "No delivered jobs yet, so nothing to measure."
+    del format_turnaround
+    figures = data["stats"]
+    return "\n".join(
+        [
+            f"{figures['samples']} delivered: median {figures['p50']}s, p95 {figures['p95']}s",
+            f"Can promise: {data['promise']}",
+            f"Missed the promise: {data['breaches']} ({data['breach_pct']}%)",
+        ]
+    )
+
+
 #: Operator-only commands, each a short read over local state.
 COMMANDS = {
     "/funnel": ("win rate and where orders are lost", _funnel),
@@ -190,6 +207,7 @@ COMMANDS = {
     "/quality": ("scores the quality gate gave shipped briefs", _quality),
     "/review": ("jobs the intake screen is holding", _review),
     "/costs": ("estimated vs realized COGS", _costs),
+    "/turnaround": ("measured paid-to-delivered time", _turnaround),
 }
 
 

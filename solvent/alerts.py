@@ -131,17 +131,28 @@ def check_cost_model(t: Treasury) -> Alert:
 
 
 def check_stuck_jobs(t: Treasury, *, now: float | None = None) -> Alert:
-    """Paid work that has not been delivered."""
+    """Paid work that has not been delivered.
+
+    "Late" is the shop's own measured turnaround where there is enough history
+    to have one — a shop that normally delivers in forty seconds should not wait
+    two hours to notice — and the fixed hours below only until then.
+    """
+    from .turnaround import late_threshold_seconds
+
     stamp = now if now is not None else time.time()
+    measured = late_threshold_seconds(t)
+    warn_hours = measured / 3_600 if measured else STUCK_JOB_WARN_HOURS
+    critical_hours = max(warn_hours * 6, STUCK_JOB_CRITICAL_HOURS) if measured else STUCK_JOB_CRITICAL_HOURS
+
     stuck = []
     for job in t.list_jobs_by_status(["paid_pending_fulfill", "in_progress"]):
         age = (stamp - float(job.get("updated_at") or job.get("created_at") or stamp)) / 3_600
-        if age >= STUCK_JOB_WARN_HOURS:
+        if age >= warn_hours:
             stuck.append((job.get("id"), round(age, 1)))
     if not stuck:
         return Alert("stuck_jobs", OK, "no paid job is waiting on fulfilment")
     worst = max(age for _, age in stuck)
-    severity = CRITICAL if worst >= STUCK_JOB_CRITICAL_HOURS else WARN
+    severity = CRITICAL if worst >= critical_hours else WARN
     names = ", ".join(f"{job_id} ({age}h)" for job_id, age in stuck[:5])
     return Alert(
         "stuck_jobs",

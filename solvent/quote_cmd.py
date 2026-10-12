@@ -47,7 +47,12 @@ def build_job(
     }
 
 
-def format_quote(job: dict[str, Any], q: Quote, policy: PricingPolicy) -> str:
+def format_quote(
+    job: dict[str, Any],
+    q: Quote,
+    policy: PricingPolicy,
+    turnaround_promise: str = "",
+) -> str:
     """Render a quote as the operator-facing block `solvent quote` prints."""
     lines = [
         "",
@@ -66,6 +71,8 @@ def format_quote(job: dict[str, Any], q: Quote, policy: PricingPolicy) -> str:
         f"   floor {policy.margin_floor_pct}%",
         f"  Verdict              {'ACCEPT' if q.accept else 'DECLINE'} — {q.reason}",
     ]
+    if q.accept and turnaround_promise:
+        lines.append(f"  Turnaround           {turnaround_promise}")
     if q.counter_offer:
         offer = q.counter_offer
         lines += [
@@ -143,10 +150,20 @@ def main() -> None:
     )
     q = quote(job, policy)
 
+    # What the shop has actually been delivering in, so a quote can say so.
+    promise = ""
+    try:
+        from .turnaround import humanise, measure, promise_seconds
+
+        seconds = promise_seconds(measure())
+        promise = humanise(seconds) if seconds is not None else ""
+    except Exception:
+        promise = ""
+
     if args.as_json:
-        print(json.dumps(asdict(q), indent=2))
+        print(json.dumps({**asdict(q), "turnaround": promise}, indent=2))
     else:
-        print(format_quote(job, q, policy))
+        print(format_quote(job, q, policy, promise))
 
     # Exit 1 on a decline so scripts can gate on the verdict.
     sys.exit(0 if q.accept else 1)

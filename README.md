@@ -255,6 +255,7 @@ python3 -m solvent products               # the price list, checked against curr
 python3 -m solvent quality                # scores the quality gate gave shipped briefs
 python3 -m solvent review                 # approve/reject the jobs intake held for a human
 python3 -m solvent funnel --since 7d      # win rate: submitted → quoted → paid → delivered
+python3 -m solvent turnaround             # measured paid-to-delivered time, and the promise
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
@@ -483,6 +484,30 @@ a single JSON document, over a period given as `7d`, `24h`, `2w`, `3m` or
 `YYYY-MM-DD`. The period is closed on the ledger rather than the job table —
 revenue and cost counted when the money moved — so the printed summary ties out
 against the rows it ships, with refunds separated from cost of sales.
+
+### How long it takes
+
+"When will I get it?" is the second question every customer asks, and the agent
+had no answer. Fulfilment seconds were recorded, but that is only the model's
+part — what the customer experiences is the wait from *paying* to *having the
+brief*, across the queue, the worker's poll, retries and delivery.
+
+That wait is already on the record (the ledger says when the money arrived, the
+event log says when the brief went out), so `solvent turnaround` measures it
+rather than estimating, and turns the distribution into something quotable: a
+promise at a chosen percentile, rounded up, never faster than a floor. The
+promise then appears on accepted quotes:
+
+```
+  Verdict              ACCEPT — accepted
+  Turnaround           within 5 minutes
+```
+
+It also retires an arbitrary threshold. `alerts.py` called a paid job "stuck"
+after two hours because two hours sounded reasonable; a shop that normally
+delivers in forty seconds should not wait two hours to notice, and one that
+takes a day should not cry wolf. With enough history, late is defined by the
+shop's own p95 — and only until then by the fixed hours.
 
 ### Running it from Telegram
 
@@ -748,6 +773,8 @@ solvent/
   quality.py       deliverable quality gate (`solvent quality`)
   review.py        operator approval queue (`solvent review`)
   funnel.py        order funnel and win rate (`solvent funnel`)
+  turnaround.py    measured delivery time (`solvent turnaround`)
+  ops.py           operator-only business commands on the chat surface
   stripe_client.py two-sided Stripe layer (earn + spend)
   nemotron.py      NVIDIA Nemotron client (+ offline stub)
   service.py       the product: an on-demand research brief
