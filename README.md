@@ -484,6 +484,24 @@ a single JSON document, over a period given as `7d`, `24h`, `2w`, `3m` or
 revenue and cost counted when the money moved — so the printed summary ties out
 against the rows it ships, with refunds separated from cost of sales.
 
+### Running it from Telegram
+
+Fifteen commands' worth of reporting lived in the CLI, which is where the
+operator is not. The gateway's slash commands now cover the business too —
+`/funnel`, `/customers`, `/capacity`, `/alerts`, `/products`, `/quality`,
+`/review`, `/costs` — each a short read over local state, no model call, no
+spend.
+
+The catch is who is asking. Any *paired* Telegram user reaches that handler,
+and a customer is not entitled to the agent's win rate or cash position, so
+these are operator-only:
+
+- the **dashboard** channel is the operator by construction — it sits behind
+  `SOLVENT_DASHBOARD_TOKEN`;
+- a Telegram id in `SOLVENT_OPERATOR_IDS` is the operator;
+- anyone else gets "That command is operator-only", and `/help` does not list
+  commands they cannot run.
+
 ### The deliverable
 
 Every job has been billed `pdf-render-saas` since the first commit, and no PDF

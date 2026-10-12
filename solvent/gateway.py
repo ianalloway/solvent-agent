@@ -6,7 +6,7 @@ import contextlib
 import os
 from collections.abc import Callable
 
-from . import pairing
+from . import ops, pairing
 from .agent import Solvent
 from .chat import format_job_notification, handle_message
 from .memory import SessionMemory
@@ -95,14 +95,24 @@ class Gateway:
         arg = parts[1] if len(parts) > 1 else ""
 
         if cmd in ("/help", "/start"):
-            return (
-                "SOLVENT research business bot.\n"
-                "/status — treasury snapshot\n"
-                "/jobs — recent jobs\n"
-                "/pair qr — generate OpenClaw pairing QR code\n"
-                "/quote <topic> | <budget_usd> — margin preview\n"
-                "Or chat naturally to commission a research brief."
-            )
+            lines = [
+                "SOLVENT research business bot.",
+                "/status — treasury snapshot",
+                "/jobs — recent jobs",
+                "/pair qr — generate OpenClaw pairing QR code",
+                "/quote <topic> | <budget_usd> — margin preview",
+            ]
+            # The business's own numbers are only listed to whoever may read them.
+            if ops.is_operator(channel, external_id):
+                lines += ["", "Operator:"] + ops.help_lines()
+            lines += ["", "Or chat naturally to commission a research brief."]
+            return "\n".join(lines)
+
+        ops_answer = ops.handle(
+            cmd, channel=channel, external_id=external_id, treasury=self.agent.t
+        )
+        if ops_answer is not None:
+            return ops_answer
         if cmd == "/status":
             s = self.agent.t.snapshot()
             return (

@@ -59,6 +59,12 @@ which makes the billed `pdf-render-saas` line honest); the PDF is attached to
 the delivery email and served from `/briefs/{id}?format=pdf` behind the same
 delivery token.
 
+`ops.py` serves the business reports as operator-only slash commands on the
+chat surface (`/funnel`, `/customers`, `/capacity`, `/alerts`, `/products`,
+`/quality`, `/review`, `/costs`): the dashboard channel and ids in
+`SOLVENT_OPERATOR_IDS` are operators, every other paired user is a customer and
+is refused without seeing figures.
+
 Nemotron may chat and plan; treasury writes and Stripe stay in stages/guardrails.
 
 ## Commands
