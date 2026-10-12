@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 
 from .agent import Solvent
@@ -28,8 +29,8 @@ def run_worker(
         # drops out of the queue instead of being polled forever.
         try:
             sweep_checkouts(agent.t, stripe=agent.stripe)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).warning("checkout sweep failed: %s", exc)
 
         # Work the backlog in business order — paid jobs first, then best
         # return on capital — and hold back work the treasury cannot fund yet.
