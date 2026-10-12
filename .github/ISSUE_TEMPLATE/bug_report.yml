@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in SOLVENT isn't working as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! **Security problems go through a [private advisory](https://github.com/ianalloway/solvent-agent/security/advisories/new), not here.**
+  - type: input
+    id: version
+    attributes:
+      label: SOLVENT version
+      description: Output of `pip show solvent-agent` or `solvent --version`
+      placeholder: "0.2.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How were you running it?
+      options:
+        - Offline demo (no keys)
+        - Stripe test mode
+        - Live Nemotron (NVIDIA_API_KEY)
+        - Server / dashboard
+        - Hugging Face Space
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the full error or traceback. Redact any keys or tokens.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. export SOLVENT_HOME=$(mktemp -d)
+        2. solvent --no-onboard
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+  - type: input
+    id: env
+    attributes:
+      label: OS and Python version
+      placeholder: "macOS 15, Python 3.12"
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`solvent doctor` output (optional)"
+      render: text

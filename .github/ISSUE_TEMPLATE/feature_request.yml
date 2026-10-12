@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest an idea or improvement for SOLVENT
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the use case, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Pricing / margin gate
+        - Spend policy / guardrails
+        - Payments (Stripe)
+        - Fulfilment / LLM
+        - CLI
+        - Dashboard / server
+        - Docs
+        - Other
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd be willing to open a PR for this
