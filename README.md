@@ -6,6 +6,7 @@
 
 [![CI](https://github.com/ianalloway/solvent-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ianalloway/solvent-agent/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/solvent-agent.svg)](https://pypi.org/project/solvent-agent/)
+[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Space-try%20in%20browser-yellow)](https://huggingface.co/spaces/ianalloway/solvent-agent-demo)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Zero dependencies](https://img.shields.io/badge/core%20deps-0-brightgreen)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -18,6 +19,11 @@
 
 <sub>Recorded from the real CLI with no API keys and no network access: the Stripe checkout links and Nemotron output are the built-in offline stubs, and the dollar figures are simulated.</sub>
 
+**[▶ Try it in your browser](https://huggingface.co/spaces/ianalloway/solvent-agent-demo)**: the real package running in Pyodide, with no install and no keys.
+
+[![The SOLVENT Hugging Face Space: five jobs run, J3 declined with a $15 counter-offer, and a simulated P&L snapshot](docs/hf-space-demo.png)](https://huggingface.co/spaces/ianalloway/solvent-agent-demo)
+
+<sub>All dollar figures, including the final cash balance, are simulated.</sub>
 </div>
 
 > **Demo by default.** With no keys set, `solvent` runs an **offline, zero-key simulation** of the whole loop. Dollar figures in the demo are illustrative, **not production revenue**. Stripe test-mode Payment Links and live NVIDIA Nemotron are opt-in; see [Make It Real](#-make-it-real).

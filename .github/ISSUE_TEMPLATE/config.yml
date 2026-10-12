@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ianalloway/solvent-agent/security/advisories/new
+    about: Please report security issues privately, not as a public issue.
+  - name: Try the in-browser demo
+    url: https://huggingface.co/spaces/ianalloway/solvent-agent-demo
+    about: Run the real package in your browser with no install and no keys.
