@@ -128,8 +128,29 @@ def _print_summary(cfg: SolventConfig, path):
         print(f"\n  {C_GREY}Starting batch demo…{C_RESET}\n")
 
 
+def _stdin_is_interactive() -> bool:
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except (AttributeError, ValueError):  # detached or closed stdin
+        return False
+
+
 def run_wizard() -> SolventConfig:
-    """Interactive onboarding; returns saved config."""
+    """Interactive onboarding; returns saved config.
+
+    Without a TTY (CI, Docker, cron, piped stdin) the prompts would hit EOF and
+    crash, so fall back to the defaults instead, without saving them, and say
+    how to configure non-interactively.
+    """
+    if not _stdin_is_interactive():
+        from .config import default_config
+
+        print(
+            "solvent: no interactive terminal; skipping the setup wizard and using "
+            "defaults (set SOLVENT_SKIP_ONBOARD=1 or pass --no-onboard to silence this).",
+            file=sys.stderr,
+        )
+        return default_config()
     _print_banner()
 
     # --- Model (NemoClaw: provider-first) --------------------------------
