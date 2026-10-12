@@ -29,7 +29,9 @@ policy grid under a risk budget.
 
 Jobs may name a `products.py` catalogue product instead of a budget; the price
 list is checked against calibrated costs so a stale list price surfaces as
-such. Fulfilment passes `quality.py` (sections, length, figures, no
+such, and the catalogue itself is overridable in `.solvent/products.json`
+(merge by slug, `retire`, `replace`) with malformed entries dropped and
+reported by `solvent products --validate`. Fulfilment passes `quality.py` (sections, length, figures, no
 scaffolding, topic coverage) — one retry on a failure, the better draft always
 ships, the score lands in `job_metrics`.
 
@@ -38,13 +40,34 @@ unreachable customers) before it is quoted; anything it holds goes to
 `review.py`, where an operator approves (a one-off exemption on that job) or
 rejects it, both recorded as events. Unpaid checkouts are chased and
 then expired by `checkout.py`, swept on every worker pass. Policy files:
-`.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy}.json`.
+`.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy,products}.json`.
+
+`funnel.py` reads the submitted → quoted → accepted → checkout → paid →
+delivered funnel off the jobs, ledger and events, naming each exit (screened,
+declined, abandoned, refunded) and the win rate by product and price band. The
+dashboard's Commercial panel (`dashboard._commercial_html`) shows that with the
+customer book, brief quality and the throughput ceiling.
 
 `capacity.py` derives the jobs/day ceiling each spend rule implies and names the
 binding one; `alerts.py` runs the health sweep (cash, runway, stuck jobs, spend
 headroom, vendor exposure, blocks, unpaid pipeline, cost drift) and exits
 non-zero on critical; `export.py` closes a period on the ledger and writes the
 books as CSV or JSON.
+
+Fulfilment writes the brief as markdown, HTML and PDF (`pdf.py`, stdlib-only,
+which makes the billed `pdf-render-saas` line honest); the PDF is attached to
+the delivery email and served from `/briefs/{id}?format=pdf` behind the same
+delivery token.
+
+`turnaround.py` measures paid-to-delivered time from the ledger and the event
+log, quotes a promise at a percentile (shown on accepted quotes), and defines
+"late" for `alerts.py` from the shop's own p95 where there is history.
+
+`ops.py` serves the business reports as operator-only slash commands on the
+chat surface (`/funnel`, `/customers`, `/capacity`, `/alerts`, `/products`,
+`/quality`, `/review`, `/costs`): the dashboard channel and ids in
+`SOLVENT_OPERATOR_IDS` are operators, every other paired user is a customer and
+is refused without seeing figures.
 
 Nemotron may chat and plan; treasury writes and Stripe stay in stages/guardrails.
 
@@ -60,6 +83,7 @@ python -m solvent customers|costs|simulate     # customer book / cost model / po
 python -m solvent checkouts|intake|optimize    # unpaid links / intake screen / policy search
 python -m solvent capacity|alerts|export       # throughput ceiling / health sweep / books
 python -m solvent products|quality|review      # price list / brief scores / approval queue
+python -m solvent funnel|turnaround             # win rate / measured delivery time
 ```
 
 ## Conventions

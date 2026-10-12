@@ -127,3 +127,169 @@ def test_an_unknown_product_is_declined_not_crashed(tmp_path):
     assert job is None
     assert "unknown product" in err
     assert t.get_job("J1")["status"] == "failed"
+
+
+# --- operator-editable catalogue -------------------------------------------
+
+
+def _write(tmp_path, payload):
+    import json as _json
+
+    path = tmp_path / "products.json"
+    path.write_text(_json.dumps(payload) if not isinstance(payload, str) else payload)
+    return path
+
+
+def test_without_a_file_the_builtin_list_is_in_force(tmp_path):
+    from solvent.products import load_catalog
+
+    assert load_catalog(tmp_path / "missing.json") == CATALOG
+
+
+def test_an_override_can_change_a_price_without_restating_the_scope(tmp_path):
+    from solvent.products import by_slug, load_catalog
+
+    path = _write(tmp_path, {"products": [{"slug": "express", "list_price_cents": 3_500}]})
+    express = by_slug(path)["express"]
+
+    assert express.list_price_cents == 3_500
+    assert express.est_tokens == get_product("express").est_tokens  # scope inherited
+    assert len(load_catalog(path)) == len(CATALOG)
+
+
+def test_an_override_can_add_a_product(tmp_path):
+    from solvent.products import by_slug
+
+    path = _write(
+        tmp_path,
+        {
+            "products": [
+                {
+                    "slug": "retainer",
+                    "name": "Monthly retainer",
+                    "list_price_cents": 49_900,
+                    "est_tokens": 60_000,
+                    "market_data_calls": 12,
+                    "web_search_calls": 40,
+                }
+            ]
+        },
+    )
+    retainer = by_slug(path)["retainer"]
+    assert retainer.name == "Monthly retainer"
+    assert retainer.list_price_cents == 49_900
+
+
+def test_a_new_product_must_state_its_own_price_and_scope(tmp_path):
+    from solvent.products import by_slug, catalog_problems
+
+    path = _write(tmp_path, {"products": [{"slug": "mystery", "list_price_cents": 1_000}]})
+    assert "mystery" not in by_slug(path)
+    assert any("must state" in problem for problem in catalog_problems(path))
+
+
+def test_an_override_can_retire_a_product(tmp_path):
+    from solvent.products import by_slug
+
+    path = _write(tmp_path, {"retire": ["deep-dive"]})
+    index = by_slug(path)
+    assert "deep-dive" not in index
+    assert "standard" in index
+
+
+def test_replace_makes_the_file_the_whole_list(tmp_path):
+    from solvent.products import load_catalog
+
+    path = _write(
+        tmp_path,
+        {
+            "replace": True,
+            "products": [
+                {
+                    "slug": "only",
+                    "list_price_cents": 5_000,
+                    "est_tokens": 8_000,
+                    "market_data_calls": 2,
+                    "web_search_calls": 6,
+                }
+            ],
+        },
+    )
+    assert [p.slug for p in load_catalog(path)] == ["only"]
+
+
+def test_a_bare_list_is_accepted(tmp_path):
+    from solvent.products import by_slug
+
+    path = _write(tmp_path, [{"slug": "express", "list_price_cents": 1_900}])
+    assert by_slug(path)["express"].list_price_cents == 1_900
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "{not json",
+        '"a string"',
+        '{"products": "express"}',
+        '{"products": [{"slug": "express", "list_price_cents": "lots"}]}',
+        '{"products": [{"slug": "express", "est_tokens": -5}]}',
+        '{"products": [{"list_price_cents": 100}]}',
+        '{"products": ["express"]}',
+    ],
+)
+def test_an_unreadable_override_never_changes_what_is_sold(tmp_path, payload):
+    from solvent.products import by_slug
+
+    path = _write(tmp_path, payload)
+    assert by_slug(path)["express"] == get_product("express")
+
+
+def test_emptying_the_catalogue_falls_back_to_the_builtins(tmp_path):
+    from solvent.products import load_catalog
+
+    path = _write(tmp_path, {"replace": True, "products": []})
+    assert load_catalog(path) == CATALOG
+
+
+def test_problems_name_the_entry_and_the_fault(tmp_path):
+    from solvent.products import catalog_problems
+
+    path = _write(
+        tmp_path,
+        {
+            "products": [
+                {"slug": "express", "list_price_cents": "lots"},
+                {"slug": "standard"},
+                {"slug": "standard", "list_price_cents": 8_000},
+                {"name": "nameless"},
+                "not an object",
+            ]
+        },
+    )
+    problems = catalog_problems(path)
+    assert any("entry 1 (express)" in p and "unreadable" in p for p in problems)
+    assert any("duplicate slug 'standard'" in p for p in problems)
+    assert any("entry 4 has no slug" in p for p in problems)
+    assert any("entry 5 is not an object" in p for p in problems)
+
+
+def test_a_clean_catalogue_has_no_problems(tmp_path):
+    from solvent.products import catalog_problems
+
+    assert catalog_problems(tmp_path / "missing.json") == []
+    path = _write(tmp_path, {"products": [{"slug": "express", "list_price_cents": 3_500}]})
+    assert catalog_problems(path) == []
+
+
+def test_problems_are_reported_alongside_the_price_list(tmp_path):
+    rows = price_list(PricingPolicy())
+    rendered = format_price_list(rows, PricingPolicy(), ["products.json entry 1: broken"])
+    assert "⚠ products.json entry 1: broken" in rendered
+
+
+def test_price_list_prices_whatever_catalogue_it_is_given(tmp_path):
+    from solvent.products import load_catalog
+
+    path = _write(tmp_path, {"retire": ["express", "standard"]})
+    rows = price_list(PricingPolicy(), load_catalog(path))
+    assert [row["slug"] for row in rows] == ["deep-dive"]

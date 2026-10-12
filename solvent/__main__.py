@@ -24,6 +24,8 @@ Commands:
   jobs          list/show/retry/cancel jobs (jobs --help for sub-commands)
   backlog       rank open jobs by return on capital and fundability
   customers     lifetime value, repeat rate, and margin by customer
+  funnel        win rate: submitted → quoted → paid → delivered
+  turnaround    measured paid-to-delivered time and the promise it supports
   costs         estimated vs realized COGS and the calibration it implies
   simulate      run pricing + spend policy over synthetic demand, many times
   checkouts     unpaid links: age, reminders, expiry (--sweep to chase now)
@@ -154,6 +156,16 @@ def main() -> None:
         from .review import main as review_main
 
         review_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "funnel":
+        sys.argv.pop(1)
+        from .funnel import main as funnel_main
+
+        funnel_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "turnaround":
+        sys.argv.pop(1)
+        from .turnaround import main as turnaround_main
+
+        turnaround_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "logs":
         sys.argv.pop(1)
         from .logs import main as logs_main

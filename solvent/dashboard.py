@@ -498,6 +498,100 @@ def _financials_html(report: dict) -> str:
     return out
 
 
+def _metric_row(label: str, value: str, cls: str = "") -> str:
+    """One label/value line in a breakdown panel. `value` must already be safe."""
+    return (
+        '<div class="vendor-metric"><div class="vendor-info">'
+        f'<span class="vendor-name">{h(label)}</span>'
+        f'<span class="vendor-amount {cls}">{value}</span>'
+        "</div></div>"
+    )
+
+
+def _commercial_html(treasury=None) -> str:
+    """Win rate, customers, deliverable quality and throughput, for the dashboard.
+
+    The dashboard showed the money and the jobs; the commercial picture lived
+    only in the CLI. This is the same data those commands read, best-effort:
+    a panel is never worth failing a render over.
+    """
+    try:
+        from .capacity import report as capacity_report
+        from .customers import book_summary, customer_stats
+        from .funnel import analyse
+        from .quality import quality_report
+        from .treasury import Treasury
+
+        t = treasury or Treasury()
+        parts: list[str] = []
+
+        funnel = analyse(t)
+        if not funnel["jobs"]:
+            # Capacity still means something with an empty book — it is what the
+            # shop *could* take — so the panel says both.
+            parts.append("<p class='no-data-msg'>No orders yet.</p>")
+        else:
+            stages, rates = funnel["stages"], funnel["rates"]
+            parts.append(
+                _metric_row(
+                    "Orders won",
+                    f"{stages['delivered']} of {stages['submitted']} "
+                    f"({h(_pct_txt(rates['end_to_end_pct']))})",
+                )
+            )
+            parts.append(_metric_row("Gate acceptance", h(_pct_txt(rates["gate_acceptance_pct"]))))
+            parts.append(
+                _metric_row("Payment conversion", h(_pct_txt(rates["payment_conversion_pct"])))
+            )
+            if funnel["lost_cents"]:
+                parts.append(_metric_row("Left on the table", fmt(funnel["lost_cents"]), "red-txt"))
+
+        customers = customer_stats(t)
+        if customers:
+            book = book_summary(customers)
+            parts.append(
+                _metric_row(
+                    "Customers",
+                    f"{book['customers']} ({book['repeat_customers']} repeat)",
+                )
+            )
+            best = customers[0]
+            parts.append(
+                _metric_row(
+                    f"Top customer ({book['top_customer_share_pct']}% of revenue)",
+                    h(str(best["email"])[:38]),
+                )
+            )
+
+        quality = quality_report(t)
+        if quality["briefs"]:
+            failing = sum(n for grade, n in quality["grades"].items() if grade != "pass")
+            cls = "green-txt" if not failing else "red-txt"
+            parts.append(
+                _metric_row(
+                    f"Brief quality ({quality['briefs']} scored)",
+                    f"{h(quality['mean_score'])}/100 mean",
+                    cls,
+                )
+            )
+
+        capacity = capacity_report(t)
+        parts.append(
+            _metric_row(
+                "Throughput ceiling",
+                f"{h(capacity['ceiling_jobs_per_day'])}/day — {h(capacity['binding_rule'])}",
+            )
+        )
+
+        return "".join(parts)
+    except Exception:
+        return ""
+
+
+def _pct_txt(value) -> str:
+    return "—" if value is None else f"{value}%"
+
+
 def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     s = snapshot
     status_data = build_status_data(s, log)
@@ -505,6 +599,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
 
     _entries = _ledger_from_snapshot(s.get("entries", []))
     financials_html = _financials_html(build_report(_entries))
+    commercial_html = _commercial_html()
     chart_svg = status_data["chart_svg"]
     expense_breakdown_html = status_data["expense_breakdown_html"]
     ops_html = status_data["ops_html"]
@@ -1317,6 +1412,11 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Financial Statement <span style="font-size:11px;color:var(--color-text-muted);font-weight:normal">income · unit economics · runway</span></h2>
       <div class="vendor-breakdown-list" id="financials-panel">
         {financials_html}
+      </div>
+
+      <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Commercial <span style="font-size:11px;color:var(--color-text-muted);font-weight:normal">win rate · customers · quality · capacity</span></h2>
+      <div class="vendor-breakdown-list" id="commercial-panel">
+        {commercial_html}
       </div>
 
       <h2 style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:16px">Delivered Research Briefs</h2>

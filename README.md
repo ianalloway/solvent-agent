@@ -254,6 +254,8 @@ python3 -m solvent export --since 30d     # ledger/jobs/metrics/customers + peri
 python3 -m solvent products               # the price list, checked against current cost
 python3 -m solvent quality                # scores the quality gate gave shipped briefs
 python3 -m solvent review                 # approve/reject the jobs intake held for a human
+python3 -m solvent funnel --since 7d      # win rate: submitted → quoted → paid → delivered
+python3 -m solvent turnaround             # measured paid-to-delivered time, and the promise
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
@@ -483,6 +485,102 @@ a single JSON document, over a period given as `7d`, `24h`, `2w`, `3m` or
 revenue and cost counted when the money moved — so the printed summary ties out
 against the rows it ships, with refunds separated from cost of sales.
 
+### How long it takes
+
+"When will I get it?" is the second question every customer asks, and the agent
+had no answer. Fulfilment seconds were recorded, but that is only the model's
+part — what the customer experiences is the wait from *paying* to *having the
+brief*, across the queue, the worker's poll, retries and delivery.
+
+That wait is already on the record (the ledger says when the money arrived, the
+event log says when the brief went out), so `solvent turnaround` measures it
+rather than estimating, and turns the distribution into something quotable: a
+promise at a chosen percentile, rounded up, never faster than a floor. The
+promise then appears on accepted quotes:
+
+```
+  Verdict              ACCEPT — accepted
+  Turnaround           within 5 minutes
+```
+
+It also retires an arbitrary threshold. `alerts.py` called a paid job "stuck"
+after two hours because two hours sounded reasonable; a shop that normally
+delivers in forty seconds should not wait two hours to notice, and one that
+takes a day should not cry wolf. With enough history, late is defined by the
+shop's own p95 — and only until then by the fixed hours.
+
+### Running it from Telegram
+
+Fifteen commands' worth of reporting lived in the CLI, which is where the
+operator is not. The gateway's slash commands now cover the business too —
+`/funnel`, `/customers`, `/capacity`, `/alerts`, `/products`, `/quality`,
+`/review`, `/costs` — each a short read over local state, no model call, no
+spend.
+
+The catch is who is asking. Any *paired* Telegram user reaches that handler,
+and a customer is not entitled to the agent's win rate or cash position, so
+these are operator-only:
+
+- the **dashboard** channel is the operator by construction — it sits behind
+  `SOLVENT_DASHBOARD_TOKEN`;
+- a Telegram id in `SOLVENT_OPERATOR_IDS` is the operator;
+- anyone else gets "That command is operator-only", and `/help` does not list
+  commands they cannot run.
+
+### The deliverable
+
+Every job has been billed `pdf-render-saas` since the first commit, and no PDF
+was ever produced — the agent was paying itself for a deliverable it did not
+deliver. It renders one now: markdown, HTML **and** PDF, written beside each
+other in `data/reports/`, linked from the delivery email and served from the
+same token-gated route as the brief itself (`&format=pdf`), so nothing new is
+exposed. With SMTP configured the PDF is attached to the email.
+
+The renderer is `solvent/pdf.py`, about 250 lines of stdlib: a PDF is a text
+container with a byte-offset table, so a single-font document needs no library,
+only exact xref offsets. Base-14 Helvetica means nothing is embedded and a
+brief weighs a couple of kilobytes. A render failure is caught and logged
+rather than raised — losing a brief the customer has paid for would be far
+worse than shipping it without the PDF.
+
+### Knowing the win rate
+
+**`solvent funnel`.** The treasury has always known the margin on the jobs it
+took; it never knew the win rate. Those are different businesses — a 90% margin
+on one job in ten is a worse shop than a 60% margin on eight, and nothing here
+could tell them apart.
+
+Every stage already leaves a trace, so the funnel is a read over data the agent
+keeps anyway: submitted → quoted → accepted → checkout → paid → delivered. What
+falls out at each step is the point, and the three failures want three
+different fixes:
+
+| Exit | What it means |
+|---|---|
+| `screened` | held before pricing — cost nothing |
+| `declined` | a customer who wanted to pay and was turned away by the margin gate |
+| `abandoned` | a customer who said yes at checkout and then did not pay |
+| `refunded` | paid, then refunded when fulfilment failed — the expensive loss |
+
+Lost pipeline is reported at the price the customer named, because that is the
+money that was on the table. Win rate is broken down by product and price band,
+and counter-offers are tracked separately, so "does the counter-offer actually
+convert?" finally has an answer.
+
+```
+  Submitted                 9  ████████████████████████ 100.0%
+  Accepted by the gate      6  ████████████████········ 66.7%
+  Paid                      5  █████████████··········· 55.6%
+
+  Gate acceptance      85.7%   ·  payment conversion 83.3%
+  Won $373.00  ·  left on the table $9,130.00
+  Counter-offers       1 made, 0 won (0.0%)
+```
+
+The same picture now has a **Commercial** panel in the HTML dashboard — win
+rate, customer book, brief quality and the throughput ceiling beside the P&L —
+so the business reads in one place instead of across six commands.
+
 ### Selling, not just quoting
 
 **`solvent products` — a price list.** A shop that cannot say what it charges
@@ -497,8 +595,29 @@ curl -X POST localhost:8787/jobs -d '{"topic": "...", "product": "deep-dive", ..
 
 The catalogue is priced against *current* costs — calibration included — so a
 list price that has quietly stopped clearing the margin floor shows up as a
-stale price rather than as a run of unprofitable work. The command exits
-non-zero when any product has gone stale, so cron can catch it.
+stale price rather than as a run of unprofitable work.
+
+Changing what the shop sells is a business decision, not a code change, so the
+built-in list is overridable in `.solvent/products.json` beside the spend and
+intake policies. Entries merge by slug — naming only a price keeps the built-in
+scope — `retire` drops a product, and `replace: true` makes the file the whole
+list:
+
+```json
+{
+  "products": [
+    { "slug": "express", "list_price_cents": 3500 },
+    { "slug": "retainer", "name": "Monthly retainer", "list_price_cents": 49900,
+      "est_tokens": 60000, "market_data_calls": 12, "web_search_calls": 40 }
+  ],
+  "retire": ["deep-dive"]
+}
+```
+
+A malformed entry is dropped rather than sold — a half-read product is a price
+nobody agreed to — and `solvent products --validate` reports it. The command
+exits non-zero when any product has gone stale *or* the file is broken, so cron
+catches either without reading the output.
 
 **`solvent quality` — a gate on the product, not just the margin.** Every other
 gate here asks whether the money is sound; this one asks whether the brief is.
@@ -653,9 +772,13 @@ solvent/
   products.py      the price list (`solvent products`)
   quality.py       deliverable quality gate (`solvent quality`)
   review.py        operator approval queue (`solvent review`)
+  funnel.py        order funnel and win rate (`solvent funnel`)
+  turnaround.py    measured delivery time (`solvent turnaround`)
+  ops.py           operator-only business commands on the chat surface
   stripe_client.py two-sided Stripe layer (earn + spend)
   nemotron.py      NVIDIA Nemotron client (+ offline stub)
   service.py       the product: an on-demand research brief
+  pdf.py           dependency-free PDF rendering of the brief
   jobs.py          sample inbound work
   dashboard.py     renders the treasury to HTML + JSON
   finance.py       income statement · unit economics · runway · forecast

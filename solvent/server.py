@@ -518,12 +518,28 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return {"received": True}
 
     @app.get("/briefs/{job_id}")
-    def get_brief(job_id: str, token: str = ""):
+    def get_brief(job_id: str, token: str = "", format: str = ""):
         if not is_safe_job_id(job_id):
             raise HTTPException(404, "brief not found")
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
         reports_dir = reports_dir_fn().resolve()
+
+        if format == "pdf":
+            path_pdf = (reports_dir / f"{job_id}.pdf").resolve()
+            try:
+                path_pdf.relative_to(reports_dir)
+            except ValueError:
+                raise HTTPException(404, "brief not found") from None
+            if not path_pdf.is_file():
+                raise HTTPException(404, "brief not found")
+            from starlette.responses import Response
+
+            return Response(
+                content=path_pdf.read_bytes(),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'inline; filename="{job_id}.pdf"'},
+            )
 
         path_html = (reports_dir / f"{job_id}.html").resolve()
         try:
