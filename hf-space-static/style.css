@@ -1,0 +1,15 @@
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1100px;margin:0 auto;padding:16px;color:#1d1d1f;background:#fafafa}
+h1{margin:.2em 0}a{color:#2563eb}code{background:#eee;padding:1px 4px;border-radius:4px}
+#status{padding:8px 12px;border-radius:8px;background:#fff7e0;margin:10px 0}#status.ok{background:#e9f7ef}#status.err{background:#fdecea}
+nav{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #ddd;margin:12px 0}
+nav button{border:0;background:none;padding:8px 12px;cursor:pointer;font-size:15px;border-bottom:3px solid transparent}
+nav button.active{border-color:#f97316;font-weight:600}
+section{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:16px}
+button.primary{background:#f97316;color:#fff;border:0;border-radius:8px;padding:9px 18px;font-size:15px;cursor:pointer}
+button.primary:disabled{opacity:.5;cursor:wait}button.secondary{padding:7px 12px;border-radius:8px;border:1px solid #ccc;background:#fff;cursor:pointer}
+table{border-collapse:collapse;margin:10px 0;width:100%;font-size:14px}th,td{border:1px solid #e3e3e3;padding:6px 8px;text-align:left}th{background:#f4f4f5}
+textarea{width:100%;font-family:ui-monospace,monospace;font-size:13px;box-sizing:border-box}
+pre{background:#f4f4f5;padding:10px;border-radius:8px;overflow:auto;font-size:12.5px;white-space:pre-wrap}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin:8px 0}.row label{display:flex;flex-direction:column;font-size:13px;gap:3px}
+.error{color:#b91c1c;font-weight:600;margin:6px 0}footer{margin:20px 0;font-size:13px;color:#666}
+input[type=number],input[type=text]{padding:6px;border:1px solid #ccc;border-radius:6px}
