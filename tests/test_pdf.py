@@ -94,13 +94,14 @@ def test_the_footer_carries_the_job():
     assert b"SOLVENT - J1" in data
 
 
-@pytest.mark.skipif(
-    not Path("/usr/local/lib/python3.11/dist-packages/pypdf").exists(),
-    reason="pypdf not installed",
-)
 def test_an_independent_parser_reads_the_output():
+    """Our own structural checks could share a misreading; pypdf cannot."""
+    import importlib.util
     import sys
     import types
+
+    if importlib.util.find_spec("pypdf") is None:
+        pytest.skip("pypdf not installed")
 
     # This machine's `cryptography` build is broken; pypdf only needs it for
     # encrypted files, so stub the import out to use the parser itself.
