@@ -164,7 +164,7 @@ def run_wizard() -> SolventConfig:
             ),
             (
                 "Custom endpoint",
-                "Future: OpenAI-compatible URL · uses offline stub for now",
+                "OpenAI-compatible / Ollama via SOLVENT_LLM_* env vars",
             ),
         ],
         default=1,
@@ -181,8 +181,9 @@ def run_wizard() -> SolventConfig:
         model = "offline"
         nemotron_model = "nvidia/llama-3.1-nemotron-ultra-253b-v1"
         print(
-            f"\n  {C_GREY}Custom endpoints are not wired yet; using offline stub. "
-            f"Set NEMOTRON_MODEL + NVIDIA_API_KEY to experiment.{C_RESET}"
+            f"\n  {C_GREY}Set SOLVENT_LLM_MODEL (and optionally SOLVENT_LLM_BASE_URL, "
+            f"default Ollama at http://localhost:11434/v1) to use a local or "
+            f"OpenAI-compatible model; until then the offline stub is used.{C_RESET}"
         )
     else:
         model = "offline"
