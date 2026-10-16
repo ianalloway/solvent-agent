@@ -71,6 +71,10 @@ def run_checks() -> list[dict]:
 
     nvidia = bool(os.environ.get("NVIDIA_API_KEY"))
     add("nvidia_api_key", nvidia, "set" if nvidia else "offline stub mode")
+    from . import llm_backend
+
+    if llm_backend.enabled():
+        add("llm_backend", True, llm_backend.describe())
 
     stripe = os.environ.get("STRIPE_API_KEY", "")
     if stripe.startswith("sk_live_"):
