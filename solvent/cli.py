@@ -144,6 +144,7 @@ def print_results(snap: dict, simulated: bool = False):
     (built-in Stripe simulator, no real payments) are never read as real money.
     """
     sim = " (simulated)" if simulated else ""
+    sim_word = " simulated" if simulated else ""
     print(BAR)
     print(f"📊  {C_BOLD}SESSION SUMMARY & BALANCE SHEET{C_RESET}")
     print(f"   Revenue        {C_GREEN}{fmt(snap['revenue_cents'])}{C_RESET}")
@@ -158,10 +159,10 @@ def print_results(snap: dict, simulated: bool = False):
     grew = snap["balance_cents"] - snap["capital_cents"]
     if grew > 0:
         print(
-            f"   {C_GREEN}→ The agent grew its own{" simulated" if simulated else ""} treasury by {fmt(grew)} this session!{C_RESET}"
+            f"   {C_GREEN}→ The agent grew its own{sim_word} treasury by {fmt(grew)} this session!{C_RESET}"
         )
     elif grew < 0:
-        print(f"   {C_RED}→ The agent ran at a{" simulated" if simulated else ""} loss of {fmt(abs(grew))} this session.{C_RESET}")
+        print(f"   {C_RED}→ The agent ran at a{sim_word} loss of {fmt(abs(grew))} this session.{C_RESET}")
     else:
         print(f"   → The agent broke perfectly even{sim}.")
 
