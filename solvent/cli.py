@@ -137,8 +137,13 @@ def print_event(e: dict):
         print()
 
 
-def print_results(snap: dict):
-    """Print overall financial results summary."""
+def print_results(snap: dict, simulated: bool = False):
+    """Print overall financial results summary.
+
+    ``simulated`` marks the balance and treasury-growth lines so demo numbers
+    (built-in Stripe simulator, no real payments) are never read as real money.
+    """
+    sim = " (simulated)" if simulated else ""
     print(BAR)
     print(f"📊  {C_BOLD}SESSION SUMMARY & BALANCE SHEET{C_RESET}")
     print(f"   Revenue        {C_GREEN}{fmt(snap['revenue_cents'])}{C_RESET}")
@@ -147,18 +152,18 @@ def print_results(snap: dict):
         f"   Net profit     {C_GREEN if snap['net_profit_cents'] >= 0 else C_RED}{fmt(snap['net_profit_cents'])}{C_RESET}  ({snap['margin_pct']}% margin)"
     )
     print(
-        f"   Cash balance   {C_YELLOW}{fmt(snap['balance_cents'])}{C_RESET}  (seed was {fmt(snap['capital_cents'])})"
+        f"   Cash balance{sim}   {C_YELLOW}{fmt(snap['balance_cents'])}{C_RESET}  (seed was {fmt(snap['capital_cents'])})"
     )
 
     grew = snap["balance_cents"] - snap["capital_cents"]
     if grew > 0:
         print(
-            f"   {C_GREEN}→ The agent grew its own treasury by {fmt(grew)} this session!{C_RESET}"
+            f"   {C_GREEN}→ The agent grew its own{" simulated" if simulated else ""} treasury by {fmt(grew)} this session!{C_RESET}"
         )
     elif grew < 0:
-        print(f"   {C_RED}→ The agent ran at a loss of {fmt(abs(grew))} this session.{C_RESET}")
+        print(f"   {C_RED}→ The agent ran at a{" simulated" if simulated else ""} loss of {fmt(abs(grew))} this session.{C_RESET}")
     else:
-        print("   → The agent broke perfectly even.")
+        print(f"   → The agent broke perfectly even{sim}.")
 
 
 def run_batch_demo(seed_cents: int = 10_000, fresh: bool = True):
@@ -175,7 +180,7 @@ def run_batch_demo(seed_cents: int = 10_000, fresh: bool = True):
         agent.handle_job(job)
 
     snap = agent.t.snapshot()
-    print_results(snap)
+    print_results(snap, simulated=not agent.stripe.live)
     path = dashboard.render(snap, agent.log)
     print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
 
@@ -272,7 +277,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
             break
 
     snap = agent.t.snapshot()
-    print_results(snap)
+    print_results(snap, simulated=not agent.stripe.live)
     path = dashboard.render(snap, agent.log)
     print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
 
