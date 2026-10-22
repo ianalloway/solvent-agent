@@ -65,6 +65,18 @@ def gather(treasury: Treasury | None = None, policy: SpendPolicy | None = None) 
     }
 
 
+def _job_budget_label(cents: int | None) -> str:
+    """job_budget_cents for the report; 0 or missing means the envelope is off."""
+    return f"max {fmt(cents)} per job (job_budget_cents)" if cents else "off (job_budget_cents=0)"
+
+
+def _approval_label(cents: int | None) -> str:
+    """approval_threshold_cents for the report; None means no approval step."""
+    if cents is None:
+        return "off (approval_threshold_cents unset)"
+    return f"spends above {fmt(cents)} held for approval (approval_threshold_cents)"
+
+
 def format_guardrails(data: dict) -> str:
     """Render the guardrail snapshot for a terminal."""
     policy = data["policy"]
@@ -83,6 +95,8 @@ def format_guardrails(data: dict) -> str:
         f"  Cash reserve         {fmt(data['balance_cents'])} on hand, floor "
         f"{fmt(policy['min_reserve_cents'])} "
         f"({fmt(data['reserve_headroom_cents'])} spendable)",
+        f"  Per-job budget       {_job_budget_label(policy.get('job_budget_cents'))}",
+        f"  Human approval       {_approval_label(policy.get('approval_threshold_cents'))}",
         "",
         "  Vendor exposure (rolling 24h)",
         f"  {'VENDOR':<22}{'SPENT':>10}{'CAP':>10}  USED",

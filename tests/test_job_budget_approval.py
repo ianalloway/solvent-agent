@@ -136,3 +136,24 @@ def test_defaults_without_config(tmp_path, monkeypatch):
     p = load_spend_policy(tmp_path / "missing.json")
     assert p.job_budget_cents == 15_000
     assert p.approval_threshold_cents is None
+
+
+def test_guardrails_report_shows_job_budget_and_approval(tmp_path, monkeypatch):
+    from solvent.guardrail_cmd import format_guardrails, gather
+    from solvent.treasury import Treasury
+
+    monkeypatch.delenv("SOLVENT_JOB_BUDGET_CENTS", raising=False)
+    monkeypatch.delenv("SOLVENT_APPROVAL_THRESHOLD_CENTS", raising=False)
+    t = Treasury(path=tmp_path / "l.db")
+
+    default = format_guardrails(gather(t, SpendPolicy()))
+    assert "Per-job budget" in default and "job_budget_cents" in default
+    assert "max $150.00 per job" in default
+    assert "Human approval" in default
+    assert "off (approval_threshold_cents unset)" in default
+
+    custom = format_guardrails(
+        gather(t, SpendPolicy(job_budget_cents=0, approval_threshold_cents=2_500))
+    )
+    assert "off (job_budget_cents=0)" in custom
+    assert "spends above $25.00 held for approval" in custom
