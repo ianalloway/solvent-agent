@@ -51,6 +51,8 @@ def gather(treasury: Treasury | None = None, policy: SpendPolicy | None = None) 
             "vendor_daily_overrides": dict(guard.policy.vendor_daily_overrides),
             "max_txns_per_hour": guard.policy.max_txns_per_hour,
             "min_reserve_cents": guard.policy.min_reserve_cents,
+            "job_budget_cents": guard.policy.job_budget_cents,
+            "approval_threshold_cents": guard.policy.approval_threshold_cents,
         },
         "spent_24h_cents": spent_24h,
         "daily_headroom_cents": max(daily_cap - spent_24h, 0),

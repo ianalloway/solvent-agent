@@ -14,6 +14,8 @@ Rules enforced:
   5. Spend velocity           — bounded number of payments per rolling hour.
   6. Solvency rule            — never spend below a minimum cash reserve.
   7. ROI rule                 — never spend on a job whose projected margin is negative.
+  8. Per-job budget envelope  — each job has a hard spend cap; once used up, it fails closed.
+  9. Human approval hook      — a spend above a threshold is held for a human, never auto-paid.
 
 Rules 1-3 and 6-7 bound *how much* the agent can spend; rules 4 and 5 bound
 *how it is distributed*. A single compromised or misbehaving vendor cannot
@@ -29,10 +31,12 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from .paths import config_path
 from .treasury import REFUND_VENDOR
@@ -68,6 +72,10 @@ class SpendPolicy:
     vendor_daily_overrides: dict[str, int] = field(default_factory=dict)
     max_txns_per_hour: int = 60  # a fulfilment loop gone wrong trips here
     min_reserve_cents: int = 2_000  # keep at least $20 cash
+    # Hard cap on the total spend attributed to one job. 0 disables the envelope.
+    job_budget_cents: int = 15_000  # $150 / job
+    # Spends strictly above this amount need a human decision. None disables it.
+    approval_threshold_cents: int | None = None
 
     def vendor_daily_cap_cents(self, vendor: str) -> int:
         """The rolling-24h ceiling for one vendor."""
@@ -80,7 +88,23 @@ _SCALAR_LIMITS = (
     "per_vendor_daily_cents",
     "max_txns_per_hour",
     "min_reserve_cents",
+    "job_budget_cents",
 )
+
+ENV_JOB_BUDGET = "SOLVENT_JOB_BUDGET_CENTS"
+ENV_APPROVAL_THRESHOLD = "SOLVENT_APPROVAL_THRESHOLD_CENTS"
+
+
+def _env_cents(name: str) -> int | None:
+    """A non-negative integer-cents value from the environment, else None."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
 
 
 def _is_finite_number(value: object) -> bool:
@@ -104,8 +128,20 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     """
     policy = SpendPolicy()
     override_path = path if path is not None else config_path("spend_policy.json")
-    if not override_path.is_file():
-        return policy
+    if override_path.is_file():
+        _apply_policy_file(policy, override_path)
+    # Environment variables win over the file so an operator can tighten a
+    # deployment without editing it.
+    job_budget = _env_cents(ENV_JOB_BUDGET)
+    if job_budget is not None:
+        policy.job_budget_cents = job_budget
+    threshold = _env_cents(ENV_APPROVAL_THRESHOLD)
+    if threshold is not None:
+        policy.approval_threshold_cents = threshold
+    return policy
+
+
+def _apply_policy_file(policy: SpendPolicy, override_path: Path) -> SpendPolicy:
     try:
         data = json.loads(override_path.read_text(encoding="utf-8"))
     except (ValueError, OSError):  # JSONDecodeError and UnicodeDecodeError are ValueErrors
@@ -127,7 +163,33 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
         policy.vendor_daily_overrides = {
             k: int(v) for k, v in overrides.items() if isinstance(k, str) and _is_finite_number(v)
         }
+
+    threshold = data.get("approval_threshold_cents")
+    if _is_finite_number(threshold) and threshold >= 0:
+        policy.approval_threshold_cents = int(threshold)
     return policy
+
+
+ApprovalVerdict = Literal["approved", "denied", "held"]
+
+
+@dataclass(frozen=True)
+class ApprovalRequest:
+    """What a human approver is asked to decide on."""
+
+    amount_cents: int
+    vendor: str
+    job_id: str | None
+    threshold_cents: int
+
+
+#: An approver gets the request and returns "approved", "denied" or "held".
+Approver = Callable[[ApprovalRequest], ApprovalVerdict]
+
+
+def hold_for_approval(request: ApprovalRequest) -> ApprovalVerdict:
+    """The default approver: never auto-approve, keep the spend pending."""
+    return "held"
 
 
 class GuardrailError(Exception):
@@ -153,6 +215,9 @@ class Decision:
     balance_cents: int = 0
     vendor_spent_24h_cents: int = 0
     txns_last_hour: int = 0
+    job_id: str | None = None
+    job_spent_cents: int = 0
+    pending_approval: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -165,22 +230,41 @@ class Decision:
             "balance_cents": self.balance_cents,
             "vendor_spent_24h_cents": self.vendor_spent_24h_cents,
             "txns_last_hour": self.txns_last_hour,
+            "job_id": self.job_id,
+            "job_spent_cents": self.job_spent_cents,
+            "pending_approval": self.pending_approval,
         }
 
 
 class Guardrails:
     """Enforces deterministic spend safety policies on all transaction requests."""
 
-    def __init__(self, treasury: Treasury | Any, policy: SpendPolicy | None = None) -> None:
+    def __init__(
+        self,
+        treasury: Treasury | Any,
+        policy: SpendPolicy | None = None,
+        approver: Approver | None = None,
+    ) -> None:
         """Initialize the guardrails with a treasury instance and a spend policy.
 
         Args:
             treasury: The Treasury instance or mock tracking the agent's ledger.
             policy: The SpendPolicy rules to enforce. Defaults to the built-in
                 policy with any `.solvent/spend_policy.json` overrides applied.
+            approver: Called for spends above ``approval_threshold_cents``.
+                Defaults to :func:`hold_for_approval`, which never approves.
         """
         self.t = treasury
         self.policy: SpendPolicy = policy or load_spend_policy()
+        self.approver: Approver = approver or hold_for_approval
+
+    def _job_spent(self, job_id: str) -> int:
+        """All operating spend ever attributed to one job (refunds excluded)."""
+        return sum(
+            e.amount_cents
+            for e in self.t.entries
+            if e.kind == "expense" and e.job_id == job_id and e.vendor != REFUND_VENDOR
+        )
 
     def _spent_last_24h(self, vendor: str | None = None) -> int:
         """Sum of expenses in the last 24 hours, optionally for one vendor only.
@@ -242,6 +326,7 @@ class Guardrails:
         amount_cents: int,
         vendor: str,
         projected_job_margin_cents: int | None = None,
+        job_id: str | None = None,
     ) -> Decision:
         """Evaluate a proposed spend against every policy rule.
 
@@ -254,7 +339,10 @@ class Guardrails:
         vendor_spent_24h = self._spent_last_24h(vendor)
         txns_last_hour = self._txns_last_hour()
         balance = self.t.balance_cents()
+        job_spent = self._job_spent(job_id) if job_id is not None else 0
         ctx: dict[str, Any] = {
+            "job_id": job_id,
+            "job_spent_cents": job_spent,
             "amount_cents": amount_cents,
             "vendor": vendor,
             "spent_24h_cents": spent_24h,
@@ -306,6 +394,40 @@ class Guardrails:
                 **ctx,
             )
 
+        budget = self.policy.job_budget_cents
+        if job_id is not None and budget > 0 and job_spent + amount_cents > budget:
+            return Decision(
+                False,
+                "job_budget",
+                f"job '{job_id}' budget exhausted: {job_spent}c spent + {amount_cents}c "
+                f"would exceed its {budget}c envelope",
+                **ctx,
+            )
+
+        threshold = self.policy.approval_threshold_cents
+        if threshold is not None and amount_cents > threshold:
+            request = ApprovalRequest(amount_cents, vendor, job_id, threshold)
+            try:
+                verdict = self.approver(request)
+            except Exception:  # a broken approver must fail closed
+                verdict = "held"
+            if verdict == "denied":
+                return Decision(
+                    False,
+                    "approval_denied",
+                    f"spend of {amount_cents}c denied by human approver",
+                    **ctx,
+                )
+            if verdict != "approved":
+                return Decision(
+                    False,
+                    "approval_pending",
+                    f"spend of {amount_cents}c is above the {threshold}c approval "
+                    "threshold; held pending human approval",
+                    pending_approval=True,
+                    **ctx,
+                )
+
         return Decision(True, None, "approved", **ctx)
 
     def check_spend(
@@ -313,6 +435,7 @@ class Guardrails:
         amount_cents: int,
         vendor: str,
         projected_job_margin_cents: int | None = None,
+        job_id: str | None = None,
     ) -> None:
         """Raise GuardrailError if the spend violates policy. Returns None if OK.
 
@@ -324,7 +447,7 @@ class Guardrails:
         Raises:
             GuardrailError: If any of the spend policies are violated.
         """
-        decision = self.evaluate(amount_cents, vendor, projected_job_margin_cents)
+        decision = self.evaluate(amount_cents, vendor, projected_job_margin_cents, job_id=job_id)
         if not decision.allowed:
             raise GuardrailError(decision.reason)
 
@@ -333,6 +456,7 @@ class Guardrails:
         amount_cents: int,
         vendor: str,
         projected_job_margin_cents: int | None = None,
+        job_id: str | None = None,
     ) -> bool:
         """Screen an outbound payment and return True if approved, False if blocked.
 
@@ -344,4 +468,6 @@ class Guardrails:
         Returns:
             True if the payment is approved, False otherwise.
         """
-        return self.evaluate(amount_cents, vendor, projected_job_margin_cents).allowed
+        return self.evaluate(
+            amount_cents, vendor, projected_job_margin_cents, job_id=job_id
+        ).allowed
