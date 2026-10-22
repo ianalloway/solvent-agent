@@ -16,7 +16,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import tools
+from . import llm_backend, tools
 
 MODEL = os.environ.get("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -146,6 +146,16 @@ def _stub_complete(system: str, user: str) -> str:
 
 def complete(system: str, user: str) -> tuple[str, dict]:
     """Return (text, usage_dict). usage_dict has prompt/completion/total tokens."""
+    # Explicit opt-in via SOLVENT_LLM_* env wins over the onboarding default,
+    # so a local Ollama/OpenAI-compatible server can be used with zero config.
+    if llm_backend.enabled():
+        try:
+            text, usage = llm_backend.complete(system, user)
+            return text, usage or _estimate_tokens(system, user, text)
+        except llm_backend.LLMBackendError as e:
+            llm_backend.log.warning("LLM backend failed (%s); using offline stub", e)
+            text = _stub_complete(system, user) + f"\n\n<!-- local LLM call failed: {e} -->"
+            return text, _estimate_tokens(system, user, text)
     if _force_offline:
         text = _stub_complete(system, user)
         return text, _estimate_tokens(system, user, text)
