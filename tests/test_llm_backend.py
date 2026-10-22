@@ -17,6 +17,7 @@ SECRET = "sk-test-SUPERSECRET-123"
 class _Handler(BaseHTTPRequestHandler):
     mode = "ok"
     seen: list[dict] = []
+    redirect_to = ""
 
     def log_message(self, *a):  # keep test output quiet
         pass
@@ -27,6 +28,13 @@ class _Handler(BaseHTTPRequestHandler):
         type(self).seen.append(
             {"path": self.path, "auth": self.headers.get("Authorization"), "body": body}
         )
+        if self.mode.startswith("redirect"):
+            code = int(self.mode.split(":")[1])
+            self.send_response(code)
+            self.send_header("Location", type(self).redirect_to)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if self.mode == "slow":
             time.sleep(1.5)
         if self.mode == "500":
@@ -52,21 +60,47 @@ class _Handler(BaseHTTPRequestHandler):
             pass
 
 
+class _Catcher(BaseHTTPRequestHandler):
+    """Stands in for a different host a malicious redirect points at."""
+
+    seen: list[dict] = []
+
+    def log_message(self, *a):
+        pass
+
+    def _record(self):
+        type(self).seen.append({"method": self.command, "auth": self.headers.get("Authorization")})
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"choices": [{"message": {"content": "stolen"}}]}')
+
+    do_GET = do_POST = _record
+
+
 class LLMBackendTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.server = HTTPServer(("127.0.0.1", 0), _Handler)
         cls.url = f"http://127.0.0.1:{cls.server.server_address[1]}/v1"
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        cls.catcher = HTTPServer(("127.0.0.1", 0), _Catcher)
+        # "localhost" vs "127.0.0.1": a different origin from the backend.
+        cls.catcher_url = f"http://localhost:{cls.catcher.server_address[1]}/steal"
+        threading.Thread(target=cls.catcher.serve_forever, daemon=True).start()
 
     @classmethod
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        cls.catcher.shutdown()
+        cls.catcher.server_close()
 
     def setUp(self):
         _Handler.mode = "ok"
         _Handler.seen = []
+        _Handler.redirect_to = self.catcher_url
+        _Catcher.seen = []
 
     def _env(self, **extra):
         env = {"SOLVENT_LLM_BASE_URL": self.url, "SOLVENT_LLM_MODEL": "llama3.2"}
@@ -157,6 +191,24 @@ class LLMBackendTest(unittest.TestCase):
     def test_bad_timeout_uses_default(self):
         with mock.patch.dict("os.environ", {"SOLVENT_LLM_TIMEOUT": "abc"}):
             self.assertEqual(llm_backend.timeout(), llm_backend.DEFAULT_TIMEOUT)
+
+
+    def test_redirects_are_refused_and_key_never_forwarded(self):
+        for code in (301, 302, 303, 307, 308):
+            with self.subTest(code=code):
+                _Handler.mode = f"redirect:{code}"
+                _Catcher.seen = []
+                with self._env(SOLVENT_LLM_API_KEY=SECRET):
+                    with self.assertRaises(llm_backend.LLMBackendError) as ctx:
+                        llm_backend.complete("s", "u")
+                self.assertIn("redirect", str(ctx.exception))
+                self.assertNotIn(SECRET, str(ctx.exception))
+                self.assertEqual(_Catcher.seen, [], "redirect target must never be contacted")
+
+    def test_redirect_falls_back_to_stub_without_leaking(self):
+        text = self._assert_falls_back("redirect:302")
+        self.assertIn("redirect", text)
+        self.assertEqual(_Catcher.seen, [])
 
 
 if __name__ == "__main__":

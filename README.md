@@ -693,6 +693,8 @@ solvent --no-onboard
 
 If the server is down, slow (`SOLVENT_LLM_TIMEOUT`, default 30s), or returns an error or malformed reply, SOLVENT logs a warning and falls back to the deterministic offline brief, so the job still completes. The API key is never logged or written to a brief.
 
+**API keys.** `SOLVENT_LLM_API_KEY` stays on your machine: it is read from the environment and sent only as a Bearer header to the configured `SOLVENT_LLM_BASE_URL`, never anywhere else. Redirects are refused rather than followed, so a 3xx can never forward the key to another host or downgrade it to `http://`; point the base URL at the final endpoint. Give each tool its own key with a spend cap, so one leaked or misbehaving key can only spend so much.
+
 ### Environment variables
 
 | Variable | Purpose |

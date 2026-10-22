@@ -33,6 +33,22 @@ class LLMBackendError(RuntimeError):
     """A failed call. The message never contains the API key or response body."""
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse every redirect.
+
+    urllib's default handler re-sends request headers, including Authorization,
+    to the redirect target for 301/302/303, even across hosts or from https to
+    http. That would hand SOLVENT_LLM_API_KEY to whoever the backend points at,
+    so redirects are never followed; the 3xx surfaces as an HTTPError instead.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def enabled() -> bool:
     return bool(
         os.environ.get("SOLVENT_LLM_BASE_URL", "").strip()
@@ -86,9 +102,14 @@ def complete(system: str, user: str) -> tuple[str, dict]:
         headers["Authorization"] = f"Bearer {key}"
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout()) as r:  # noqa: S310 (scheme checked)
+        with _OPENER.open(req, timeout=timeout()) as r:  # noqa: S310 (scheme checked)
             raw = r.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
+        if 300 <= exc.code < 400:
+            raise LLMBackendError(
+                f"HTTP {exc.code} redirect from LLM backend refused; "
+                "set SOLVENT_LLM_BASE_URL to the final URL"
+            ) from None
         raise LLMBackendError(f"HTTP {exc.code} from LLM backend") from None
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
         raise LLMBackendError(f"LLM backend unreachable ({type(exc).__name__})") from None
