@@ -360,9 +360,17 @@ Configure them in `.solvent/spend_policy.json`:
 { "job_budget_cents": 8000, "approval_threshold_cents": 2500 }
 ```
 
-or with environment variables, which win over the file:
-`SOLVENT_JOB_BUDGET_CENTS`, `SOLVENT_APPROVAL_THRESHOLD_CENTS`. The approval
-hook is off unless a threshold is set.
+or with the environment variables `SOLVENT_JOB_BUDGET_CENTS` and
+`SOLVENT_APPROVAL_THRESHOLD_CENTS`. Env vars can only **tighten** these
+settings: a lower budget or a lower threshold. An env value that would raise
+or disable a limit (for example `SOLVENT_JOB_BUDGET_CENTS=0`) is ignored.
+Loosening or disabling takes an explicit policy-file setting, and any override
+that loosens or disables a limit, or is ignored, is logged as a warning and
+shown in `solvent guardrails`. The approval hook is off unless a threshold is
+set.
+
+A spend evaluated without a job id is not exempt from the budget. All unscoped
+spends share one `unscoped` envelope under the same cap.
 
 Wire in your own approver (a Slack prompt, a ticket queue, a CLI confirm):
 

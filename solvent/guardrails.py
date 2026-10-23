@@ -30,6 +30,7 @@ same policy in plain Python so the behaviour is visible and testable.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import time
@@ -43,6 +44,11 @@ from .treasury import REFUND_VENDOR
 
 if TYPE_CHECKING:
     from .treasury import Treasury
+
+log = logging.getLogger(__name__)
+
+#: Spends evaluated without a job id share this one budget envelope.
+UNSCOPED_JOB = "unscoped"
 
 
 @dataclass
@@ -76,6 +82,8 @@ class SpendPolicy:
     job_budget_cents: int = 15_000  # $150 / job
     # Spends strictly above this amount need a human decision. None disables it.
     approval_threshold_cents: int | None = None
+    # Human-readable notes about overrides that loosened or disabled a limit.
+    warnings: list[str] = field(default_factory=list, compare=False)
 
     def vendor_daily_cap_cents(self, vendor: str) -> int:
         """The rolling-24h ceiling for one vendor."""
@@ -125,19 +133,56 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     Unknown keys and malformed values are ignored: a broken override file must
     never silently *widen* the policy, so anything that cannot be read falls
     back to the built-in defaults.
+
+    Environment variables may only *tighten* the job budget and the approval
+    threshold. An env value that would loosen or disable either one is ignored
+    and recorded as a warning. Loosening or disabling needs an explicit
+    setting in the policy file, and that is warned about too.
     """
     policy = SpendPolicy()
+    default = SpendPolicy()
     override_path = path if path is not None else config_path("spend_policy.json")
     if override_path.is_file():
         _apply_policy_file(policy, override_path)
-    # Environment variables win over the file so an operator can tighten a
-    # deployment without editing it.
+
+    # Policy-file settings that loosen the built-in envelope are allowed, but visible.
+    if policy.job_budget_cents == 0:
+        policy.warnings.append(
+            f"job budget DISABLED by {override_path.name} (job_budget_cents=0); "
+            "per-job spend is uncapped"
+        )
+    elif policy.job_budget_cents > default.job_budget_cents:
+        policy.warnings.append(
+            f"job budget loosened by {override_path.name} to {policy.job_budget_cents}c "
+            f"(default {default.job_budget_cents}c)"
+        )
+
     job_budget = _env_cents(ENV_JOB_BUDGET)
     if job_budget is not None:
-        policy.job_budget_cents = job_budget
+        current = policy.job_budget_cents
+        tightens = job_budget > 0 and (current == 0 or job_budget <= current)
+        if tightens:
+            policy.job_budget_cents = job_budget
+        else:
+            policy.warnings.append(
+                f"ignored {ENV_JOB_BUDGET}={job_budget}: env vars may only tighten the job "
+                f"budget ({current}c); set job_budget_cents in the policy file to loosen it"
+            )
+
     threshold = _env_cents(ENV_APPROVAL_THRESHOLD)
     if threshold is not None:
-        policy.approval_threshold_cents = threshold
+        current_t = policy.approval_threshold_cents
+        if current_t is None or threshold <= current_t:
+            policy.approval_threshold_cents = threshold
+        else:
+            policy.warnings.append(
+                f"ignored {ENV_APPROVAL_THRESHOLD}={threshold}: env vars may only lower the "
+                f"approval threshold ({current_t}c); set approval_threshold_cents in the "
+                "policy file to raise it"
+            )
+
+    for warning in policy.warnings:
+        log.warning("spend policy: %s", warning)
     return policy
 
 
@@ -258,8 +303,12 @@ class Guardrails:
         self.policy: SpendPolicy = policy or load_spend_policy()
         self.approver: Approver = approver or hold_for_approval
 
-    def _job_spent(self, job_id: str) -> int:
-        """All operating spend ever attributed to one job (refunds excluded)."""
+    def _job_spent(self, job_id: str | None) -> int:
+        """All operating spend ever attributed to one job (refunds excluded).
+
+        A spend with no job id is not exempt: every unscoped spend shares one
+        bucket, so ``job_id=None`` totals all expenses that carry no job id.
+        """
         return sum(
             e.amount_cents
             for e in self.t.entries
@@ -339,7 +388,7 @@ class Guardrails:
         vendor_spent_24h = self._spent_last_24h(vendor)
         txns_last_hour = self._txns_last_hour()
         balance = self.t.balance_cents()
-        job_spent = self._job_spent(job_id) if job_id is not None else 0
+        job_spent = self._job_spent(job_id)
         ctx: dict[str, Any] = {
             "job_id": job_id,
             "job_spent_cents": job_spent,
@@ -395,11 +444,11 @@ class Guardrails:
             )
 
         budget = self.policy.job_budget_cents
-        if job_id is not None and budget > 0 and job_spent + amount_cents > budget:
+        if budget > 0 and job_spent + amount_cents > budget:
             return Decision(
                 False,
                 "job_budget",
-                f"job '{job_id}' budget exhausted: {job_spent}c spent + {amount_cents}c "
+                f"job '{job_id if job_id is not None else UNSCOPED_JOB}' budget exhausted: {job_spent}c spent + {amount_cents}c "
                 f"would exceed its {budget}c envelope",
                 **ctx,
             )

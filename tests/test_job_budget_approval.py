@@ -157,3 +157,120 @@ def test_guardrails_report_shows_job_budget_and_approval(tmp_path, monkeypatch):
     )
     assert "off (job_budget_cents=0)" in custom
     assert "spends above $25.00 held for approval" in custom
+
+
+# --- missing job_id: the shared "unscoped" envelope ---------------------------
+
+
+def _unscoped(cents: int) -> LedgerEntry:
+    return LedgerEntry(kind="expense", amount_cents=cents, memo="x", vendor=VENDOR, ts=time.time())
+
+
+def test_missing_job_id_counts_against_shared_unscoped_bucket():
+    g = _guard([_unscoped(2_000)], job_budget_cents=3_000)
+    assert g.evaluate(1_000, VENDOR).allowed  # exactly at the cap
+    d = g.evaluate(1_001, VENDOR)
+    assert not d.allowed
+    assert d.rule == "job_budget"
+    assert "'unscoped' budget exhausted" in d.reason
+    with pytest.raises(GuardrailError, match="unscoped"):
+        g.check_spend(1_001, VENDOR)
+    assert not g.approve(1_001, VENDOR)
+
+
+def test_unscoped_bucket_is_separate_from_real_jobs():
+    g = _guard([_unscoped(3_000), _spent("job-1", 100)], job_budget_cents=3_000)
+    assert not g.evaluate(1, VENDOR).allowed
+    assert g.evaluate(1, VENDOR, job_id="job-1").allowed
+
+
+def test_simulation_passes_job_ids_so_budget_applies():
+    from solvent import simulate
+
+    seen: list[str | None] = []
+    real = Guardrails.evaluate
+
+    def spy(self, *args, **kwargs):
+        seen.append(kwargs.get("job_id"))
+        return real(self, *args, **kwargs)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(Guardrails, "evaluate", spy)
+    try:
+        simulate.simulate(trials=3, jobs=10, seed=1)
+    finally:
+        mp.undo()
+    assert seen and all(isinstance(j, str) and j.startswith("sim-") for j in seen)
+
+
+# --- env vars may only tighten ------------------------------------------------
+
+
+def _clear_env(monkeypatch):
+    monkeypatch.delenv("SOLVENT_JOB_BUDGET_CENTS", raising=False)
+    monkeypatch.delenv("SOLVENT_APPROVAL_THRESHOLD_CENTS", raising=False)
+
+
+def test_env_cannot_disable_job_budget(tmp_path, monkeypatch, caplog):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("SOLVENT_JOB_BUDGET_CENTS", "0")
+    with caplog.at_level("WARNING", logger="solvent.guardrails"):
+        p = load_spend_policy(tmp_path / "missing.json")
+    assert p.job_budget_cents == 15_000
+    assert any("ignored SOLVENT_JOB_BUDGET_CENTS=0" in w for w in p.warnings)
+    assert "ignored SOLVENT_JOB_BUDGET_CENTS=0" in caplog.text
+
+
+def test_env_cannot_raise_job_budget_but_can_lower_it(tmp_path, monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("SOLVENT_JOB_BUDGET_CENTS", "99999")
+    p = load_spend_policy(tmp_path / "missing.json")
+    assert p.job_budget_cents == 15_000 and p.warnings
+
+    monkeypatch.setenv("SOLVENT_JOB_BUDGET_CENTS", "500")
+    p = load_spend_policy(tmp_path / "missing.json")
+    assert p.job_budget_cents == 500 and p.warnings == []
+
+
+def test_env_cannot_raise_approval_threshold(tmp_path, monkeypatch):
+    _clear_env(monkeypatch)
+    path = tmp_path / "spend_policy.json"
+    path.write_text(json.dumps({"approval_threshold_cents": 1_000}))
+    monkeypatch.setenv("SOLVENT_APPROVAL_THRESHOLD_CENTS", "5000")
+    p = load_spend_policy(path)
+    assert p.approval_threshold_cents == 1_000
+    assert any("ignored SOLVENT_APPROVAL_THRESHOLD_CENTS=5000" in w for w in p.warnings)
+
+    monkeypatch.setenv("SOLVENT_APPROVAL_THRESHOLD_CENTS", "200")
+    p = load_spend_policy(path)
+    assert p.approval_threshold_cents == 200 and p.warnings == []
+
+
+def test_policy_file_can_disable_or_loosen_but_warns(tmp_path, monkeypatch, caplog):
+    _clear_env(monkeypatch)
+    path = tmp_path / "spend_policy.json"
+    path.write_text(json.dumps({"job_budget_cents": 0}))
+    with caplog.at_level("WARNING", logger="solvent.guardrails"):
+        p = load_spend_policy(path)
+    assert p.job_budget_cents == 0
+    assert any("DISABLED" in w for w in p.warnings)
+    assert "DISABLED" in caplog.text
+
+    path.write_text(json.dumps({"job_budget_cents": 50_000}))
+    p = load_spend_policy(path)
+    assert p.job_budget_cents == 50_000
+    assert any("loosened" in w for w in p.warnings)
+
+
+def test_guardrails_report_shows_policy_warnings(tmp_path, monkeypatch):
+    from solvent.guardrail_cmd import format_guardrails, gather
+    from solvent.treasury import Treasury
+
+    _clear_env(monkeypatch)
+    path = tmp_path / "spend_policy.json"
+    path.write_text(json.dumps({"job_budget_cents": 0}))
+    t = Treasury(path=tmp_path / "l.db")
+    out = format_guardrails(gather(t, load_spend_policy(path)))
+    assert "WARNING" in out and "DISABLED" in out
+    clean = format_guardrails(gather(t, SpendPolicy()))
+    assert "WARNING" not in clean
