@@ -5,8 +5,8 @@ Before accepting any job, the agent estimates what the job will COST it to
 fulfil (compute + data + SaaS) and what it can PRICE the job at. If the
 projected margin does not clear the floor, the agent declines the work.
 
-This is the feature that makes SOLVENT a *business* and not just a bot: it is
-structurally incapable of working at a loss.
+The gate rejects work whose projected margin is too low. Actual costs may
+differ from estimates; the ledger and calibration loop track that drift.
 
 Declining is not the end of the conversation, though. A shop that only ever
 says "no" leaves money on the table, so every decline also carries a
@@ -88,7 +88,11 @@ class PricingPolicy:
 
 
 def get_resource_costs() -> dict[str, int]:
-    """Return effective resource costs, applying overrides from .solvent/pricing_overrides.json if present."""
+    """Apply finite, non-negative numeric resource-cost overrides.
+
+    Invalid entries keep the built-in cost instead of crashing the margin
+    gate or lowering a quote with a negative or boolean cost.
+    """
     import json
 
     costs = dict(RESOURCE_COSTS_CENTS)
@@ -98,9 +102,15 @@ def get_resource_costs() -> dict[str, int]:
             overrides = json.loads(override_path.read_text(encoding="utf-8"))
             if isinstance(overrides, dict):
                 for k, v in overrides.items():
-                    if k in costs and isinstance(v, (int, float)):
+                    if (
+                        k in costs
+                        and not isinstance(v, bool)
+                        and isinstance(v, (int, float))
+                        and (isinstance(v, int) or math.isfinite(v))
+                        and v >= 0
+                    ):
                         costs[k] = int(v)
-        except (json.JSONDecodeError, OSError):
+        except (ValueError, OSError):  # includes invalid JSON and UTF-8
             pass
     return costs
 

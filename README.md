@@ -161,7 +161,10 @@ A typical **offline demo** batch (illustrative numbers from the simulated run �
    BOOK P&L  ──▶ treasury updated · dashboard refreshed
 ```
 
-Revenue is **always collected before cost is incurred**, and no payment can violate policy. The business is safe by construction and profitable by rule.
+The job pipeline checks payment before fulfilment and screens vendor payments
+against the configured spend policy. Quotes use estimated costs, so an accepted
+quote is a projected margin, not a guarantee of realized profit. The ledger and
+cost-calibration reports show how actual spending compares with that estimate.
 
 ---
 
@@ -182,6 +185,11 @@ Revenue is **always collected before cost is incurred**, and no payment can viol
 - **Spend policy** — `guardrails.py` enforces vendor allowlist, per-transaction cap, rolling 24h budget, minimum cash reserve, and no-negative-ROI rule.
 - **Offline-first** — without API keys the demo runs on deterministic stubs. Add `NVIDIA_API_KEY` + `STRIPE_API_KEY=sk_test_...` to unlock live inference and real Payment Links.
 - **Audit trail** — every `cs_...` checkout session ID and `pi_...` PaymentIntent ID is recorded on the ledger before fulfilment begins.
+
+Resource prices can be overridden in `.solvent/pricing_overrides.json`. Values
+are costs in cents and must be finite, non-negative numbers; `0` is valid for a
+free resource. Invalid entries (including negative values, booleans, `NaN`, and
+infinity) keep the built-in price. Valid entries in the same file still apply.
 
 ---
 
