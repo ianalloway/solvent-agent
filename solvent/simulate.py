@@ -86,9 +86,18 @@ class _PaperLedger:
     def balance_cents(self) -> int:
         return sum(e.signed_cents() for e in self.entries)
 
-    def add(self, kind: str, amount_cents: int, *, vendor: str | None = None) -> None:
+    def add(
+        self,
+        kind: str,
+        amount_cents: int,
+        *,
+        vendor: str | None = None,
+        job_id: str | None = None,
+    ) -> None:
         self.entries.append(
-            LedgerEntry(kind=kind, amount_cents=amount_cents, memo="sim", vendor=vendor)
+            LedgerEntry(
+                kind=kind, amount_cents=amount_cents, memo="sim", vendor=vendor, job_id=job_id
+            )
         )
 
 
@@ -175,16 +184,19 @@ def run_trial(
             if line in COST_LINE_VENDORS
         ]
 
+        sim_job_id = f"sim-{index}"
         blocked_rule: str | None = None
         paid: list[tuple[str, int]] = []
         for vendor, amount in spends:
             if amount <= 0:
                 continue
-            decision = guard.evaluate(amount, vendor, projected_job_margin_cents=q.margin_cents)
+            decision = guard.evaluate(
+                amount, vendor, projected_job_margin_cents=q.margin_cents, job_id=sim_job_id
+            )
             if not decision.allowed:
                 blocked_rule = decision.rule or "blocked"
                 break
-            ledger.add("expense", amount, vendor=vendor)
+            ledger.add("expense", amount, vendor=vendor, job_id=sim_job_id)
             paid.append((vendor, amount))
 
         if blocked_rule:
