@@ -188,6 +188,39 @@ class TestResourceCostsOverrides(unittest.TestCase):
         self.assertEqual(costs["web_search_call"], RESOURCE_COSTS_CENTS["web_search_call"])
         self.assertNotIn("unknown_key", costs)
 
+    def test_invalid_costs_keep_defaults_and_preserve_valid_overrides(self) -> None:
+        path = Path(self._tmp.name, ".solvent", "pricing_overrides.json")
+        for invalid in (True, False, -1, -0.5, float("nan"), float("inf"), -float("inf")):
+            with self.subTest(invalid=invalid):
+                path.write_text(
+                    json.dumps({"market_data_call": invalid, "pdf_render": 25}),
+                    encoding="utf-8",
+                )
+                costs = get_resource_costs()
+                self.assertEqual(costs["market_data_call"], RESOURCE_COSTS_CENTS["market_data_call"])
+                self.assertEqual(costs["pdf_render"], 25)
+
+    def test_invalid_utf8_falls_back_to_defaults(self) -> None:
+        Path(self._tmp.name, ".solvent", "pricing_overrides.json").write_bytes(b"\xff{")
+        self.assertEqual(get_resource_costs(), RESOURCE_COSTS_CENTS)
+
+    def test_zero_cost_is_a_valid_override(self) -> None:
+        Path(self._tmp.name, ".solvent", "pricing_overrides.json").write_text(
+            '{"pdf_render": 0}', encoding="utf-8"
+        )
+        self.assertEqual(get_resource_costs()["pdf_render"], 0)
+
+    def test_negative_override_cannot_make_an_unprofitable_quote_pass(self) -> None:
+        job = {"budget_cents": 1_500, "market_data_calls": 20}
+        baseline = quote(job)
+        self.assertFalse(baseline.accept)
+        Path(self._tmp.name, ".solvent", "pricing_overrides.json").write_text(
+            '{"market_data_call": -1000}', encoding="utf-8"
+        )
+        with_invalid_override = quote(job)
+        self.assertFalse(with_invalid_override.accept)
+        self.assertEqual(with_invalid_override.est_cost_cents, baseline.est_cost_cents)
+
 
 if __name__ == "__main__":
     unittest.main()
