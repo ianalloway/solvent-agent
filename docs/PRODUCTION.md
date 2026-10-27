@@ -34,6 +34,12 @@ python3 -m solvent worker
 - **Voice** — mic button uses browser Web Speech API (Chrome/Edge); toggle 🔊 for spoken replies
 - **Jobs** (`POST /api/job`) — same payload as `POST /jobs`
 
+## Payment rails
+
+Earn is Stripe test-mode Checkout / Payment Links today. A proposed optional
+Nano (XNO) settle leg beside Stripe is documented in [NANO_SETTLE.md](NANO_SETTLE.md) (issue [#83](https://github.com/ianalloway/solvent-agent/issues/83)) — design only;
+not implemented until explicitly accepted.
+
 ## Stripe setup (test mode)
 
 1. Set `STRIPE_API_KEY=sk_test_...` or restricted `rk_test_...`
