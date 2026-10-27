@@ -24,10 +24,10 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-stripe = ["stripe>=9.0.0"]
-serve = ["fastapi>=0.110.0", "uvicorn[standard]>=0.27.0"]
-qr = ["qrcode[pil]>=7.0"]
-telegram = ["python-telegram-bot>=21.0"]
+stripe = ["stripe>=9.0.0", "urllib3>=2.8.0", "certifi>=2026.10.19"]
+serve = ["fastapi>=0.110.0", "uvicorn[standard]>=0.27.0", "anyio>=4.14.2"]
+qr = ["qrcode[pil]>=7.0", "pillow>=13.0.0; python_version >= '3.11'"]
+telegram = ["python-telegram-bot>=21.0", "anyio>=4.14.2", "certifi>=2026.10.19"]
 dev = ["pytest>=7.0.0", "ruff>=0.3"]
 all = [
     "stripe>=9.0.0",
@@ -35,6 +35,11 @@ all = [
     "uvicorn[standard]>=0.27.0",
     "qrcode[pil]>=7.0",
     "python-telegram-bot>=21.0",
+    # Security floors for transitive deps (verified GHSAs, Oct 2026). See constraints.txt.
+    "urllib3>=2.8.0",
+    "certifi>=2026.10.19",
+    "anyio>=4.14.2",
+    "pillow>=13.0.0; python_version >= '3.11'",
 ]
 
 [project.scripts]
