@@ -746,6 +746,22 @@ With both keys set:
 - Optional: set `STRIPE_WEBHOOK_SECRET` and forward `checkout.session.completed` events via `StripeClient.process_webhook()`.
 - Optional: enable **Stripe Issuing** on your test account to provision capped single-use virtual debit cards for each vendor payment.
 
+### Local or OpenAI-compatible model (Ollama, LM Studio, vLLM)
+
+Briefs can be written by any OpenAI-compatible `/chat/completions` server instead of Nemotron. This is opt-in, uses only the standard library, and is ignored unless you set one of the variables below:
+
+```bash
+ollama pull llama3.2
+export SOLVENT_LLM_MODEL=llama3.2                       # base URL defaults to Ollama
+# export SOLVENT_LLM_BASE_URL=http://localhost:11434/v1  # or any OpenAI-compatible URL
+# export SOLVENT_LLM_API_KEY=...                         # optional; sent only as a Bearer header
+solvent --no-onboard
+```
+
+If the server is down, slow (`SOLVENT_LLM_TIMEOUT`, default 30s), or returns an error or malformed reply, SOLVENT logs a warning and falls back to the deterministic offline brief, so the job still completes. The API key is never logged or written to a brief.
+
+**API keys.** `SOLVENT_LLM_API_KEY` stays on your machine: it is read from the environment and sent only as a Bearer header to the configured `SOLVENT_LLM_BASE_URL`, never anywhere else. Redirects are refused rather than followed, so a 3xx can never forward the key to another host or downgrade it to `http://`; point the base URL at the final endpoint. Give each tool its own key with a spend cap, so one leaked or misbehaving key can only spend so much.
+
 ### Environment variables
 
 | Variable | Purpose |
@@ -763,6 +779,10 @@ With both keys set:
 | `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |
 | `SOLVENT_PORT` | Port for the `serve` API server (default `8787`) |
 | `SOLVENT_BASE_URL` | Base URL for hosted brief links and Stripe webhook callbacks |
+| `SOLVENT_LLM_BASE_URL` | Opt-in OpenAI-compatible endpoint for briefs (default when enabled: `http://localhost:11434/v1`, Ollama) |
+| `SOLVENT_LLM_MODEL` | Model name for that endpoint; setting it alone enables the backend (default `llama3.2`) |
+| `SOLVENT_LLM_API_KEY` | Optional Bearer key for the endpoint; never logged |
+| `SOLVENT_LLM_TIMEOUT` | Request timeout in seconds for that endpoint (default `30`) |
 | `NEMOTRON_MODEL` | Nemotron model override (default: `nvidia/llama-3.1-nemotron-ultra-253b-v1`) |
 | `SOLVENT_DELIVERY_SECRET` | HMAC token secret for `/briefs/{job_id}`; at least 32 characters, high entropy |
 | `SOLVENT_SKIP_ONBOARD` | Set to `1` to skip the first-run wizard |
