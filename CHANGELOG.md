@@ -4,6 +4,21 @@ All notable changes to SOLVENT are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+- Pin GitHub Actions to commit SHAs, add workflow `permissions:` defaults, enable CodeQL, and raise audited dependency floors via `constraints.txt` (#113).
+
+### Added
+- Per-job budget envelopes and an optional human-approval hook in the spend guardrails (`job_budget` / approval threshold); inspectable via `solvent guardrails` (#112).
+- Optional OpenAI-compatible / Ollama LLM backend for briefs when `SOLVENT_LLM_BASE_URL` or `SOLVENT_LLM_MODEL` is set; redirects refused so API keys are never forwarded (#109).
+
+### Changed
+- End-of-run CLI summary labels simulated balance and treasury growth more clearly (#111).
+
+### Fixed
+- Image assets recompressed via ImgBot (#108).
+
 ## [0.2.2] - 2026-10-11
 
 ### Security
@@ -148,6 +163,7 @@ earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
+[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.2.2...HEAD
 [0.2.2]: https://github.com/ianalloway/solvent-agent/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/ianalloway/solvent-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ianalloway/solvent-agent/compare/33cb136cfd04...v0.2.0

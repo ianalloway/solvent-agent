@@ -41,6 +41,7 @@ unreachable customers) before it is quoted; anything it holds goes to
 rejects it, both recorded as events. Unpaid checkouts are chased and
 then expired by `checkout.py`, swept on every worker pass. Policy files:
 `.solvent/{pricing_overrides,spend_policy,checkout_policy,intake_policy,products}.json`.
+Spend guardrails also enforce a per-job budget envelope and optional human-approval threshold (#112).
 
 `funnel.py` reads the submitted → quoted → accepted → checkout → paid →
 delivered funnel off the jobs, ledger and events, naming each exit (screened,
@@ -70,6 +71,7 @@ chat surface (`/funnel`, `/customers`, `/capacity`, `/alerts`, `/products`,
 is refused without seeing figures.
 
 Nemotron may chat and plan; treasury writes and Stripe stay in stages/guardrails.
+Optional OpenAI-compatible / Ollama briefs: `solvent/llm_backend.py` (opt-in via `SOLVENT_LLM_*`; off by default).
 
 ## Commands
 
