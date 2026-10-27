@@ -1,0 +1,10 @@
+# Audited pins for CI (pip-audit clean on 2026-10-23). Used as `pip install -c constraints.txt`.
+# Only security-relevant transitive packages are pinned so the 3.10–3.12 matrix still resolves.
+# GHSA-8988-9cw3-xx77, GHSA-vxq7-64xx-v4gw, GHSA-gh4c-6fx4-qh6g
+urllib3==2.8.0
+# GHSA-6q48-6c7w-9gw2
+certifi==2026.10.23
+# GHSA-82r6-8w77-94w6, GHSA-3w57-8xmc-8v26, GHSA-5p39-cfhj-2xmp
+anyio==4.15.1
+# GHSA-w889-685w-c8fh, GHSA-8g5g-8vmr-9782 (Pillow 13 needs Python >= 3.11)
+pillow==13.0.0; python_version >= "3.11"
