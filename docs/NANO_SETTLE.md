@@ -1,9 +1,10 @@
 # Nano (XNO) settle leg — design note (issue #83)
 
-Status: **proposal / design only**. No Nano code ships until the maintainer
-explicitly accepts a `nano_` earn rail beside Stripe. This document maps
+Status: **simulate implementation landed** (verify-only, Option A custody).
+Enable with `SOLVENT_NANO=sim`. Live RPC / hot wallet remain non-goals for v1.
+This document maps
 [issue #83](https://github.com/ianalloway/solvent-agent/issues/83) onto the
-shapes SOLVENT already uses so a first PR can stay small and additive.
+shapes SOLVENT already uses; see `solvent/nano_client.py` for the sim client.
 
 ## Why it fits
 
@@ -110,13 +111,13 @@ outbound Nano spend are a separate design.
 
 ## Acceptance criteria (for a first implementation PR)
 
-- [ ] Opt-in only; default demo path unchanged with zero Nano config.
-- [ ] Profit gate runs before any invoice is created.
-- [ ] `verify_nano_block` (or sim) required before fulfilment.
-- [ ] Underpay / wrong destination / replay / expired invoice never fulfil.
-- [ ] Treasury records rail + payment ref; Stripe paths untouched.
-- [ ] Tests cover sim verify + rejection cases; no network in unit tests.
-- [ ] SECURITY.md notes: verify-only v1, no hot wallet, public block ≠ privacy.
+- [x] Opt-in only; default demo path unchanged with zero Nano config.
+- [x] Profit gate runs before any invoice is created.
+- [x] `verify_nano_block` (or sim) required before fulfilment.
+- [x] Underpay / wrong destination / replay / expired invoice never fulfil.
+- [x] Treasury records rail + payment ref; Stripe paths untouched.
+- [x] Tests cover sim verify + rejection cases; no network in unit tests.
+- [x] SECURITY.md notes: verify-only v1, no hot wallet, public block ≠ privacy.
 
 ## References
 
@@ -124,3 +125,18 @@ outbound Nano spend are a separate design.
 - Nano signing / key derivation: https://docs.nano.org/protocol-design/signing-hashing-and-key-derivation/
 - Example onramp address API cited in #83: `https://getunstuck.space/unstuck/api/v1/onramp/address`
 - x402 reference cited in #83: `https://extract.paypercall.dev/.well-known/x402`
+
+## Implementation status
+
+Simulate (v1) ships when `SOLVENT_NANO=sim`:
+
+| Piece | Location |
+|---|---|
+| Client | `solvent/nano_client.py` — `create_nano_invoice`, `verify_nano_block` |
+| Stages | `solvent/stages.py` — nano branch in checkout / paid |
+| Treasury | `nano_invoices` table + ledger `payment_ref` (alias of `stripe_ref`) |
+| HTTP | `POST /payments/nano/verify` (verify-on-submit); `POST /webhooks/nano` → 501 stub |
+| Doctor | `nano_rail` check reports sim vs unset |
+| Tests | `tests/test_nano_client.py` |
+
+Still deferred: live RPC, hot seed, FX oracle beyond the fixed sim rate, x402.

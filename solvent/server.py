@@ -99,7 +99,7 @@ def public_job_result(result: dict, job_id: str) -> dict:
             "reason": public_decline_reason(result.get("reason")),
         }
     if result.get("url"):
-        return {
+        out = {
             "stage": "invoice",
             "job_id": job_id,
             "status": "awaiting_payment",
@@ -109,6 +109,13 @@ def public_job_result(result: dict, job_id: str) -> dict:
             "amount_cents": result.get("amount_cents"),
             "simulated": result.get("simulated", False),
         }
+        if result.get("rail"):
+            out["rail"] = result["rail"]
+        if result.get("destination"):
+            out["destination"] = result["destination"]
+        if result.get("amount_raw"):
+            out["amount_raw"] = result["amount_raw"]
+        return out
     return {"stage": str(result.get("stage") or "received"), "job_id": job_id}
 
 
@@ -516,6 +523,73 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             webhook_log.mark_error(event_id, str(exc))
             raise
         return {"received": True}
+
+    @app.post("/payments/nano/verify")
+    async def nano_verify(req: Request):
+        """Verify-on-submit for the Nano settle rail (no shared webhook secret).
+
+        Body: ``{"job_id": "...", "block_hash": "block_sim_..."}``. In simulate
+        mode a ``block_sim_…`` proof that matches the open invoice fulfils the
+        job; underpay / wrong destination / replay / expired never fulfil.
+        """
+        if not agent.nano.enabled:
+            raise HTTPException(503, "nano settle rail is not enabled")
+        body = await _read_limited_json(req, MAX_JOB_BODY_BYTES)
+        if not isinstance(body, dict):
+            raise HTTPException(400, "JSON object required")
+        job_id = body.get("job_id")
+        block_hash = body.get("block_hash")
+        if not isinstance(job_id, str) or not _JOB_ID_RE.match(job_id):
+            raise HTTPException(400, "invalid job_id")
+        if not isinstance(block_hash, str) or not block_hash or len(block_hash) > 255:
+            raise HTTPException(400, "invalid block_hash")
+        invoice_row = agent.t.get_nano_invoice(job_id)
+        if not invoice_row:
+            raise HTTPException(404, "nano invoice not found")
+        invoice = {
+            "id": invoice_row.get("invoice_id") or "",
+            "job_id": job_id,
+            "destination": invoice_row.get("destination"),
+            "amount_cents": invoice_row.get("amount_cents"),
+            "amount_raw": invoice_row.get("amount_raw"),
+            "xno_rate_usd": invoice_row.get("xno_rate_usd"),
+            "expires_at": invoice_row.get("expires_at"),
+            "status": invoice_row.get("status") or "open",
+            "url": invoice_row.get("pay_uri") or "",
+        }
+        # Optional test/debug overrides are refused on the public path.
+        payment = agent.nano.verify_nano_block(invoice, block_hash)
+        if not payment.get("paid"):
+            return JSONResponse(
+                {"paid": False, "reason": payment.get("reason", "not paid"), "job_id": job_id},
+                status_code=402,
+            )
+        agent.t.mark_nano_invoice(
+            job_id, status="paid", block_hash=payment.get("block_hash") or block_hash
+        )
+        # Advance the job through paid → fulfil (sync_payment is False on server).
+        result = agent.advance_job(job_id)
+        _publish_status()
+        return {
+            "paid": True,
+            "job_id": job_id,
+            "payment_ref": payment.get("payment_ref") or block_hash,
+            "rail": "nano",
+            "stage": result.get("stage"),
+        }
+
+    @app.post("/webhooks/nano")
+    async def nano_webhook_stub(req: Request):
+        """Stub: Nano has no shared webhook secret from a public ledger.
+
+        Prefer ``POST /payments/nano/verify``. This path exists so operators
+        probing for a webhook get a clear answer rather than a 404.
+        """
+        raise HTTPException(
+            501,
+            "Nano settle uses verify-on-submit; POST /payments/nano/verify with "
+            "job_id and block_hash",
+        )
 
     @app.get("/briefs/{job_id}")
     def get_brief(job_id: str, token: str = "", format: str = ""):

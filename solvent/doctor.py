@@ -84,6 +84,21 @@ def run_checks() -> list[dict]:
     else:
         add("stripe_key", True, "simulate mode (no key)")
 
+    from .nano_client import NanoClient
+
+    nano = NanoClient()
+    st = nano.status()
+    if st["mode"] == "sim":
+        add("nano_rail", True, "simulate mode (verify-only, no hot wallet)")
+    elif st["mode"] == "live_unsupported":
+        add(
+            "nano_rail",
+            False,
+            "SOLVENT_NANO_RPC set but live Nano is not implemented in v1",
+        )
+    else:
+        add("nano_rail", True, "unset (Stripe default earn rail)")
+
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
 

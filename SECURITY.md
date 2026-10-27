@@ -31,3 +31,15 @@ export SOLVENT_LOCAL_ACCESS=never
 ```
 
 That way the delivery or dashboard token is always required. See [docs/PRODUCTION.md](docs/PRODUCTION.md) for the rest of the deployment checklist.
+
+## Nano settle rail (v1)
+
+The optional Nano (XNO) earn rail (`SOLVENT_NANO=sim`) is **verify-only** in v1:
+
+- No hot wallet / seed is loaded or generated in-process.
+- Simulate mode accepts `block_sim_…` proofs with no RPC and no network.
+- Live RPC (`SOLVENT_NANO_RPC`) is refused until a later release.
+- A public block hash is a payment receipt, **not** privacy: amounts and
+  addresses are visible on the ledger. Do not treat Nano settlement as
+  confidential customer data handling.
+

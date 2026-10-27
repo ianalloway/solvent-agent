@@ -160,6 +160,8 @@ def sweep(
                 except Exception:
                     pass
             t.upsert_checkout(job_id, "", row["checkout_url"], EXPIRED_STATUS)
+            if t.get_nano_invoice(job_id):
+                t.mark_nano_invoice(job_id, status=EXPIRED_STATUS)
             t.upsert_job(
                 job_id,
                 EXPIRED_STATUS,
