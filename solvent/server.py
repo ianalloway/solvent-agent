@@ -531,7 +531,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         Body: ``{"job_id": "...", "block_hash": "block_sim_..."}``. In simulate
         mode a ``block_sim_…`` proof that matches the open invoice fulfils the
         job; underpay / wrong destination / replay / expired never fulfil.
+        Operator-gated: requires the dashboard token (same as other payment ops).
         """
+        _require_dashboard_auth(req)
         if not agent.nano.enabled:
             raise HTTPException(503, "nano settle rail is not enabled")
         body = await _read_limited_json(req, MAX_JOB_BODY_BYTES)
