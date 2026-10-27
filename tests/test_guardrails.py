@@ -72,19 +72,21 @@ class TestGuardrails(unittest.TestCase):
         # Spent in last 24h: 12000 + 10000 = 22000 cents ($220)
         self.assertEqual(self.guard._spent_last_24h(), 22000)
 
+        # The prior spend carries no job id, so it fills the shared 'unscoped'
+        # job envelope; scope these spends to a job to isolate the daily rule.
         # Daily budget is 25000 cents ($250).
         # We can spend 3000 more cents ($30).
         # Spending $29.99 should pass
-        self.assertTrue(self.guard.approve(2999, "nvidia-nemotron"))
+        self.assertTrue(self.guard.approve(2999, "nvidia-nemotron", job_id="J1"))
         # Spending $30.00 should pass
-        self.assertTrue(self.guard.approve(3000, "nvidia-nemotron"))
+        self.assertTrue(self.guard.approve(3000, "nvidia-nemotron", job_id="J1"))
 
         # Spending $30.01 should exceed daily budget
         with self.assertRaises(GuardrailError) as ctx:
-            self.guard.check_spend(3001, "nvidia-nemotron")
+            self.guard.check_spend(3001, "nvidia-nemotron", job_id="J1")
         self.assertIn("would exceed 24h spend budget", str(ctx.exception))
 
-        self.assertFalse(self.guard.approve(3001, "nvidia-nemotron"))
+        self.assertFalse(self.guard.approve(3001, "nvidia-nemotron", job_id="J1"))
 
     def test_solvency_cash_reserve(self) -> None:
         """Test treasury minimum cash reserve rule."""

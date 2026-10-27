@@ -351,6 +351,65 @@ directory, move them into this resolved directory before upgrading.
 rolling window is used, per-vendor exposure against its cap, and every spend
 the policy blocked.
 
+### Spending controls — per-job envelopes and human approval
+
+Two more rules sit on top of the daily, per-vendor and velocity limits. Both
+run inside the same deterministic guardrail check, before any Stripe call, and
+both fail closed.
+
+| Rule | Decision rule id | What happens |
+|---|---|---|
+| **Per-job budget envelope** | `job_budget` | Every job has a hard spend cap in integer cents (`job_budget_cents`, default 15000 = $150; `0` turns it off). Spend up to *exactly* the cap is allowed; anything that would go past it is refused with "job '…' budget exhausted". Refunds don't count against it. |
+| **Human-approval hook** | `approval_pending` / `approval_denied` | A spend *strictly above* `approval_threshold_cents` is not paid. It goes to a pluggable approver, which answers `"approved"`, `"denied"` or `"held"`. The default approver always holds. An approver that raises an error or returns anything else also holds. Approval cannot override a hard rule such as the job envelope. |
+
+Configure them in `.solvent/spend_policy.json`:
+
+```json
+{ "job_budget_cents": 8000, "approval_threshold_cents": 2500 }
+```
+
+or with the environment variables `SOLVENT_JOB_BUDGET_CENTS` and
+`SOLVENT_APPROVAL_THRESHOLD_CENTS`. Env vars can only **tighten** these
+settings: a lower budget or a lower threshold. An env value that would raise
+or disable a limit (for example `SOLVENT_JOB_BUDGET_CENTS=0`) is ignored.
+Loosening or disabling takes an explicit policy-file setting, and any override
+that loosens or disables a limit, or is ignored, is logged as a warning and
+shown in `solvent guardrails`. The approval hook is off unless a threshold is
+set.
+
+A spend evaluated without a job id is not exempt from the budget. All unscoped
+spends share one `unscoped` envelope under the same cap.
+
+Wire in your own approver (a Slack prompt, a ticket queue, a CLI confirm):
+
+```python
+from solvent.guardrails import ApprovalRequest, Guardrails
+
+def approver(req: ApprovalRequest) -> str:
+    return "approved" if req.vendor == "market-data-api" else "held"
+
+guard = Guardrails(treasury, approver=approver)
+```
+
+A held spend stops the job and emits a `spend_held` event, so nothing moves
+until a human decides.
+
+**How this relates to the card networks.** The pattern is close to what the
+networks describe publicly. Mastercard's
+[Agent Pay for Machines](https://www.mastercard.com/global/en/news-and-trends/press/2026/october/Mastercard-Agent-Pay-for-Machines-in-action.html)
+gives an agent "a job and a spending limit", and Mastercard's
+[agentic token framework](https://www.mastercard.com/us/en/news-and-trends/stories/2025/agentic-commerce-framework.html)
+carries transaction limits and validity windows. In the
+[Visa, BILL and Billtrust pilot](https://corporate.visa.com/en/sites/visa-perspectives/newsroom/visa-bill-billtrust-launch-pilot.html),
+the agent only pays invoices the buyer has already approved. Stripe's
+[Issuing for agents](https://docs.stripe.com/issuing/agents) offers per-card and
+per-cardholder
+[spending controls](https://docs.stripe.com/issuing/controls/spending-controls)
+and real-time authorization webhooks. Those controls run at the card or network
+layer. Solvent's run inside the agent, before it calls any payment API, so they
+work in simulation and with any payment backend. They complement network-level
+controls and don't replace them.
+
 ### Backlog — which job to work on next
 
 A queue is not a plan. When several jobs are open and both cash and the 24h
