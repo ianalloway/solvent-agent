@@ -16,6 +16,7 @@ from .products import UnknownProduct, apply_product
 from .observability import log_event
 from .pricing import PricingPolicy, quote
 from .security import SOLVENTSecurityError, sanitise_job
+from .nano_client import NanoClient
 from .stripe_client import StripeClient
 from .treasury import REFUND_VENDOR, Treasury
 
@@ -161,10 +162,12 @@ class StageRunner:
         on_event: Callable | None = None,
         *,
         sync_payment: bool = True,
+        nano: NanoClient | None = None,
     ):
         self.t = treasury
         self.guard = guard
         self.stripe = stripe
+        self.nano = nano or NanoClient()
         self.pricing = pricing or PricingPolicy()
         self.on_event = on_event
         self.sync_payment = sync_payment
@@ -269,6 +272,29 @@ class StageRunner:
                 "url": row.get("checkout_url"),
                 "amount_cents": q_data.get("price_cents"),
             }
+            stored = self.t.get_checkout(job_id) or {}
+            nano_inv = self.t.get_nano_invoice(job_id)
+            if nano_inv:
+                checkout["rail"] = "nano"
+                checkout["destination"] = nano_inv.get("destination")
+                checkout["amount_raw"] = nano_inv.get("amount_raw")
+                checkout["xno_rate_usd"] = nano_inv.get("xno_rate_usd")
+                checkout["expires_at"] = nano_inv.get("expires_at")
+                checkout["invoice"] = {
+                    "id": nano_inv.get("invoice_id") or checkout["session_id"],
+                    "invoice_id": nano_inv.get("invoice_id"),
+                    "job_id": job_id,
+                    "destination": nano_inv.get("destination"),
+                    "amount_cents": nano_inv.get("amount_cents") or checkout["amount_cents"],
+                    "amount_raw": nano_inv.get("amount_raw"),
+                    "xno_rate_usd": nano_inv.get("xno_rate_usd"),
+                    "expires_at": nano_inv.get("expires_at"),
+                    "status": nano_inv.get("status") or "open",
+                    "block_hash": nano_inv.get("block_hash"),
+                    "url": nano_inv.get("pay_uri") or checkout.get("url"),
+                }
+            else:
+                checkout["rail"] = stored.get("rail") or "stripe"
             from .pricing import Quote
 
             quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
@@ -349,6 +375,51 @@ class StageRunner:
             return json.loads(cached["result_json"] or "{}")
 
         self.t.upsert_job(job_id, "awaiting_payment", current_stage="checkout")
+
+        # Opt-in Nano earn rail (SOLVENT_NANO=sim). Default remains Stripe.
+        if self.nano.enabled:
+            invoice = self.nano.create_nano_invoice(
+                job_id=job_id,
+                amount_cents=q.price_cents,
+                customer_email=job.get("customer_email", "client@example.com"),
+                name=f"Research brief: {job['topic'][:60]}",
+            )
+            result = {
+                "session_id": invoice["id"],
+                "url": invoice["url"],
+                "amount_cents": q.price_cents,
+                "amount_raw": invoice["amount_raw"],
+                "destination": invoice["destination"],
+                "xno_rate_usd": invoice["xno_rate_usd"],
+                "expires_at": invoice["expires_at"],
+                "rail": "nano",
+                "simulated": True,
+                "invoice": invoice,
+            }
+            self.t.complete_stage(job_id, "checkout", key, result)
+            self.t.upsert_nano_invoice(job_id, invoice)
+            self.t.upsert_checkout(
+                job_id, invoice["id"], invoice["url"], "open", rail="nano"
+            )
+            self.t.upsert_job(
+                job_id,
+                "awaiting_payment",
+                checkout_session_id=invoice["id"],
+                checkout_url=invoice["url"],
+                current_stage="awaiting_payment",
+            )
+            self._emit(
+                stage="invoice",
+                job_id=job_id,
+                url=invoice["url"],
+                amount=q.price_cents,
+                rail="nano",
+                destination=invoice["destination"],
+                amount_raw=invoice["amount_raw"],
+                simulated=True,
+            )
+            return result
+
         base = _base_url()
         success = delivery.hosted_brief_url(base, job_id)
         cancel = f"{base}/jobs/{job_id}?cancelled=1"
@@ -365,10 +436,11 @@ class StageRunner:
             "session_id": session["id"],
             "url": session["url"],
             "amount_cents": q.price_cents,
+            "rail": "stripe",
             "simulated": session.get("simulated", False),
         }
         self.t.complete_stage(job_id, "checkout", key, result)
-        self.t.upsert_checkout(job_id, session["id"], session["url"], "open")
+        self.t.upsert_checkout(job_id, session["id"], session["url"], "open", rail="stripe")
         self.t.upsert_job(
             job_id,
             "awaiting_payment",
@@ -381,6 +453,7 @@ class StageRunner:
             job_id=job_id,
             url=session["url"],
             amount=q.price_cents,
+            rail="stripe",
             simulated=result["simulated"],
         )
         return result
@@ -404,20 +477,69 @@ class StageRunner:
                     }
                     return result
 
-        link = {
-            "id": session_id,
-            "url": checkout.get("url"),
-            "amount_cents": checkout.get("amount_cents", getattr(q, "price_cents", 0)),
-            "simulated": checkout.get("simulated", False),
-            "job_id": job_id,
-        }
-        if self.sync_payment:
-            payment = self.stripe.confirm_payment(link, job_id=job_id)
+        rail = checkout.get("rail")
+        if not rail:
+            stored = self.t.get_checkout(job_id) or {}
+            rail = stored.get("rail") or (
+                "nano" if self.t.get_nano_invoice(job_id) else "stripe"
+            )
+
+        if rail == "nano":
+            invoice = checkout.get("invoice") or self.t.get_nano_invoice(job_id) or {}
+            if not invoice.get("destination") and checkout.get("destination"):
+                invoice = {
+                    "id": session_id,
+                    "job_id": job_id,
+                    "destination": checkout.get("destination"),
+                    "amount_cents": checkout.get(
+                        "amount_cents", getattr(q, "price_cents", 0)
+                    ),
+                    "amount_raw": checkout.get("amount_raw"),
+                    "xno_rate_usd": checkout.get("xno_rate_usd"),
+                    "expires_at": checkout.get("expires_at"),
+                    "status": invoice.get("status") or "open",
+                    "url": checkout.get("url"),
+                }
+            if self.sync_payment:
+                block_hash = self.nano.mint_sim_block(invoice)
+                payment = self.nano.verify_nano_block(invoice, block_hash)
+            else:
+                # Async: operator/customer submits block via POST /payments/nano/verify.
+                payment = {
+                    "paid": False,
+                    "reason": "awaiting nano block verification",
+                }
+                # A previously verified block may already be on the invoice row.
+                if invoice.get("status") == "paid" and invoice.get("block_hash"):
+                    payment = {
+                        "paid": True,
+                        "payment_ref": invoice["block_hash"],
+                        "stripe_ref": invoice["block_hash"],
+                        "block_hash": invoice["block_hash"],
+                        "checkout_session_id": invoice.get("invoice_id") or session_id,
+                        "amount_cents": invoice.get("amount_cents"),
+                        "amount_raw": invoice.get("amount_raw"),
+                        "rail": "nano",
+                        "simulated": True,
+                        "job_id": job_id,
+                    }
         else:
-            payment = self.stripe.get_cached_payment(job_id) or {
-                "paid": False,
-                "reason": "awaiting webhook",
+            link = {
+                "id": session_id,
+                "url": checkout.get("url"),
+                "amount_cents": checkout.get(
+                    "amount_cents", getattr(q, "price_cents", 0)
+                ),
+                "simulated": checkout.get("simulated", False),
+                "job_id": job_id,
             }
+            if self.sync_payment:
+                payment = self.stripe.confirm_payment(link, job_id=job_id)
+            else:
+                payment = self.stripe.get_cached_payment(job_id) or {
+                    "paid": False,
+                    "reason": "awaiting webhook",
+                }
 
         if not payment.get("paid"):
             reason = payment.get("reason", "payment not received")
@@ -427,32 +549,45 @@ class StageRunner:
                 job_id=job_id,
                 reason=reason,
                 url=checkout.get("url"),
+                rail=rail,
             )
 
+        payment_ref = payment.get("payment_ref") or payment.get("stripe_ref")
         with self.t.lock():
             self.t.earn(
                 payment["amount_cents"],
                 f"Payment for {job_id}",
                 job_id=job_id,
-                stripe_ref=payment["stripe_ref"],
-                stripe_session_id=payment.get("checkout_session_id"),
+                stripe_ref=payment.get("stripe_ref") or payment_ref,
+                payment_ref=payment_ref,
+                stripe_session_id=payment.get("checkout_session_id") or session_id,
                 stripe_link_id=payment.get("payment_link_id"),
             )
         result = {
             "paid": True,
-            "stripe_ref": payment["stripe_ref"],
-            "checkout_session_id": payment.get("checkout_session_id"),
+            "rail": rail,
+            "stripe_ref": payment.get("stripe_ref") or payment_ref,
+            "payment_ref": payment_ref,
+            "checkout_session_id": payment.get("checkout_session_id") or session_id,
             "amount_cents": payment["amount_cents"],
         }
+        if rail == "nano":
+            self.t.mark_nano_invoice(
+                job_id, status="paid", block_hash=payment.get("block_hash") or payment_ref
+            )
         self.t.complete_stage(job_id, "paid", key, result)
         self.t.upsert_job(job_id, "paid_pending_fulfill", current_stage="paid")
-        self.t.upsert_checkout(job_id, session_id, checkout.get("url", ""), "paid")
+        self.t.upsert_checkout(
+            job_id, session_id, checkout.get("url", ""), "paid", rail=rail
+        )
         self._emit(
             stage="paid",
             job_id=job_id,
             amount=payment["amount_cents"],
-            payment_intent=payment["stripe_ref"],
-            checkout_session=payment.get("checkout_session_id"),
+            payment_intent=payment_ref,
+            payment_ref=payment_ref,
+            checkout_session=payment.get("checkout_session_id") or session_id,
+            rail=rail,
         )
         return result
 
@@ -728,6 +863,29 @@ class StageRunner:
             q_data = json.loads(row["quote_json"]) if row.get("quote_json") else {}
             if q_data:
                 checkout["amount_cents"] = q_data.get("price_cents", checkout["amount_cents"])
+            stored = self.t.get_checkout(job_id) or {}
+            nano_inv = self.t.get_nano_invoice(job_id)
+            if nano_inv:
+                checkout["rail"] = "nano"
+                checkout["destination"] = nano_inv.get("destination")
+                checkout["amount_raw"] = nano_inv.get("amount_raw")
+                checkout["xno_rate_usd"] = nano_inv.get("xno_rate_usd")
+                checkout["expires_at"] = nano_inv.get("expires_at")
+                checkout["invoice"] = {
+                    "id": nano_inv.get("invoice_id") or checkout["session_id"],
+                    "invoice_id": nano_inv.get("invoice_id"),
+                    "job_id": job_id,
+                    "destination": nano_inv.get("destination"),
+                    "amount_cents": nano_inv.get("amount_cents") or checkout["amount_cents"],
+                    "amount_raw": nano_inv.get("amount_raw"),
+                    "xno_rate_usd": nano_inv.get("xno_rate_usd"),
+                    "expires_at": nano_inv.get("expires_at"),
+                    "status": nano_inv.get("status") or "open",
+                    "block_hash": nano_inv.get("block_hash"),
+                    "url": nano_inv.get("pay_uri") or checkout.get("url"),
+                }
+            else:
+                checkout["rail"] = stored.get("rail") or "stripe"
             from .pricing import Quote
 
             quote_obj: Quote | None = None

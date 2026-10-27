@@ -7,9 +7,11 @@ All notable changes to SOLVENT are recorded here. The format follows
 ## [Unreleased]
 
 ### Security
+- Nano settle rail v1 is verify-only: no hot wallet; simulate mode only; public block ≠ privacy (see SECURITY.md) (#83).
 - Pin GitHub Actions to commit SHAs, add workflow `permissions:` defaults, enable CodeQL, and raise audited dependency floors via `constraints.txt` (#113).
 
 ### Added
+- Optional Nano (XNO) simulate settle rail beside Stripe: `SOLVENT_NANO=sim`, `create_nano_invoice` / `verify_nano_block`, treasury `payment_ref` + `nano_invoices`, `POST /payments/nano/verify` (#83).
 - Per-job budget envelopes and an optional human-approval hook in the spend guardrails (`job_budget` / approval threshold); inspectable via `solvent guardrails` (#112).
 - Optional OpenAI-compatible / Ollama LLM backend for briefs when `SOLVENT_LLM_BASE_URL` or `SOLVENT_LLM_MODEL` is set; redirects refused so API keys are never forwarded (#109).
 

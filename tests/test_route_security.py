@@ -488,6 +488,7 @@ PUBLIC_ROUTES = {
     ("GET", "/jobs/{job_id}"): "id + status only without the token",
     ("GET", "/api/receipt/{job_id}"): "delivery token or genuinely local",
     ("POST", "/webhooks/stripe"): "Stripe signature verified first",
+    ("POST", "/webhooks/nano"): "501 stub pointing at verify-on-submit; no shared secret",
     ("GET", "/briefs/{job_id}"): "delivery token",
     ("GET", "/api/briefs"): "genuinely local only",
     ("GET", "/api/briefs/{job_id}"): "delivery token or genuinely local",

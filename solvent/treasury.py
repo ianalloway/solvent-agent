@@ -64,11 +64,16 @@ class LedgerEntry:
     stripe_ref: str | None = None  # PaymentIntent / issuing card / refund id
     stripe_session_id: str | None = None  # Checkout Session (cs_...)
     stripe_link_id: str | None = None  # Payment Link (plink_...)
+    payment_ref: str | None = None  # generic earn ref (pi_… or Nano block hash)
     ts: float = field(default_factory=time.time)
     id: str = field(default_factory=lambda: "le_" + uuid.uuid4().hex[:12])
 
     def signed_cents(self) -> int:
         return self.amount_cents if self.kind in ("revenue", "capital") else -self.amount_cents
+
+    def resolved_payment_ref(self) -> str | None:
+        """Prefer payment_ref; fall back to stripe_ref for pre-alias rows."""
+        return self.payment_ref or self.stripe_ref
 
 
 class Treasury:
@@ -122,6 +127,7 @@ class Treasury:
                 """)
             self._ensure_column(conn, "ledger", "stripe_session_id", "TEXT")
             self._ensure_column(conn, "ledger", "stripe_link_id", "TEXT")
+            self._ensure_column(conn, "ledger", "payment_ref", "TEXT")
             conn.execute("""
                     CREATE TABLE IF NOT EXISTS jobs (
                         id TEXT PRIMARY KEY,
@@ -199,8 +205,25 @@ class Treasury:
                 ("created_at", "REAL"),
                 ("reminders_sent", "INTEGER DEFAULT 0"),
                 ("last_reminder_at", "REAL"),
+                ("rail", "TEXT"),
             ):
                 self._ensure_column(conn, "stripe_checkout", col, ctype)
+            conn.execute("""
+                    CREATE TABLE IF NOT EXISTS nano_invoices (
+                        job_id TEXT PRIMARY KEY,
+                        invoice_id TEXT,
+                        destination TEXT,
+                        amount_cents INTEGER,
+                        amount_raw TEXT,
+                        xno_rate_usd TEXT,
+                        rate_ts REAL,
+                        block_hash TEXT,
+                        status TEXT,
+                        expires_at REAL,
+                        pay_uri TEXT,
+                        ts REAL NOT NULL
+                    )
+                """)
             conn.execute("""
                     CREATE TABLE IF NOT EXISTS events (
                         id TEXT PRIMARY KEY,
@@ -290,7 +313,7 @@ class Treasury:
         with self._conn() as conn:
             cursor = conn.execute(
                 "SELECT id, kind, amount_cents, memo, job_id, vendor, stripe_ref, "
-                "stripe_session_id, stripe_link_id, ts "
+                "stripe_session_id, stripe_link_id, payment_ref, ts "
                 "FROM ledger ORDER BY ts ASC, id ASC"
             )
             rows = cursor.fetchall()
@@ -305,6 +328,7 @@ class Treasury:
                     stripe_ref=row["stripe_ref"],
                     stripe_session_id=row["stripe_session_id"],
                     stripe_link_id=row["stripe_link_id"],
+                    payment_ref=row["payment_ref"] if "payment_ref" in row.keys() else None,
                     ts=row["ts"],
                 )
                 for row in rows
@@ -326,6 +350,7 @@ class Treasury:
             conn.execute("DELETE FROM job_stages")
             conn.execute("DELETE FROM job_metrics")
             conn.execute("DELETE FROM stripe_checkout")
+            conn.execute("DELETE FROM nano_invoices")
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM chat_messages")
             conn.execute("DELETE FROM chat_sessions")
@@ -334,15 +359,23 @@ class Treasury:
     # ---- writes ------------------------------------------------------
     def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
         with self.lock():
+            # Thin alias: payment_ref is the generic earn/spend proof; keep
+            # stripe_ref populated for older readers when only one is supplied.
+            payment_ref = kw.get("payment_ref")
+            stripe_ref = kw.get("stripe_ref")
+            if payment_ref and not stripe_ref:
+                kw["stripe_ref"] = payment_ref
+            elif stripe_ref and not payment_ref:
+                kw["payment_ref"] = stripe_ref
             entry = LedgerEntry(kind=kind, amount_cents=int(amount_cents), memo=memo, **kw)
             with self._conn() as conn, conn:
                 conn.execute(
                     """
                         INSERT INTO ledger (
                             id, kind, amount_cents, memo, job_id, vendor,
-                            stripe_ref, stripe_session_id, stripe_link_id, ts
+                            stripe_ref, stripe_session_id, stripe_link_id, payment_ref, ts
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         entry.id,
@@ -354,6 +387,7 @@ class Treasury:
                         entry.stripe_ref,
                         entry.stripe_session_id,
                         entry.stripe_link_id,
+                        entry.payment_ref,
                         entry.ts,
                     ),
                 )
@@ -692,22 +726,32 @@ class Treasury:
             rows = conn.execute("SELECT * FROM job_metrics ORDER BY ts ASC").fetchall()
             return [dict(r) for r in rows]
 
-    def upsert_checkout(self, job_id: str, session_id: str, checkout_url: str, status: str) -> None:
+    def upsert_checkout(
+        self,
+        job_id: str,
+        session_id: str,
+        checkout_url: str,
+        status: str,
+        *,
+        rail: str | None = None,
+    ) -> None:
         """Record a checkout link, keeping the age and reminder count it already had."""
         now = time.time()
+        rail_value = rail or "stripe"
         with self.lock(), self._conn() as conn, conn:
             conn.execute(
                 """
                         INSERT INTO stripe_checkout
-                        (job_id, session_id, checkout_url, status, ts, created_at, reminders_sent)
-                        VALUES (?, ?, ?, ?, ?, ?, 0)
+                        (job_id, session_id, checkout_url, status, ts, created_at, reminders_sent, rail)
+                        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
                         ON CONFLICT(job_id) DO UPDATE SET
                             session_id = excluded.session_id,
                             checkout_url = excluded.checkout_url,
                             status = excluded.status,
-                            ts = excluded.ts
+                            ts = excluded.ts,
+                            rail = COALESCE(excluded.rail, stripe_checkout.rail)
                     """,
-                (job_id, session_id, checkout_url, status, now, now),
+                (job_id, session_id, checkout_url, status, now, now, rail_value),
             )
 
     def record_checkout_reminder(self, job_id: str, ts: float | None = None) -> int:
@@ -748,6 +792,88 @@ class Treasury:
                 "SELECT * FROM stripe_checkout WHERE job_id = ?", (job_id,)
             ).fetchone()
             return dict(row) if row else None
+
+    def upsert_nano_invoice(self, job_id: str, invoice: dict) -> None:
+        """Persist a Nano invoice row (simulate or later live)."""
+        now = time.time()
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute(
+                """
+                    INSERT INTO nano_invoices (
+                        job_id, invoice_id, destination, amount_cents, amount_raw,
+                        xno_rate_usd, rate_ts, block_hash, status, expires_at, pay_uri, ts
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(job_id) DO UPDATE SET
+                        invoice_id = excluded.invoice_id,
+                        destination = excluded.destination,
+                        amount_cents = excluded.amount_cents,
+                        amount_raw = excluded.amount_raw,
+                        xno_rate_usd = excluded.xno_rate_usd,
+                        rate_ts = excluded.rate_ts,
+                        block_hash = COALESCE(excluded.block_hash, nano_invoices.block_hash),
+                        status = excluded.status,
+                        expires_at = excluded.expires_at,
+                        pay_uri = excluded.pay_uri,
+                        ts = excluded.ts
+                """,
+                (
+                    job_id,
+                    invoice.get("id") or invoice.get("invoice_id") or "",
+                    invoice.get("destination") or "",
+                    invoice.get("amount_cents"),
+                    str(invoice.get("amount_raw") or ""),
+                    str(invoice.get("xno_rate_usd") or ""),
+                    invoice.get("rate_ts"),
+                    invoice.get("block_hash"),
+                    invoice.get("status") or "open",
+                    invoice.get("expires_at"),
+                    invoice.get("url") or invoice.get("pay_uri") or "",
+                    invoice.get("ts") or now,
+                ),
+            )
+
+    def get_nano_invoice(self, job_id: str) -> dict | None:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM nano_invoices WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def mark_nano_invoice(
+        self,
+        job_id: str,
+        *,
+        status: str | None = None,
+        block_hash: str | None = None,
+    ) -> None:
+        """Update nano invoice status / verified block hash."""
+        with self.lock(), self._conn() as conn, conn:
+            fields = ["ts = ?"]
+            params: list = [time.time()]
+            if status is not None:
+                fields.append("status = ?")
+                params.append(status)
+            if block_hash is not None:
+                fields.append("block_hash = ?")
+                params.append(block_hash)
+            params.append(job_id)
+            conn.execute(
+                f"UPDATE nano_invoices SET {', '.join(fields)} WHERE job_id = ?",
+                params,
+            )
+
+    def list_nano_invoices(self, status: str | None = None) -> list[dict]:
+        with self.lock(), self._conn() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM nano_invoices WHERE status = ? ORDER BY ts ASC",
+                    (status,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM nano_invoices ORDER BY ts ASC"
+                ).fetchall()
+            return [dict(r) for r in rows]
 
     def job_has_revenue(self, job_id: str) -> bool:
         with self.lock():
