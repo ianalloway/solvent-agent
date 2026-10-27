@@ -6,7 +6,6 @@ import os
 import tempfile
 import unittest
 from decimal import Decimal, ROUND_HALF_UP, localcontext
-from pathlib import Path
 from unittest import mock
 
 from solvent.nano_client import (
