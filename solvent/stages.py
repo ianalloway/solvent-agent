@@ -561,7 +561,7 @@ class StageRunner:
                     if locked and locked["status"] == "completed":
                         continue
                     decision = self.guard.evaluate(
-                        amount, vendor, projected_job_margin_cents=job_margin
+                        amount, vendor, projected_job_margin_cents=job_margin, job_id=job_id
                     )
                     if not decision.allowed:
                         self.t.upsert_metrics(
@@ -570,7 +570,7 @@ class StageRunner:
                             block_reason=decision.reason,
                         )
                         self._emit(
-                            stage="spend_blocked",
+                            stage="spend_held" if decision.pending_approval else "spend_blocked",
                             job_id=job_id,
                             vendor=vendor,
                             amount=amount,

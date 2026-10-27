@@ -3,8 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+  # Pushes made with GITHUB_TOKEN (Dependabot auto-merge) do not trigger
+  # workflows, so main HEAD can end up with no run; this allows a manual one.
+  workflow_dispatch:
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -13,15 +19,15 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,all]"
+          pip install -e ".[dev,all]" -c constraints.txt
       - name: Lint
         run: ruff check solvent tests run_demo.py
       - name: Run tests
@@ -32,13 +38,13 @@ jobs:
     name: zero-dependency core
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
           cache: "pip"
       - name: Install core + dev only (no optional extras)
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" -c constraints.txt
       - name: Run tests
         # The core runs on the stdlib alone; optional-extra tests skip cleanly.
         run: python -m pytest -q
@@ -47,8 +53,8 @@ jobs:
     name: build + install + CLI smoke
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
           cache: "pip"
