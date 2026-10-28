@@ -94,14 +94,27 @@ def run_checks() -> list[dict]:
         if st.get("receive_address_configured"):
             detail += "; SOLVENT_NANO_ADDRESS set (unused in sim)"
         add("nano_rail", True, detail)
-    elif st["mode"] == "live_unsupported":
+    elif st["mode"] == "live":
+        probe = nano.probe_rpc()
+        rate = st.get("rate_usd") or "?"
+        addr_ok = st.get("receive_address_valid")
+        detail = (
+            f"SOLVENT_NANO=live (verify-only, no hot wallet; rate ${rate}/XNO; "
+            f"address {'ok' if addr_ok else 'invalid'}; rpc {probe.get('detail')})"
+        )
+        add("nano_rail", bool(probe.get("ok")) and bool(addr_ok), detail)
+    elif st["mode"] == "misconfigured":
         add(
             "nano_rail",
             False,
-            "SOLVENT_NANO_RPC set but live Nano is not implemented in v1",
+            st.get("misconfig_reason") or "incomplete or mixed Nano live/sim config",
         )
     else:
-        add("nano_rail", True, "unset (Stripe default earn rail; export SOLVENT_NANO=sim to enable)")
+        add(
+            "nano_rail",
+            True,
+            "unset (Stripe default earn rail; export SOLVENT_NANO=sim or =live)",
+        )
 
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
@@ -141,6 +154,7 @@ Enable live features:
   export NVIDIA_API_KEY=nvapi-...    live Nemotron inference
   export STRIPE_API_KEY=sk_test_...  real test-mode payment links
   export SOLVENT_NANO=sim            optional Nano (XNO) simulate settle rail
+  export SOLVENT_NANO=live           live verify-only (needs RPC + address + rate)
 """
 
 

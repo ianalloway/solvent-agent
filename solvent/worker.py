@@ -28,7 +28,7 @@ def run_worker(
         # Chase or close unpaid links before picking up work: an expired job
         # drops out of the queue instead of being polled forever.
         try:
-            sweep_checkouts(agent.t, stripe=agent.stripe)
+            sweep_checkouts(agent.t, stripe=agent.stripe, nano=agent.nano)
         except Exception as exc:
             logging.getLogger(__name__).warning("checkout sweep failed: %s", exc)
 
