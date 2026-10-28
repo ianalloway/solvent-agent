@@ -1,1 +1,1 @@
-solvent-agent>=0.2.2
+solvent-agent>=0.3.0
