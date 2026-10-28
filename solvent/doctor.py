@@ -89,7 +89,11 @@ def run_checks() -> list[dict]:
     nano = NanoClient()
     st = nano.status()
     if st["mode"] == "sim":
-        add("nano_rail", True, "simulate mode (verify-only, no hot wallet)")
+        rate = st.get("rate_usd") or "?"
+        detail = f"SOLVENT_NANO=sim (verify-only, no hot wallet; rate ${rate}/XNO)"
+        if st.get("receive_address_configured"):
+            detail += "; SOLVENT_NANO_ADDRESS set (unused in sim)"
+        add("nano_rail", True, detail)
     elif st["mode"] == "live_unsupported":
         add(
             "nano_rail",
@@ -97,7 +101,7 @@ def run_checks() -> list[dict]:
             "SOLVENT_NANO_RPC set but live Nano is not implemented in v1",
         )
     else:
-        add("nano_rail", True, "unset (Stripe default earn rail)")
+        add("nano_rail", True, "unset (Stripe default earn rail; export SOLVENT_NANO=sim to enable)")
 
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
@@ -136,6 +140,7 @@ Enable live features:
   pip install -e ".[all]"            Stripe · server · Telegram · QR pairing
   export NVIDIA_API_KEY=nvapi-...    live Nemotron inference
   export STRIPE_API_KEY=sk_test_...  real test-mode payment links
+  export SOLVENT_NANO=sim            optional Nano (XNO) simulate settle rail
 """
 
 

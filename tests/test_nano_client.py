@@ -266,13 +266,24 @@ class TestDoctorNano(unittest.TestCase):
     def test_doctor_reports_sim(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(
-                os.environ, {"SOLVENT_NANO": "sim", "SOLVENT_HOME": tmp}, clear=False
+                os.environ,
+                {
+                    "SOLVENT_NANO": "sim",
+                    "SOLVENT_HOME": tmp,
+                    "SOLVENT_NANO_RPC": "",
+                    "SOLVENT_NANO_RATE_USD": "0.85",
+                    "SOLVENT_NANO_ADDRESS": "",
+                    "SOLVENT_FORCE_NANO_SIMULATE": "",
+                },
+                clear=False,
             ):
                 from solvent.doctor import run_checks
 
                 check = next(c for c in run_checks() if c["name"] == "nano_rail")
                 self.assertTrue(check["ok"])
-                self.assertIn("simulate", check["detail"])
+                self.assertIn("SOLVENT_NANO=sim", check["detail"])
+                self.assertIn("0.85", check["detail"])
+                self.assertIn("verify-only", check["detail"])
 
     def test_doctor_reports_unset(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -291,6 +302,25 @@ class TestDoctorNano(unittest.TestCase):
                 check = next(c for c in run_checks() if c["name"] == "nano_rail")
                 self.assertTrue(check["ok"])
                 self.assertIn("unset", check["detail"])
+                self.assertIn("SOLVENT_NANO=sim", check["detail"])
+
+    def test_doctor_reports_live_unsupported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "SOLVENT_NANO": "",
+                    "SOLVENT_NANO_RPC": "https://example.invalid/rpc",
+                    "SOLVENT_FORCE_NANO_SIMULATE": "",
+                    "SOLVENT_HOME": tmp,
+                },
+                clear=False,
+            ):
+                from solvent.doctor import run_checks
+
+                check = next(c for c in run_checks() if c["name"] == "nano_rail")
+                self.assertFalse(check["ok"])
+                self.assertIn("live", check["detail"].lower())
 
 
 if __name__ == "__main__":

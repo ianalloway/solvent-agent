@@ -36,9 +36,20 @@ python3 -m solvent worker
 
 ## Payment rails
 
-Earn is Stripe test-mode Checkout / Payment Links today. A proposed optional
-Nano (XNO) settle leg beside Stripe is documented in [NANO_SETTLE.md](NANO_SETTLE.md) (issue [#83](https://github.com/ianalloway/solvent-agent/issues/83)) — design only;
-not implemented until explicitly accepted.
+Earn defaults to Stripe test-mode Checkout / Payment Links. An optional Nano
+(XNO) simulate settle rail sits beside it (issue [#83](https://github.com/ianalloway/solvent-agent/issues/83);
+design in [NANO_SETTLE.md](NANO_SETTLE.md)).
+
+| Env | Effect |
+|---|---|
+| unset (default) | Stripe path unchanged; zero Nano config |
+| `SOLVENT_NANO=sim` | Checkout creates `nano_sim_…` invoices; verify with `block_sim_…` before fulfil |
+| `SOLVENT_NANO_RATE_USD` | Optional fixed USD/XNO rate for sim (default `0.85`) |
+| `SOLVENT_NANO_RPC=…` | Refused in v1 (`live_unsupported`) — live RPC / custody still deferred |
+
+`solvent doctor` reports a `nano_rail` check (sim vs unset vs live_unsupported).
+Verify-on-submit is `POST /payments/nano/verify` (dashboard token required).
+`POST /webhooks/nano` returns `501` (no shared webhook secret from a public ledger).
 
 ## Stripe setup (test mode)
 
@@ -82,6 +93,8 @@ metrics, including the customer email and costs.
 | `GET /health` | Public: `{status, version}`. With the dashboard token it also reports `balance_cents`. |
 | `POST /jobs`, `GET /jobs/{id}` | Public intake and minimal status, as above. |
 | `POST /webhooks/stripe` | Public, but the Stripe signature is verified first. |
+| `POST /webhooks/nano` | Public stub: always `501` (use verify-on-submit instead). |
+| `POST /payments/nano/verify` | Dashboard token. Body: `{job_id, block_hash}`. |
 | `POST /api/pair/verify` | Public, but only a valid, unexpired, single-use pairing token succeeds. After 5 failed attempts from one peer (or 60 overall) it answers `429` for a few minutes. |
 | `GET /briefs/{id}`, `GET /api/briefs/{id}`, `GET /api/receipt/{id}` | Delivery token (`?token=`), or a genuinely local request. |
 | `GET /api/briefs` | Genuinely local requests only. |

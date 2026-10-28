@@ -136,7 +136,7 @@ Simulate (v1) ships when `SOLVENT_NANO=sim`:
 | Stages | `solvent/stages.py` — nano branch in checkout / paid |
 | Treasury | `nano_invoices` table + ledger `payment_ref` (alias of `stripe_ref`) |
 | HTTP | `POST /payments/nano/verify` (verify-on-submit); `POST /webhooks/nano` → 501 stub |
-| Doctor | `nano_rail` check reports sim vs unset |
+| Doctor | `nano_rail` check reports `SOLVENT_NANO=sim` (with rate) vs unset vs live_unsupported |
 | Tests | `tests/test_nano_client.py` |
 
 Still deferred: live RPC, hot seed, FX oracle beyond the fixed sim rate, x402.
