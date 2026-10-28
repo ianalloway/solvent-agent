@@ -6,17 +6,21 @@ All notable changes to SOLVENT are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
 ### Security
-- Nano settle rail v1 is verify-only: no hot wallet; simulate mode only; public block ≠ privacy (see SECURITY.md) (#83).
+- Nano settle rail is verify-only: no hot wallet; sim and live never mix; public block ≠ privacy (see SECURITY.md) (#83).
 - Pin GitHub Actions to commit SHAs, add workflow `permissions:` defaults, enable CodeQL, and raise audited dependency floors via `constraints.txt` (#113).
 
 ### Added
-- Optional Nano (XNO) simulate settle rail beside Stripe: `SOLVENT_NANO=sim`, `create_nano_invoice` / `verify_nano_block`, treasury `payment_ref` + `nano_invoices`, `POST /payments/nano/verify` (#83).
+- Optional Nano (XNO) settle rail beside Stripe: simulate (`SOLVENT_NANO=sim`) and live verify-only (`SOLVENT_NANO=live` + RPC + receive address + rate), `create_nano_invoice` / `verify_nano_block`, treasury `payment_ref` + `nano_invoices`, `POST /payments/nano/verify` (#83).
+- Doctor fail-closed for partial / mixed Nano live config; PRODUCTION + SECURITY live section (#83).
+- Checkout chase expires unpaid Nano invoices (policy window and invoice `expires_at`); HF Space Nano sim toggle (#83).
 - Per-job budget envelopes and an optional human-approval hook in the spend guardrails (`job_budget` / approval threshold); inspectable via `solvent guardrails` (#112).
 - Optional OpenAI-compatible / Ollama LLM backend for briefs when `SOLVENT_LLM_BASE_URL` or `SOLVENT_LLM_MODEL` is set; redirects refused so API keys are never forwarded (#109).
 
 ### Changed
-- Document the landed Nano simulate settle rail in `docs/PRODUCTION.md`, and make `solvent doctor` / quickstart spell out `SOLVENT_NANO=sim` (rate in the `nano_rail` detail) (#83).
+- Document Nano sim + live settle rails in `docs/PRODUCTION.md`; `solvent doctor` reports sim / live / unset / misconfigured (#83).
 - End-of-run CLI summary labels simulated balance and treasury growth more clearly (#111).
 
 ### Fixed
@@ -166,7 +170,8 @@ earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
-[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ianalloway/solvent-agent/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/ianalloway/solvent-agent/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/ianalloway/solvent-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ianalloway/solvent-agent/compare/33cb136cfd04...v0.2.0

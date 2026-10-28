@@ -1,11 +1,11 @@
-"""Unit tests for the Nano simulate settle rail (issue #83). No network."""
+"""Unit tests for the Nano settle rail (issue #83). No live network."""
 
 from __future__ import annotations
 
 import os
 import tempfile
 import unittest
-from decimal import Decimal, ROUND_HALF_UP, localcontext
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from unittest import mock
 
 from solvent.nano_client import (
@@ -13,12 +13,17 @@ from solvent.nano_client import (
     NanoClient,
     NanoClientError,
     cents_to_raw,
+    is_block_hash,
+    is_nano_address,
 )
+
+# Valid-looking nano_ address for live-mode tests (checksum not verified in v1).
+LIVE_ADDR = "nano_1qato4k7z3spc8gq1zyd8xeqfbzsoxwo36a45ozbrxcatut7up8ohyardu1z"
+LIVE_HASH = "87434F8041869A01C8F6F263B87972D7BA443A72E0A97D7A3FD0CCC2358FD6F9"
 
 
 class TestCentsToRaw(unittest.TestCase):
     def test_deterministic_integer_math(self):
-        # $49.00 at $0.85/XNO → 49/0.85 XNO * 10^30 raw
         raw = cents_to_raw(4900, Decimal("0.85"))
         with localcontext() as ctx:
             ctx.prec = 80
@@ -44,6 +49,15 @@ class TestCentsToRaw(unittest.TestCase):
             cents_to_raw(-1, "1.0")
 
 
+class TestAddressHelpers(unittest.TestCase):
+    def test_address_and_hash_shapes(self):
+        self.assertTrue(is_nano_address(LIVE_ADDR))
+        self.assertFalse(is_nano_address("nano_sim_abc"))
+        self.assertFalse(is_nano_address("nano_short"))
+        self.assertTrue(is_block_hash(LIVE_HASH))
+        self.assertFalse(is_block_hash("block_sim_x"))
+
+
 class TestNanoClientSim(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -53,6 +67,7 @@ class TestNanoClientSim(unittest.TestCase):
                 "SOLVENT_NANO": "sim",
                 "SOLVENT_HOME": self._tmpdir.name,
                 "SOLVENT_NANO_RPC": "",
+                "SOLVENT_NANO_ADDRESS": "",
                 "SOLVENT_FORCE_NANO_SIMULATE": "",
             },
             clear=False,
@@ -91,7 +106,7 @@ class TestNanoClientSim(unittest.TestCase):
         payment = client.verify_nano_block(inv, block)
         self.assertTrue(payment["paid"])
         self.assertEqual(payment["payment_ref"], block)
-        self.assertEqual(payment["stripe_ref"], block)  # thin alias
+        self.assertEqual(payment["stripe_ref"], block)
         self.assertEqual(payment["rail"], "nano")
         self.assertTrue(payment["simulated"])
 
@@ -160,7 +175,12 @@ class TestNanoClientOptIn(unittest.TestCase):
     def test_unset_is_disabled(self):
         with mock.patch.dict(
             os.environ,
-            {"SOLVENT_NANO": "", "SOLVENT_NANO_RPC": "", "SOLVENT_FORCE_NANO_SIMULATE": ""},
+            {
+                "SOLVENT_NANO": "",
+                "SOLVENT_NANO_RPC": "",
+                "SOLVENT_NANO_ADDRESS": "",
+                "SOLVENT_FORCE_NANO_SIMULATE": "",
+            },
             clear=False,
         ):
             client = NanoClient()
@@ -169,15 +189,134 @@ class TestNanoClientOptIn(unittest.TestCase):
             with self.assertRaises(NanoClientError):
                 client.create_nano_invoice("J", 100)
 
-    def test_live_rpc_refused(self):
+    def test_partial_live_is_misconfigured(self):
         with mock.patch.dict(
             os.environ,
-            {"SOLVENT_NANO": "", "SOLVENT_NANO_RPC": "https://example.invalid/rpc"},
+            {
+                "SOLVENT_NANO": "",
+                "SOLVENT_NANO_RPC": "https://example.invalid/rpc",
+                "SOLVENT_NANO_ADDRESS": "",
+                "SOLVENT_FORCE_NANO_SIMULATE": "",
+            },
             clear=False,
         ):
             client = NanoClient()
-            self.assertEqual(client.mode, "live_unsupported")
+            self.assertEqual(client.mode, "misconfigured")
             self.assertFalse(client.enabled)
+
+    def test_sim_plus_rpc_is_misconfigured(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "SOLVENT_NANO": "sim",
+                "SOLVENT_NANO_RPC": "https://example.invalid/rpc",
+                "SOLVENT_NANO_ADDRESS": "",
+                "SOLVENT_FORCE_NANO_SIMULATE": "",
+            },
+            clear=False,
+        ):
+            client = NanoClient()
+            self.assertEqual(client.mode, "misconfigured")
+            self.assertFalse(client.enabled)
+
+    def test_live_requires_full_config(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "SOLVENT_NANO": "live",
+                "SOLVENT_NANO_RPC": "https://example.invalid/rpc",
+                "SOLVENT_NANO_ADDRESS": LIVE_ADDR,
+                "SOLVENT_NANO_RATE_USD": "0.90",
+                "SOLVENT_FORCE_NANO_SIMULATE": "",
+            },
+            clear=False,
+        ):
+            client = NanoClient(rpc_post=lambda url, payload: {"node_vendor": "test"})
+            self.assertEqual(client.mode, "live")
+            self.assertTrue(client.enabled)
+            self.assertFalse(client.simulate)
+            inv = client.create_nano_invoice("JLIVE", 1000)
+            self.assertEqual(inv["destination"], LIVE_ADDR)
+            self.assertTrue(inv["id"].startswith("inv_live_"))
+            self.assertFalse(inv["simulated"])
+
+
+class TestNanoClientLiveVerify(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._env = mock.patch.dict(
+            os.environ,
+            {
+                "SOLVENT_NANO": "live",
+                "SOLVENT_HOME": self._tmpdir.name,
+                "SOLVENT_NANO_RPC": "https://example.invalid/rpc",
+                "SOLVENT_NANO_ADDRESS": LIVE_ADDR,
+                "SOLVENT_NANO_RATE_USD": "0.85",
+                "SOLVENT_FORCE_NANO_SIMULATE": "",
+            },
+            clear=False,
+        )
+        self._env.start()
+
+    def tearDown(self):
+        self._env.stop()
+        self._tmpdir.cleanup()
+
+    def _rpc(self, url, payload):
+        action = payload.get("action")
+        if action == "version":
+            return {"node_vendor": "Nano Test", "rpc_version": "1"}
+        if action == "block_info":
+            return {
+                "amount": self._amount,
+                "confirmed": "true",
+                "subtype": "send",
+                "contents": {
+                    "link_as_account": self._dest,
+                    "type": "state",
+                },
+            }
+        raise AssertionError(f"unexpected action {action}")
+
+    def test_live_verify_accepts_confirmed_send(self):
+        client = NanoClient(rpc_post=self._rpc)
+        inv = client.create_nano_invoice("JL1", 1000)
+        self._amount = inv["amount_raw"]
+        self._dest = LIVE_ADDR
+        payment = client.verify_nano_block(inv, LIVE_HASH)
+        self.assertTrue(payment["paid"])
+        self.assertFalse(payment["simulated"])
+        self.assertEqual(payment["payment_ref"], LIVE_HASH)
+
+    def test_live_rejects_sim_proof(self):
+        client = NanoClient(rpc_post=self._rpc)
+        inv = client.create_nano_invoice("JL2", 1000)
+        payment = client.verify_nano_block(inv, "block_sim_nope")
+        self.assertFalse(payment["paid"])
+        self.assertIn("simulate", payment["reason"])
+
+    def test_live_rejects_underpay(self):
+        client = NanoClient(rpc_post=self._rpc)
+        inv = client.create_nano_invoice("JL3", 5000)
+        self._amount = str(int(inv["amount_raw"]) - 1)
+        self._dest = LIVE_ADDR
+        payment = client.verify_nano_block(inv, LIVE_HASH)
+        self.assertFalse(payment["paid"])
+        self.assertIn("underpay", payment["reason"])
+
+    def test_live_rejects_wrong_destination(self):
+        client = NanoClient(rpc_post=self._rpc)
+        inv = client.create_nano_invoice("JL4", 1000)
+        self._amount = inv["amount_raw"]
+        self._dest = "nano_1ipx847tk8o46pwxt5qjdbncjqcbwcc1rrmqnkztrfjy5k7z4imsrata9est"
+        payment = client.verify_nano_block(inv, LIVE_HASH)
+        self.assertFalse(payment["paid"])
+        self.assertEqual(payment["reason"], "wrong destination")
+
+    def test_mint_sim_block_refused_in_live(self):
+        client = NanoClient(rpc_post=self._rpc)
+        with self.assertRaises(NanoClientError):
+            client.mint_sim_block()
 
 
 class TestNanoStagesIntegration(unittest.TestCase):
@@ -188,6 +327,8 @@ class TestNanoStagesIntegration(unittest.TestCase):
                 {
                     "SOLVENT_NANO": "sim",
                     "SOLVENT_HOME": tmp,
+                    "SOLVENT_NANO_RPC": "",
+                    "SOLVENT_NANO_ADDRESS": "",
                     "STRIPE_API_KEY": "",
                     "SOLVENT_FORCE_STRIPE_SIMULATE": "1",
                     "SOLVENT_DELIVERY_SECRET": "x" * 32,
@@ -209,7 +350,6 @@ class TestNanoStagesIntegration(unittest.TestCase):
                 }
                 result = agent.handle_job(job)
                 self.assertNotEqual(result.get("stage"), "declined")
-                # Sync sim should get past payment.
                 stages = [e.get("stage") for e in agent.log]
                 self.assertIn("invoice", stages)
                 self.assertIn("paid", stages)
@@ -217,7 +357,6 @@ class TestNanoStagesIntegration(unittest.TestCase):
                 self.assertIsNotNone(inv)
                 self.assertEqual(inv["status"], "paid")
                 self.assertTrue(str(inv["destination"]).startswith("nano_sim_"))
-                # Revenue booked with payment_ref alias.
                 refs = [
                     e.resolved_payment_ref()
                     for e in agent.t.entries
@@ -233,6 +372,7 @@ class TestNanoStagesIntegration(unittest.TestCase):
                 {
                     "SOLVENT_NANO": "",
                     "SOLVENT_NANO_RPC": "",
+                    "SOLVENT_NANO_ADDRESS": "",
                     "SOLVENT_FORCE_NANO_SIMULATE": "",
                     "SOLVENT_HOME": tmp,
                     "STRIPE_API_KEY": "",
@@ -271,8 +411,8 @@ class TestDoctorNano(unittest.TestCase):
                     "SOLVENT_NANO": "sim",
                     "SOLVENT_HOME": tmp,
                     "SOLVENT_NANO_RPC": "",
-                    "SOLVENT_NANO_RATE_USD": "0.85",
                     "SOLVENT_NANO_ADDRESS": "",
+                    "SOLVENT_NANO_RATE_USD": "0.85",
                     "SOLVENT_FORCE_NANO_SIMULATE": "",
                 },
                 clear=False,
@@ -292,6 +432,7 @@ class TestDoctorNano(unittest.TestCase):
                 {
                     "SOLVENT_NANO": "",
                     "SOLVENT_NANO_RPC": "",
+                    "SOLVENT_NANO_ADDRESS": "",
                     "SOLVENT_FORCE_NANO_SIMULATE": "",
                     "SOLVENT_HOME": tmp,
                 },
@@ -302,15 +443,15 @@ class TestDoctorNano(unittest.TestCase):
                 check = next(c for c in run_checks() if c["name"] == "nano_rail")
                 self.assertTrue(check["ok"])
                 self.assertIn("unset", check["detail"])
-                self.assertIn("SOLVENT_NANO=sim", check["detail"])
 
-    def test_doctor_reports_live_unsupported(self):
+    def test_doctor_reports_misconfigured_partial_live(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(
                 os.environ,
                 {
                     "SOLVENT_NANO": "",
                     "SOLVENT_NANO_RPC": "https://example.invalid/rpc",
+                    "SOLVENT_NANO_ADDRESS": "",
                     "SOLVENT_FORCE_NANO_SIMULATE": "",
                     "SOLVENT_HOME": tmp,
                 },
@@ -320,7 +461,31 @@ class TestDoctorNano(unittest.TestCase):
 
                 check = next(c for c in run_checks() if c["name"] == "nano_rail")
                 self.assertFalse(check["ok"])
-                self.assertIn("live", check["detail"].lower())
+                self.assertIn("incomplete", check["detail"].lower())
+
+    def test_doctor_reports_live_when_rpc_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "SOLVENT_NANO": "live",
+                    "SOLVENT_HOME": tmp,
+                    "SOLVENT_NANO_RPC": "https://example.invalid/rpc",
+                    "SOLVENT_NANO_ADDRESS": LIVE_ADDR,
+                    "SOLVENT_NANO_RATE_USD": "0.85",
+                    "SOLVENT_FORCE_NANO_SIMULATE": "",
+                },
+                clear=False,
+            ):
+                with mock.patch(
+                    "solvent.nano_client.NanoClient.probe_rpc",
+                    return_value={"ok": True, "detail": "reachable (test)"},
+                ):
+                    from solvent.doctor import run_checks
+
+                    check = next(c for c in run_checks() if c["name"] == "nano_rail")
+                    self.assertTrue(check["ok"])
+                    self.assertIn("SOLVENT_NANO=live", check["detail"])
 
 
 if __name__ == "__main__":

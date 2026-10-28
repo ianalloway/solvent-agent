@@ -14,6 +14,7 @@ tags:
   - agents
   - ai-agents
   - stripe
+  - nano
   - margin-gate
   - pricing
   - offline-demo
@@ -28,14 +29,33 @@ runs a small research business: it **quotes jobs against its own costs**, **decl
 
 - **Run the 5-job demo**: the repo's built-in sample jobs, a per-job table (accepted/declined, price, cost, margin),
   the declined job (`J3`) with its counter-offer highlighted, and the final P&L / treasury snapshot.
+- **Nano sim toggle**: optional `SOLVENT_NANO=sim` path — invoices use `nano_sim_…` destinations and
+  `block_sim_…` proofs (still offline; no RPC).
 - **Try your own job**: topic + budget → the margin-gate dry run (same logic as `solvent quote`).
 
 ## Zero keys, offline
 
-This Space installs the real package from PyPI (`solvent-agent>=0.2.1`) and does **not** vendor its code.
-Stripe checkout is simulated and the analyst is a deterministic stub, so it needs **no API keys and no network access**.
-`app.py` also clears any `STRIPE_*` / `NVIDIA_*` variables and runs each demo in a throwaway data directory.
-Numbers shown are illustrative simulation output, not real revenue.
+This Space installs the real package from PyPI (`solvent-agent>=0.2.2`, bump to `>=0.3.0` after the
+0.3.0 publish) and does **not** vendor its code.
+Stripe checkout is simulated by default; flip **Use Nano sim settle rail** for `nano_sim_…` /
+`block_sim_…` recording in the event timeline. The analyst is a deterministic stub, so it needs
+**no API keys and no network access**.
+`app.py` also clears any `STRIPE_*` / `NVIDIA_*` / live Nano RPC variables and runs each demo in a
+throwaway data directory. Numbers shown are illustrative simulation output, not real revenue.
+
+### Example Nano sim recording (timeline)
+
+```
+[J1] Nano invoice issued (sim): $49.00 → nano_sim_…
+[J1] Nano payment confirmed (sim block_sim_…): +$49.00 ref=block_sim_…
+```
+
+CLI equivalent:
+
+```bash
+export SOLVENT_NANO=sim
+pip install solvent-agent && solvent
+```
 
 ## Run locally
 
@@ -58,6 +78,7 @@ Or skip the UI: `pip install solvent-agent && solvent` (full demo) or `solvent q
    (`hf` is the current `huggingface_hub` CLI; the older `huggingface-cli upload` also works.)
 3. Wait for the build; the Space should start with no secrets configured. **Do not add any API keys**: none are needed.
 4. Keep `sdk_version` in `README.md` in step with a Gradio release you have tested, and bump `solvent-agent` when a new version ships.
+5. After **0.3.0** is on PyPI, set `requirements.txt` to `solvent-agent>=0.3.0` so the Space picks up live Nano client APIs used by the toggle path.
 
 ## Links
 

@@ -204,4 +204,60 @@ def test_worker_sweeps_before_taking_work():
         solvent_cls.return_value = agent
         run_worker(once=True)
 
-    mock_sweep.assert_called_once_with(agent.t, stripe=agent.stripe)
+    mock_sweep.assert_called_once_with(agent.t, stripe=agent.stripe, nano=agent.nano)
+
+
+def _awaiting_nano(treasury, job_id="JN1", *, email="buyer@x.example", budget=4_900, topic="nano brief", expires_at=None):
+    treasury.upsert_job(
+        job_id,
+        "awaiting_payment",
+        topic=topic,
+        budget_cents=budget,
+        customer_email=email,
+    )
+    treasury.upsert_checkout(
+        job_id, f"inv_sim_{job_id}", f"nano:nano_sim_{job_id}?amount=1", "open", rail="nano"
+    )
+    invoice = {
+        "id": f"inv_sim_{job_id}",
+        "destination": f"nano_sim_{job_id}",
+        "amount_cents": budget,
+        "amount_raw": "1000",
+        "xno_rate_usd": "0.85",
+        "status": "open",
+        "expires_at": expires_at,
+        "url": f"nano:nano_sim_{job_id}?amount=1",
+    }
+    treasury.upsert_nano_invoice(job_id, invoice)
+
+
+def test_nano_invoice_expires_via_policy_window(treasury, policy):
+    _awaiting_nano(treasury)
+    result = sweep(treasury, policy=policy, now=time.time() + 49 * HOUR)
+    assert result["expired"] == ["JN1"]
+    assert treasury.get_job("JN1")["status"] == EXPIRED_STATUS
+    assert treasury.get_checkout("JN1")["status"] == EXPIRED_STATUS
+    assert treasury.get_nano_invoice("JN1")["status"] == EXPIRED_STATUS
+
+
+def test_nano_invoice_expires_on_its_own_expires_at(treasury, policy):
+    now = time.time()
+    _awaiting_nano(treasury, expires_at=now + 60)
+    # Still well inside the 48h chase window, but invoice TTL elapsed.
+    result = sweep(treasury, policy=policy, now=now + 120)
+    assert result["expired"] == ["JN1"]
+    assert "nano invoice expired" in treasury.get_job("JN1")["error_reason"]
+    assert treasury.get_nano_invoice("JN1")["status"] == EXPIRED_STATUS
+
+
+def test_nano_expiry_does_not_call_stripe(treasury, policy):
+    _awaiting_nano(treasury)
+    stripe = mock.MagicMock()
+    sweep(treasury, stripe=stripe, policy=policy, now=time.time() + 49 * HOUR)
+    stripe.expire_checkout_session.assert_not_called()
+
+
+def test_open_checkouts_reports_nano_rail(treasury, policy):
+    _awaiting_nano(treasury)
+    rows = open_checkouts(treasury, policy=policy)
+    assert rows[0]["rail"] == "nano"

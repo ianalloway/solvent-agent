@@ -376,7 +376,7 @@ class StageRunner:
 
         self.t.upsert_job(job_id, "awaiting_payment", current_stage="checkout")
 
-        # Opt-in Nano earn rail (SOLVENT_NANO=sim). Default remains Stripe.
+        # Opt-in Nano earn rail (SOLVENT_NANO=sim|live). Default remains Stripe.
         if self.nano.enabled:
             invoice = self.nano.create_nano_invoice(
                 job_id=job_id,
@@ -393,7 +393,7 @@ class StageRunner:
                 "xno_rate_usd": invoice["xno_rate_usd"],
                 "expires_at": invoice["expires_at"],
                 "rail": "nano",
-                "simulated": True,
+                "simulated": bool(invoice.get("simulated")),
                 "invoice": invoice,
             }
             self.t.complete_stage(job_id, "checkout", key, result)
@@ -416,7 +416,7 @@ class StageRunner:
                 rail="nano",
                 destination=invoice["destination"],
                 amount_raw=invoice["amount_raw"],
-                simulated=True,
+                simulated=bool(invoice.get("simulated")),
             )
             return result
 
@@ -500,11 +500,12 @@ class StageRunner:
                     "status": invoice.get("status") or "open",
                     "url": checkout.get("url"),
                 }
-            if self.sync_payment:
+            if self.sync_payment and self.nano.simulate:
+                # Sync demo only auto-confirms in sim; live always needs verify-on-submit.
                 block_hash = self.nano.mint_sim_block(invoice)
                 payment = self.nano.verify_nano_block(invoice, block_hash)
             else:
-                # Async: operator/customer submits block via POST /payments/nano/verify.
+                # Async / live: operator/customer submits block via POST /payments/nano/verify.
                 payment = {
                     "paid": False,
                     "reason": "awaiting nano block verification",
@@ -520,7 +521,7 @@ class StageRunner:
                         "amount_cents": invoice.get("amount_cents"),
                         "amount_raw": invoice.get("amount_raw"),
                         "rail": "nano",
-                        "simulated": True,
+                        "simulated": bool(invoice.get("simulated", self.nano.simulate)),
                         "job_id": job_id,
                     }
         else:

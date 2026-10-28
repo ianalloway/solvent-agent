@@ -4,10 +4,11 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.2.x   | ✅ security fixes |
+| 0.3.x   | ✅ security fixes |
+| 0.2.x   | ✅ security fixes (until 0.4) |
 | < 0.2   | ❌ |
 
-Fixes ship as 0.2.x patch releases on [PyPI](https://pypi.org/project/solvent-agent/). Please upgrade to the latest 0.2.x before reporting.
+Fixes ship as patch releases on [PyPI](https://pypi.org/project/solvent-agent/). Please upgrade to the latest supported release before reporting.
 
 ## Reporting a vulnerability
 
@@ -32,14 +33,16 @@ export SOLVENT_LOCAL_ACCESS=never
 
 That way the delivery or dashboard token is always required. See [docs/PRODUCTION.md](docs/PRODUCTION.md) for the rest of the deployment checklist.
 
-## Nano settle rail (v1)
+## Nano settle rail
 
-The optional Nano (XNO) earn rail (`SOLVENT_NANO=sim`) is **verify-only** in v1:
+The optional Nano (XNO) earn rail is **verify-only** (Option A custody):
 
 - No hot wallet / seed is loaded or generated in-process.
-- Simulate mode accepts `block_sim_…` proofs with no RPC and no network.
-- Live RPC (`SOLVENT_NANO_RPC`) is refused until a later release.
+- **Simulate** (`SOLVENT_NANO=sim`) accepts `block_sim_…` proofs with no RPC and no network.
+- **Live** (`SOLVENT_NANO=live`) requires `SOLVENT_NANO_RPC`, `SOLVENT_NANO_ADDRESS`, and
+  `SOLVENT_NANO_RATE_USD`. Partial config fails closed (`misconfigured`); doctor refuses
+  to report OK. Live never accepts `block_sim_…` proofs; sim never calls RPC.
+- Mixing sim and live env vars is rejected.
 - A public block hash is a payment receipt, **not** privacy: amounts and
   addresses are visible on the ledger. Do not treat Nano settlement as
   confidential customer data handling.
-

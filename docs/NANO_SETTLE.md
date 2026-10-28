@@ -1,10 +1,11 @@
 # Nano (XNO) settle leg — design note (issue #83)
 
-Status: **simulate implementation landed** (verify-only, Option A custody).
-Enable with `SOLVENT_NANO=sim`. Live RPC / hot wallet remain non-goals for v1.
+Status: **simulate + live verify-only landed** (Option A custody — no hot wallet).
+Enable with `SOLVENT_NANO=sim` or `SOLVENT_NANO=live` (RPC + address + rate).
+Hot seed / outbound spend remain non-goals until Option B/C is accepted.
 This document maps
 [issue #83](https://github.com/ianalloway/solvent-agent/issues/83) onto the
-shapes SOLVENT already uses; see `solvent/nano_client.py` for the sim client.
+shapes SOLVENT already uses; see `solvent/nano_client.py`.
 
 ## Why it fits
 
@@ -18,12 +19,13 @@ receipt: create an invoice from the existing quote, verify a send block
 against the ledger, then fulfil. Unprofitable or declined work never touches
 either rail.
 
-## Non-goals (v1)
+## Non-goals (v1 / current)
 
 - Replacing Stripe, Issuing spend, or reconcile-against-Stripe.
-- Live main-net custody in the default zero-key demo.
+- Hot seed / in-process custody (Option B/C) or outbound Nano spend.
 - x402 HTTP challenge/response (may come later; see paypercall reference).
 - Auto-converting treasury balances between USD cents and XNO.
+- FX oracle beyond an explicit `SOLVENT_NANO_RATE_USD` (required for live).
 
 ## Proposed surface (additive)
 
@@ -35,7 +37,7 @@ at the call sites.
 | `create_checkout_session(job_id, amount_cents, …)` | `create_nano_invoice(job_id, amount_cents, …)` | Returns destination `nano_…` + exact **raw** amount derived from the profit-gated quote. |
 | `confirm_payment` / webhook `checkout.session.completed` | `verify_nano_block(invoice, block_hash)` | RPC `block_info`: `subtype=send`, `amount >= invoice.raw`, `destination == SOLVENT address`. |
 | `POST /webhooks/stripe` | `POST /webhooks/nano` **or** worker poll | Prefer poll/verify-on-submit first (no shared webhook secret from a public ledger). Optional later: push notify from a trusted watcher. |
-| `expire_checkout_session` | mark invoice expired in treasury | Checkout chase (`checkout.py`) already expires unpaid jobs; extend to nano invoice rows. |
+| `expire_checkout_session` | mark invoice expired in treasury | Checkout chase (`checkout.py`) expires unpaid Stripe **and** Nano rows; also honours invoice `expires_at`. |
 | `reconcile.py` vs PaymentIntents | optional: list account history vs booked refs | Keep Stripe reconcile unchanged; add a separate nano drift report. |
 
 ### Invoice record (treasury)
@@ -82,8 +84,9 @@ Match Stripe's offline demo:
 - No RPC, no seed, no network: `create_nano_invoice` returns `nano_sim_…` and a
   deterministic raw amount; `verify_nano_block` accepts a `block_sim_…` token
   instantly when `SOLVENT_NANO=sim` / no live endpoint configured.
-- Live RPC behind an opt-in env (e.g. `SOLVENT_NANO_RPC`) and a dedicated
-  receive address env — never a live Stripe-style key confusion.
+- Live RPC behind `SOLVENT_NANO=live` plus `SOLVENT_NANO_RPC` and
+  `SOLVENT_NANO_ADDRESS` — never mixed with sim proofs; doctor fails closed on
+  partial config.
 - Unit tests: amount math, reject underpay / wrong destination / replay;
   stages still decline unprofitable work without opening an invoice.
 
@@ -117,7 +120,10 @@ outbound Nano spend are a separate design.
 - [x] Underpay / wrong destination / replay / expired invoice never fulfil.
 - [x] Treasury records rail + payment ref; Stripe paths untouched.
 - [x] Tests cover sim verify + rejection cases; no network in unit tests.
-- [x] SECURITY.md notes: verify-only v1, no hot wallet, public block ≠ privacy.
+- [x] SECURITY.md notes: verify-only, no hot wallet, public block ≠ privacy.
+- [x] Live RPC `block_info` verify with hard sim/live separation.
+- [x] Doctor / PRODUCTION fail-closed for partial live config.
+- [x] Checkout chase expires unpaid nano invoices (policy + `expires_at`).
 
 ## References
 
@@ -128,15 +134,14 @@ outbound Nano spend are a separate design.
 
 ## Implementation status
 
-Simulate (v1) ships when `SOLVENT_NANO=sim`:
-
 | Piece | Location |
 |---|---|
-| Client | `solvent/nano_client.py` — `create_nano_invoice`, `verify_nano_block` |
-| Stages | `solvent/stages.py` — nano branch in checkout / paid |
-| Treasury | `nano_invoices` table + ledger `payment_ref` (alias of `stripe_ref`) |
-| HTTP | `POST /payments/nano/verify` (verify-on-submit); `POST /webhooks/nano` → 501 stub |
-| Doctor | `nano_rail` check reports `SOLVENT_NANO=sim` (with rate) vs unset vs live_unsupported |
-| Tests | `tests/test_nano_client.py` |
+| Client | `solvent/nano_client.py` — sim + live `create_nano_invoice` / `verify_nano_block` |
+| Stages | `solvent/stages.py` — nano branch; sync auto-confirm **sim only** |
+| Treasury | `nano_invoices` + ledger `payment_ref` |
+| Checkout chase | `solvent/checkout.py` — rail-agnostic expire + invoice `expires_at` |
+| HTTP | `POST /payments/nano/verify`; `POST /webhooks/nano` → 501 |
+| Doctor | `nano_rail`: sim / live (RPC probe) / unset / misconfigured |
+| Tests | `tests/test_nano_client.py`, nano cases in `tests/test_checkout.py` |
 
-Still deferred: live RPC, hot seed, FX oracle beyond the fixed sim rate, x402.
+Still deferred (M3): hot seed / custody, FX oracle, x402, outbound Nano spend.
