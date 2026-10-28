@@ -16,6 +16,7 @@ All notable changes to SOLVENT are recorded here. The format follows
 - Optional OpenAI-compatible / Ollama LLM backend for briefs when `SOLVENT_LLM_BASE_URL` or `SOLVENT_LLM_MODEL` is set; redirects refused so API keys are never forwarded (#109).
 
 ### Changed
+- Document the landed Nano simulate settle rail in `docs/PRODUCTION.md`, and make `solvent doctor` / quickstart spell out `SOLVENT_NANO=sim` (rate in the `nano_rail` detail) (#83).
 - End-of-run CLI summary labels simulated balance and treasury growth more clearly (#111).
 
 ### Fixed
