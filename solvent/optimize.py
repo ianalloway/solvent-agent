@@ -22,6 +22,7 @@ import json
 from typing import Any
 
 from .guardrails import SpendPolicy, load_spend_policy
+from .money import dollars_to_cents
 from .pricing import PricingPolicy
 from .simulate import simulate
 from .treasury import fmt
@@ -176,7 +177,7 @@ def _parse_list(raw: str, *, cents: bool) -> tuple:
         if not chunk:
             continue
         number = float(chunk)
-        values.append(int(round(number * 100)) if cents else number)
+        values.append(dollars_to_cents(number) if cents else number)
     return tuple(values)
 
 
@@ -221,7 +222,7 @@ def main() -> None:
     kwargs = dict(
         trials=max(args.trials, 1),
         jobs=max(args.jobs, 1),
-        capital_cents=int(round(args.capital * 100)),
+        capital_cents=dollars_to_cents(args.capital),
         seed=args.seed,
         cost_multiplier=max(args.cost_multiplier, 0.0),
         cost_spread=max(args.cost_spread, 0.0),

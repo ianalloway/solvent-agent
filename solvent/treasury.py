@@ -358,6 +358,9 @@ class Treasury:
 
     # ---- writes ------------------------------------------------------
     def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
+        amount = int(amount_cents)
+        if amount <= 0:
+            raise ValueError(f"amount_cents must be positive, got {amount_cents!r}")
         with self.lock():
             # Thin alias: payment_ref is the generic earn/spend proof; keep
             # stripe_ref populated for older readers when only one is supplied.
@@ -367,7 +370,7 @@ class Treasury:
                 kw["stripe_ref"] = payment_ref
             elif stripe_ref and not payment_ref:
                 kw["payment_ref"] = stripe_ref
-            entry = LedgerEntry(kind=kind, amount_cents=int(amount_cents), memo=memo, **kw)
+            entry = LedgerEntry(kind=kind, amount_cents=amount, memo=memo, **kw)
             with self._conn() as conn, conn:
                 conn.execute(
                     """

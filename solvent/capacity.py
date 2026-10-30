@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .guardrails import Guardrails, SpendPolicy, load_spend_policy
+from .money import dollars_to_cents
 from .pricing import estimate_cost
 from .treasury import REFUND_VENDOR, Treasury, fmt
 
@@ -277,7 +278,7 @@ def main() -> None:
     policy = load_spend_policy()
 
     if args.cost_per_job is not None:
-        override = max(int(round(args.cost_per_job * 100)), 1)
+        override = max(dollars_to_cents(args.cost_per_job), 1)
         costs = unit_costs(treasury)
         scale = override / max(costs["cost_per_job_cents"], 1)
         costs = {

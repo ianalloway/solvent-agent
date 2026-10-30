@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .guardrails import Guardrails, SpendPolicy, load_spend_policy
+from .money import dollars_to_cents
 from .pricing import PricingPolicy, quote
 from .treasury import REFUND_VENDOR, LedgerEntry, fmt
 
@@ -378,13 +379,13 @@ def main() -> None:
     if args.margin_floor is not None:
         pricing.margin_floor_pct = args.margin_floor
     if args.min_price is not None:
-        pricing.min_price_cents = int(round(args.min_price * 100))
+        pricing.min_price_cents = dollars_to_cents(args.min_price)
     pricing.cost_calibration = max(args.calibration, 0.0)
 
     data = simulate(
         trials=max(args.trials, 1),
         jobs=max(args.jobs, 1),
-        capital_cents=int(round(args.capital * 100)),
+        capital_cents=dollars_to_cents(args.capital),
         seed=args.seed,
         pricing=pricing,
         cost_spread=max(args.cost_spread, 0.0),

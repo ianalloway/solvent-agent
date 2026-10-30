@@ -15,6 +15,7 @@ import sys
 from dataclasses import asdict
 from typing import Any
 
+from .money import dollars_to_cents
 from .pricing import PricingPolicy, Quote, quote
 from .products import UnknownProduct, by_slug, get_product
 from .treasury import fmt
@@ -124,7 +125,7 @@ def main() -> None:
         fields = product.as_job_fields()
         # An explicit --budget still wins: that is the customer haggling.
         budget_cents = (
-            int(round(args.budget * 100)) if args.budget is not None else fields["budget_cents"]
+            dollars_to_cents(args.budget) if args.budget is not None else fields["budget_cents"]
         )
         tokens = fields["est_tokens"]
         market_calls = fields["market_data_calls"]
@@ -133,7 +134,7 @@ def main() -> None:
         print("Pass --budget, or --product to price a catalogue product.", file=sys.stderr)
         sys.exit(2)
     else:
-        budget_cents = int(round(args.budget * 100))
+        budget_cents = dollars_to_cents(args.budget)
         tokens, market_calls, search_calls = args.tokens, args.market_calls, args.search_calls
 
     if budget_cents <= 0:
