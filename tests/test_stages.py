@@ -107,3 +107,101 @@ def test_validation_rejects_job_ids_unsafe_for_html_or_paths(tmp_path):
         assert job is None
         assert err == "missing or invalid job ID"
     assert t.list_jobs() == []
+
+
+class TestAdvanceJobTerminalStatuses(unittest.TestCase):
+    def test_expired_job_is_not_resurrected(self):
+        """Checkout sweep marks jobs expired; advance_job must not reopen them."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "t.db"
+            agent = Solvent(seed_cents=10_000, fresh=True)
+            agent.t.path = db
+            agent.t.lock_path = db.with_suffix(".lock")
+            agent.t._init_db()
+            agent.t.upsert_job(
+                "J-exp",
+                "expired",
+                topic="gone",
+                budget_cents=4900,
+                job_payload_json={
+                    "id": "J-exp",
+                    "topic": "gone",
+                    "budget_cents": 4900,
+                    "est_tokens": 1000,
+                    "market_data_calls": 0,
+                    "web_search_calls": 1,
+                },
+                quote_json='{"price_cents": 4900, "est_cost_cents": 100, "margin_cents": 4800, '
+                '"margin_pct": 98.0, "accept": true, "reason": "accepted", '
+                '"cost_breakdown": {}, "counter_offer": null}',
+                error_reason="checkout expired",
+            )
+            event = agent._runner.advance_job("J-exp")
+            self.assertEqual(event.get("status"), "expired")
+            self.assertEqual(agent.t.get_job("J-exp")["status"], "expired")
+
+
+class TestFulfillmentRefundRails(unittest.TestCase):
+    def test_nano_payment_ref_still_marks_job_failed_on_fulfill_error(self):
+        """A Nano block hash must not crash refund handling and leave revenue booked."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "t.db"
+            agent = Solvent(seed_cents=50_000, fresh=True)
+            agent.t.path = db
+            agent.t.lock_path = db.with_suffix(".lock")
+            agent.t._init_db()
+
+            job = {
+                "id": "J-nano-fail",
+                "topic": "Nano refund path",
+                "budget_cents": 5000,
+                "customer_email": "a@x.example",
+                "est_tokens": 1000,
+                "market_data_calls": 0,
+                "web_search_calls": 1,
+            }
+            from solvent.pricing import Quote
+
+            q = Quote(
+                price_cents=5000,
+                est_cost_cents=100,
+                margin_cents=4900,
+                margin_pct=98.0,
+                accept=True,
+                reason="accepted",
+                cost_breakdown={},
+            )
+            paid = {
+                "paid": True,
+                "stripe_ref": "B" * 64,
+                "payment_ref": "B" * 64,
+                "checkout_session_id": "nano_inv_1",
+                "amount_cents": 5000,
+                "rail": "nano",
+            }
+            agent.t.earn(
+                5000,
+                "Payment for J-nano-fail",
+                job_id="J-nano-fail",
+                stripe_ref="B" * 64,
+                payment_ref="B" * 64,
+            )
+            agent.t.upsert_job("J-nano-fail", "paid_pending_fulfill", **{
+                k: job[k] for k in ("topic", "budget_cents", "customer_email", "est_tokens",
+                                     "market_data_calls", "web_search_calls")
+            })
+
+            with mock.patch("solvent.service.fulfill", side_effect=RuntimeError("fulfill boom")):
+                with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False):
+                    event = agent._runner._stage_fulfill_and_book(job, q, paid)
+
+            self.assertEqual(event.get("status"), "failed")
+            row = agent.t.get_job("J-nano-fail")
+            self.assertEqual(row["status"], "failed")
+            refunds = [
+                e for e in agent.t.entries
+                if e.kind == "expense" and e.job_id == "J-nano-fail"
+            ]
+            self.assertTrue(refunds, "ledger refund must still be booked for Nano")
+            self.assertTrue(any(e.stripe_ref.startswith("ref_ledger_") for e in refunds))
+

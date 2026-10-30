@@ -294,7 +294,7 @@ class Treasury:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             f = open(self.lock_path, "w")
             try:
-                _filelock.acquire(f)
+                _filelock.acquire(f, timeout=60.0)
                 self._thread_local.lock_file = f
                 self._thread_local.lock_count = 1
                 yield

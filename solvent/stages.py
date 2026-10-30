@@ -256,7 +256,9 @@ class StageRunner:
                 "web_search_calls": row.get("web_search_calls"),
             }
         status = row.get("status", "")
-        if status in ("completed", "failed"):
+        # `expired` is terminal: the checkout sweep closed the unpaid link.
+        # Falling through to run_job() would resurrect the job as awaiting_payment.
+        if status in ("completed", "failed", "expired"):
             return self._emit(
                 stage="booked",
                 job_id=job_id,
@@ -555,6 +557,19 @@ class StageRunner:
 
         payment_ref = payment.get("payment_ref") or payment.get("stripe_ref")
         with self.t.lock():
+            # Re-check under the lock: a concurrent webhook/worker may have
+            # booked this payment between the fast-path check above and here.
+            if self.t.job_has_revenue(job_id):
+                for e in self.t.entries:
+                    if e.job_id == job_id and e.kind == "revenue":
+                        return {
+                            "paid": True,
+                            "rail": rail,
+                            "stripe_ref": e.stripe_ref,
+                            "payment_ref": e.payment_ref or e.stripe_ref,
+                            "checkout_session_id": e.stripe_session_id or session_id,
+                            "amount_cents": e.amount_cents,
+                        }
             self.t.earn(
                 payment["amount_cents"],
                 f"Payment for {job_id}",
@@ -755,17 +770,39 @@ class StageRunner:
             refund_key = f"refund:{job_id}:{payment_intent_id}"
             refund_stage = self.t.get_stage(refund_key)
             if payment_intent_id and not (refund_stage and refund_stage["status"] == "completed"):
-                refund = self.stripe.refund_payment(payment_intent_id, paid_amount, job_id=job_id)
-                self.t.spend(
-                    amount_cents=paid_amount,
-                    memo=f"Refund for job {job_id} due to block/failure: {reason}",
-                    job_id=job_id,
-                    vendor=REFUND_VENDOR,
-                    stripe_ref=refund["id"],
-                )
-                self.t.complete_stage(job_id, "refund", refund_key, {"refund_id": refund["id"]})
+                try:
+                    # Nano (and other non-Stripe) payment refs are not PaymentIntents.
+                    # Calling Stripe.refund with a block hash raises in live mode and
+                    # would abort failure handling before the job is marked failed.
+                    if str(payment_intent_id).startswith("pi_"):
+                        refund = self.stripe.refund_payment(
+                            payment_intent_id, paid_amount, job_id=job_id
+                        )
+                        refund_id = refund["id"]
+                    else:
+                        refund_id = "ref_ledger_" + str(payment_intent_id)[:24]
+                    self.t.spend(
+                        amount_cents=paid_amount,
+                        memo=f"Refund for job {job_id} due to block/failure: {reason}",
+                        job_id=job_id,
+                        vendor=REFUND_VENDOR,
+                        stripe_ref=refund_id,
+                    )
+                    self.t.complete_stage(
+                        job_id, "refund", refund_key, {"refund_id": refund_id}
+                    )
+                    self._emit(
+                        stage="refunded", job_id=job_id, amount=paid_amount, reason=reason
+                    )
+                except Exception as refund_err:
+                    reason = f"{reason}; refund failed: {refund_err}"
+                    self._emit(
+                        stage="refund_failed",
+                        job_id=job_id,
+                        amount=paid_amount,
+                        reason=str(refund_err),
+                    )
             self.t.upsert_metrics(job_id, refunded=1)
-            self._emit(stage="refunded", job_id=job_id, amount=paid_amount, reason=reason)
             self.t.upsert_job(job_id, "failed", error_reason=reason, current_stage="failed")
             pnl = self.t.job_pnl_cents(job_id)
             booked_event = self._emit(

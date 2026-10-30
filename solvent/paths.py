@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 _PKG_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _PKG_DIR.parent
@@ -43,7 +43,10 @@ def _normalise_home(value: str) -> Path:
         match = _MSYS_HOME.match(value)
         if match:
             drive, rest = match.groups()
-            return Path(f"{drive.upper()}:/{rest}")
+            # PureWindowsPath is instantiable on any host, so this branch is
+            # unit-testable on Linux. Convert via str so callers still get a
+            # concrete Path for mkdir/resolve.
+            return Path(str(PureWindowsPath(f"{drive.upper()}:/{rest}")))
     return Path(value)
 
 

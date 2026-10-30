@@ -47,12 +47,30 @@ class TestPaths(unittest.TestCase):
 
     def test_solvent_home_msys_drive_prefix(self):
         """SOLVENT_HOME=/c/Users/... must translate on Windows like $HOME does."""
+        from pathlib import PureWindowsPath
+
         with mock.patch.object(paths.os, "name", "nt"):
             normalised = paths._normalise_home("/c/Users/demo/.solvent-home")
-            self.assertEqual(normalised, Path("C:/Users/demo/.solvent-home"))
+            # Compare as PureWindowsPath so the assertion is host-flavour-agnostic
+            # (Path("C:/...") would try to build a WindowsPath on Linux and raise).
+            self.assertEqual(
+                PureWindowsPath(str(normalised)),
+                PureWindowsPath("C:/Users/demo/.solvent-home"),
+            )
         with mock.patch.object(paths.os, "name", "posix"):
             normalised = paths._normalise_home("/c/Users/demo/.solvent-home")
             self.assertEqual(normalised, Path("/c/Users/demo/.solvent-home"))
+
+    def test_solvent_home_override_goes_through_normalise_home(self):
+        """base_dir must not bypass _normalise_home for SOLVENT_HOME."""
+        with tempfile.TemporaryDirectory() as d:
+            with (
+                mock.patch.dict(os.environ, {"SOLVENT_HOME": d}),
+                mock.patch.object(paths, "_normalise_home", wraps=paths._normalise_home) as norm,
+            ):
+                paths.base_dir()
+                norm.assert_called()
+                self.assertEqual(norm.call_args.args[0], d)
 
 
 class TestTreasuryHonorsHome(unittest.TestCase):

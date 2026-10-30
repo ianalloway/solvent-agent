@@ -41,6 +41,8 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
     report = {
         "ledger_revenue_count": len(ledger_refs),
         "unmatched_stripe": [],
+        # Ledger-only mode lists every booked ref so operators can see the
+        # full revenue surface without a Stripe round-trip.
         "unmatched_ledger": sorted(ledger_refs),
         "duplicates": duplicates,
         # Duplicates are detectable from the ledger alone, so they count as
@@ -57,6 +59,18 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
 
     stripe_sdk.api_key = key
     since = int((datetime.now(timezone.utc) - timedelta(days=since_days)).timestamp())
+    # Stripe only returns PaymentIntents in the lookback window. Comparing that
+    # set to *all-time* ledger refs (including Nano block hashes stored in
+    # stripe_ref) produced permanent false drift. Scope the ledger side to the
+    # same window and to Stripe-shaped PaymentIntent ids (pi_...).
+    window_pi_refs = {
+        e.stripe_ref
+        for e in treasury.entries
+        if e.kind == "revenue"
+        and e.stripe_ref
+        and str(e.stripe_ref).startswith("pi_")
+        and e.ts >= since
+    }
     stripe_pis: set[str] = set()
     try:
         for pi in stripe_sdk.PaymentIntent.list(
@@ -71,8 +85,8 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
         report["mode"] = "ledger_only"
         return report
 
-    unmatched_stripe = stripe_pis - ledger_refs
-    unmatched_ledger = ledger_refs - stripe_pis
+    unmatched_stripe = stripe_pis - window_pi_refs
+    unmatched_ledger = window_pi_refs - stripe_pis
     report["unmatched_stripe"] = sorted(unmatched_stripe)
     report["unmatched_ledger"] = sorted(unmatched_ledger)
     report["drift"] = bool(unmatched_stripe or unmatched_ledger or duplicates)
