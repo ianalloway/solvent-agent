@@ -188,6 +188,50 @@ class TestRetryPostPaymentFailed(unittest.TestCase):
             self.assertEqual(result.get("stage"), "booked")
 
 
+class TestRetryRefundedJobRaises(unittest.TestCase):
+    """A refunded payment must not unlock free re-fulfillment on retry."""
+
+    def test_refunded_post_payment_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = _make_runner(tmp)
+            job = _sample_job("J-refunded")
+            from dataclasses import asdict
+
+            from solvent.pricing import quote as _quote
+            from solvent.treasury import REFUND_VENDOR
+
+            q = _quote(job, runner.pricing)
+            runner.t.upsert_job(
+                "J-refunded",
+                "failed",
+                topic=job["topic"],
+                budget_cents=job["budget_cents"],
+                customer_email=job["customer_email"],
+                error_reason="fulfillment failed; refunded",
+                quote_json=json.dumps(asdict(q)),
+                job_payload_json=job,
+            )
+            runner.t.earn(
+                q.price_cents,
+                "Prior payment",
+                job_id="J-refunded",
+                stripe_ref="pi_refunded",
+            )
+            runner.t.spend(
+                q.price_cents,
+                "Refund",
+                job_id="J-refunded",
+                vendor=REFUND_VENDOR,
+                stripe_ref="re_test",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                runner.retry_job("J-refunded")
+            self.assertIn("refunded", str(ctx.exception).lower())
+            # Must not burn a retry slot on a hard refuse.
+            self.assertEqual(runner.t.get_job("J-refunded")["retry_count"] or 0, 0)
+
+
 class TestRetryCompletedJobRaises(unittest.TestCase):
     """Retry of a completed job must raise ValueError."""
 

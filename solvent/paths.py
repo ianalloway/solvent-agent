@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 _PKG_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _PKG_DIR.parent
@@ -32,6 +32,20 @@ def _is_source_checkout() -> bool:
     return (_REPO_ROOT / "pyproject.toml").is_file() or (_REPO_ROOT / ".git").exists()
 
 
+def _msys_to_windows(value: str) -> str | None:
+    """Translate an MSYS/Git-Bash drive path to Windows form, or ``None``.
+
+    Pure string transform — no ``Path`` construction — so the conversion is
+    unit-testable on Linux without patching ``os.name`` (which would make
+    ``Path(...)`` try to instantiate ``WindowsPath`` and raise).
+    """
+    match = _MSYS_HOME.match(value)
+    if not match:
+        return None
+    drive, rest = match.groups()
+    return f"{drive.upper()}:/{rest}"
+
+
 def _normalise_home(value: str) -> Path:
     """Turn a home path from the environment into a usable ``Path``.
 
@@ -40,13 +54,9 @@ def _normalise_home(value: str) -> Path:
     ``C:\\c\\Users\\name``, so translate the drive prefix first.
     """
     if os.name == "nt":
-        match = _MSYS_HOME.match(value)
-        if match:
-            drive, rest = match.groups()
-            # PureWindowsPath is instantiable on any host, so this branch is
-            # unit-testable on Linux. Convert via str so callers still get a
-            # concrete Path for mkdir/resolve.
-            return Path(str(PureWindowsPath(f"{drive.upper()}:/{rest}")))
+        win = _msys_to_windows(value)
+        if win is not None:
+            return Path(win)
     return Path(value)
 
 

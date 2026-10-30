@@ -196,6 +196,51 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertFalse(payment["paid"])
         self.assertEqual(payment["reason"], "payment link mismatch")
 
+    def test_confirm_payment_accepts_checkout_session_id_match(self):
+        """Primary earn path uses Checkout Sessions (cs_…), not Payment Links."""
+        cached = {
+            "paid": True,
+            "stripe_ref": "pi_cs_ok",
+            "checkout_session_id": "cs_primary",
+            "payment_link_id": None,
+            "amount_cents": 4900,
+            "currency": "usd",
+        }
+
+        with mock.patch.dict(os.environ, {"STRIPE_WEBHOOK_SECRET": "whsec_test"}, clear=False):
+            client = StripeClient()
+            client._webhook_payments["cs_primary"] = cached
+            client._webhook_payments["job:J-cs"] = cached
+            link = {"id": "cs_primary", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link, job_id="J-cs")
+
+        self.assertTrue(payment["paid"])
+        self.assertEqual(payment["stripe_ref"], "pi_cs_ok")
+        self.assertEqual(payment["checkout_session_id"], "cs_primary")
+
+    def test_confirm_payment_polls_checkout_session_by_id(self):
+        paid = mock.Mock(
+            payment_status="paid",
+            payment_intent="pi_sess",
+            id="cs_sess",
+            payment_link=None,
+            amount_total=4900,
+            currency="usd",
+            metadata={"job_id": "J-sess"},
+            client_reference_id="J-sess",
+        )
+        self._mock_stripe.checkout.Session.retrieve.return_value = paid
+
+        with mock.patch.dict(os.environ, {"SOLVENT_ALLOW_POLL": "1"}, clear=False):
+            client = StripeClient()
+            link = {"id": "cs_sess", "amount_cents": 4900, "simulated": False}
+            payment = client.confirm_payment(link)
+
+        self.assertTrue(payment["paid"])
+        self.assertEqual(payment["checkout_session_id"], "cs_sess")
+        self._mock_stripe.checkout.Session.retrieve.assert_called()
+        self._mock_stripe.checkout.Session.list.assert_not_called()
+
     def test_confirm_payment_timeout(self):
         unpaid = mock.Mock(payment_status="unpaid")
         self._mock_stripe.checkout.Session.list.return_value = mock.Mock(data=[unpaid])

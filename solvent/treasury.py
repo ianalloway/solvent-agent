@@ -887,6 +887,53 @@ class Treasury:
                 ).fetchone()
                 return (row["c"] or 0) > 0
 
+    def job_refund_cents(self, job_id: str) -> int:
+        """Customer-refund expense total for a job (0 if none)."""
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT SUM(amount_cents) as s FROM ledger "
+                    "WHERE job_id = ? AND kind = 'expense' AND vendor = ?",
+                    (job_id, REFUND_VENDOR),
+                ).fetchone()
+                return row["s"] or 0
+
+    def job_net_paid_cents(self, job_id: str) -> int:
+        """Revenue still held for the job after customer refunds.
+
+        Used by retry: a refunded payment must not be treated as still paid.
+        """
+        with self.lock():
+            with self._conn() as conn:
+                rev = (
+                    conn.execute(
+                        "SELECT SUM(amount_cents) as s FROM ledger "
+                        "WHERE job_id = ? AND kind = 'revenue'",
+                        (job_id,),
+                    ).fetchone()["s"]
+                    or 0
+                )
+                refunded = (
+                    conn.execute(
+                        "SELECT SUM(amount_cents) as s FROM ledger "
+                        "WHERE job_id = ? AND kind = 'expense' AND vendor = ?",
+                        (job_id, REFUND_VENDOR),
+                    ).fetchone()["s"]
+                    or 0
+                )
+                return rev - refunded
+
+    def job_has_vendor_spend(self, job_id: str, vendor: str) -> bool:
+        """True when an operating (non-refund) expense already exists for vendor."""
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) as c FROM ledger WHERE job_id = ? AND kind = 'expense' "
+                    "AND vendor = ?",
+                    (job_id, vendor),
+                ).fetchone()
+                return (row["c"] or 0) > 0
+
     def stage_completed(self, job_id: str, stage: str) -> bool:
         with self.lock():
             with self._conn() as conn:
