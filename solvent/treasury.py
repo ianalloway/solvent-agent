@@ -294,7 +294,7 @@ class Treasury:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             f = open(self.lock_path, "w")
             try:
-                _filelock.acquire(f)
+                _filelock.acquire(f, timeout=60.0)
                 self._thread_local.lock_file = f
                 self._thread_local.lock_count = 1
                 yield
@@ -358,6 +358,9 @@ class Treasury:
 
     # ---- writes ------------------------------------------------------
     def record(self, kind: EntryKind, amount_cents: int, memo: str, **kw) -> LedgerEntry:
+        amount = int(amount_cents)
+        if amount <= 0:
+            raise ValueError(f"amount_cents must be positive, got {amount_cents!r}")
         with self.lock():
             # Thin alias: payment_ref is the generic earn/spend proof; keep
             # stripe_ref populated for older readers when only one is supplied.
@@ -367,7 +370,7 @@ class Treasury:
                 kw["stripe_ref"] = payment_ref
             elif stripe_ref and not payment_ref:
                 kw["payment_ref"] = stripe_ref
-            entry = LedgerEntry(kind=kind, amount_cents=int(amount_cents), memo=memo, **kw)
+            entry = LedgerEntry(kind=kind, amount_cents=amount, memo=memo, **kw)
             with self._conn() as conn, conn:
                 conn.execute(
                     """
@@ -881,6 +884,53 @@ class Treasury:
                 row = conn.execute(
                     "SELECT COUNT(*) as c FROM ledger WHERE job_id = ? AND kind = 'revenue'",
                     (job_id,),
+                ).fetchone()
+                return (row["c"] or 0) > 0
+
+    def job_refund_cents(self, job_id: str) -> int:
+        """Customer-refund expense total for a job (0 if none)."""
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT SUM(amount_cents) as s FROM ledger "
+                    "WHERE job_id = ? AND kind = 'expense' AND vendor = ?",
+                    (job_id, REFUND_VENDOR),
+                ).fetchone()
+                return row["s"] or 0
+
+    def job_net_paid_cents(self, job_id: str) -> int:
+        """Revenue still held for the job after customer refunds.
+
+        Used by retry: a refunded payment must not be treated as still paid.
+        """
+        with self.lock():
+            with self._conn() as conn:
+                rev = (
+                    conn.execute(
+                        "SELECT SUM(amount_cents) as s FROM ledger "
+                        "WHERE job_id = ? AND kind = 'revenue'",
+                        (job_id,),
+                    ).fetchone()["s"]
+                    or 0
+                )
+                refunded = (
+                    conn.execute(
+                        "SELECT SUM(amount_cents) as s FROM ledger "
+                        "WHERE job_id = ? AND kind = 'expense' AND vendor = ?",
+                        (job_id, REFUND_VENDOR),
+                    ).fetchone()["s"]
+                    or 0
+                )
+                return rev - refunded
+
+    def job_has_vendor_spend(self, job_id: str, vendor: str) -> bool:
+        """True when an operating (non-refund) expense already exists for vendor."""
+        with self.lock():
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) as c FROM ledger WHERE job_id = ? AND kind = 'expense' "
+                    "AND vendor = ?",
+                    (job_id, vendor),
                 ).fetchone()
                 return (row["c"] or 0) > 0
 

@@ -82,6 +82,15 @@ def test_ledger_rows_carry_every_column(treasury):
     assert row["iso_time"]
 
 
+
+def test_ledger_rows_include_running_balance(treasury):
+    rows = ledger_rows(treasury.entries)
+    running = 0
+    for row in rows:
+        running += row["signed_cents"]
+        assert row["balance_after_cents"] == running
+    assert rows[-1]["balance_after_cents"] == treasury.balance_cents()
+
 def test_signed_cents_carries_direction(treasury):
     rows = {r["kind"]: r for r in ledger_rows(treasury.entries)}
     assert rows["revenue"]["signed_cents"] > 0

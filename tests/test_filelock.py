@@ -60,6 +60,15 @@ class TestFileLock(unittest.TestCase):
             _filelock.acquire(handle, blocking=False)
             _filelock.release(handle)
 
+    def test_timeout_raises_when_lock_held(self) -> None:
+        with open(self.lock_path, "w") as first:
+            _filelock.acquire(first)
+            with open(self.lock_path, "w") as second:
+                with self.assertRaises(BlockingIOError):
+                    _filelock.acquire(second, timeout=0.1)
+            _filelock.release(first)
+
+
 
 if __name__ == "__main__":
     unittest.main()

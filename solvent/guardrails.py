@@ -7,6 +7,7 @@ dangerous unless its spending is bounded. These guardrails are deterministic,
 auditable, and run BEFORE any Stripe call.
 
 Rules enforced:
+  0. Positive amount         — never book a zero or negative spend (kind carries the sign).
   1. Vendor allowlist        — money can only go to pre-approved vendors.
   2. Per-transaction cap      — no single spend over a ceiling.
   3. Daily spend budget       — total spend in a rolling 24h window is bounded.
@@ -206,7 +207,9 @@ def _apply_policy_file(policy: SpendPolicy, override_path: Path) -> SpendPolicy:
     overrides = data.get("vendor_daily_overrides")
     if isinstance(overrides, dict):
         policy.vendor_daily_overrides = {
-            k: int(v) for k, v in overrides.items() if isinstance(k, str) and _is_finite_number(v)
+            k: int(v)
+            for k, v in overrides.items()
+            if isinstance(k, str) and _is_finite_number(v) and v >= 0
         }
 
     threshold = data.get("approval_threshold_cents")
@@ -399,6 +402,17 @@ class Guardrails:
             "vendor_spent_24h_cents": vendor_spent_24h,
             "txns_last_hour": txns_last_hour,
         }
+
+        # Amount is always positive; kind carries the sign on the ledger. A
+        # zero/negative "spend" would silently *credit* the treasury if booked,
+        # so reject it before any other rule can approve it.
+        if amount_cents <= 0:
+            return Decision(
+                False,
+                "positive_amount",
+                f"amount must be positive, got {amount_cents}c",
+                **ctx,
+            )
 
         if vendor not in self.policy.vendor_allowlist:
             return Decision(False, "vendor_allowlist", f"vendor '{vendor}' not on allowlist", **ctx)

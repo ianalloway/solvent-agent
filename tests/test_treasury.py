@@ -94,3 +94,18 @@ def test_insert_job_never_overwrites_an_existing_row(treasury):
     row = treasury.get_job("J-new")
     assert row["status"] == "in_progress"
     assert row["topic"] == "first"
+
+
+def test_record_rejects_non_positive_amounts(treasury):
+    """Ledger amounts are always positive; kind carries the sign."""
+    import pytest
+
+    with pytest.raises(ValueError, match="positive"):
+        treasury.seed(0)
+    with pytest.raises(ValueError, match="positive"):
+        treasury.earn(-100, "bogus credit")
+    with pytest.raises(ValueError, match="positive"):
+        treasury.spend(-50, "bogus debit")
+    assert treasury.balance_cents() == 0
+    assert treasury.entries == []
+

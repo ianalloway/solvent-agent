@@ -236,5 +236,42 @@ class TestReconcileStripeIntegration(unittest.TestCase):
         self.assertTrue(report["drift"])
 
 
+
+    def test_old_ledger_pi_outside_window_is_not_unmatched(self):
+        """Revenue older than --since must not count as unmatched_ledger vs Stripe."""
+        import time
+
+        t = self._fresh()
+        t.earn(5000, "old job", job_id="J-old", stripe_ref="pi_old")
+        # Backdate the entry so it falls outside a 7-day window.
+        with t.lock(), t._conn() as conn, conn:
+            conn.execute(
+                "UPDATE ledger SET ts = ? WHERE stripe_ref = ?",
+                (time.time() - 30 * 86400, "pi_old"),
+            )
+        t.earn(5000, "recent", job_id="J-new", stripe_ref="pi_new")
+        report = self._report(t, pi_list=[self._pi("pi_new")], since_days=7)
+        self.assertEqual(report["mode"], "full")
+        self.assertNotIn("pi_old", report["unmatched_ledger"])
+        self.assertEqual(report["unmatched_ledger"], [])
+        self.assertEqual(report["unmatched_stripe"], [])
+        self.assertFalse(report["drift"])
+
+    def test_nano_block_hash_refs_are_not_compared_to_stripe_pis(self):
+        """Nano block hashes stored in stripe_ref must not create false Stripe drift."""
+        t = self._fresh()
+        t.earn(
+            5000,
+            "nano paid",
+            job_id="JN",
+            stripe_ref="A" * 64,  # block hash, not pi_...
+            payment_ref="A" * 64,
+        )
+        report = self._report(t, pi_list=[])
+        self.assertEqual(report["mode"], "full")
+        self.assertEqual(report["unmatched_ledger"], [])
+        self.assertFalse(report["drift"])
+
+
 if __name__ == "__main__":
     unittest.main()

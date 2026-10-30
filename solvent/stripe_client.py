@@ -232,6 +232,11 @@ class StripeClient:
         plink_id = session.get("payment_link")
         if plink_id:
             self._cache_webhook_payment(plink_id, payment)
+        session_id = payment.get("checkout_session_id")
+        if session_id:
+            # Checkout Sessions are the primary earn path; cache by cs_ id so
+            # confirm_payment(link={"id": session_id}) hits without a job key.
+            self._cache_webhook_payment(session_id, payment)
         if job_id:
             self._cache_webhook_payment(f"job:{job_id}", payment)
             if treasury is not None:
@@ -384,7 +389,18 @@ class StripeClient:
         }
 
     def _validate_confirmed_payment(self, payment: dict, link: dict) -> str | None:
-        if payment.get("payment_link_id") != link["id"]:
+        # Primary earn path creates Checkout Sessions (``cs_…``); Payment Links
+        # (``plink_…``) remain supported. Match the link id against either field.
+        link_id = str(link.get("id") or "")
+        session_id = payment.get("checkout_session_id")
+        plink_id = payment.get("payment_link_id")
+        if link_id.startswith("cs_"):
+            if session_id != link_id:
+                return "checkout session mismatch"
+        elif link_id.startswith("plink_"):
+            if plink_id != link_id:
+                return "payment link mismatch"
+        elif plink_id != link_id and session_id != link_id:
             return "payment link mismatch"
         if payment.get("currency", "usd") != "usd":
             return "payment currency mismatch"
@@ -394,7 +410,6 @@ class StripeClient:
         stripe_ref = payment.get("stripe_ref")
         if not isinstance(stripe_ref, str) or not stripe_ref.startswith("pi_"):
             return "invalid payment intent identifier"
-        session_id = payment.get("checkout_session_id")
         if not isinstance(session_id, str) or not session_id.startswith("cs_"):
             return "invalid checkout session identifier"
         return None
@@ -412,13 +427,22 @@ class StripeClient:
                 cached = self._webhook_payments[plink_id]
                 if cached.get("paid"):
                     return self._accept_payment(cached, link)
-            sessions = stripe.checkout.Session.list(payment_link=plink_id, limit=5)
-            for session in sessions.data:
-                if session.payment_status == "paid":
+            if str(plink_id).startswith("cs_"):
+                # Session-only checkouts: retrieve the session directly.
+                session = stripe.checkout.Session.retrieve(plink_id)
+                if getattr(session, "payment_status", None) == "paid":
                     payment = self._session_to_payment(session)
                     if not payment.get("amount_cents"):
                         payment["amount_cents"] = link["amount_cents"]
                     return self._accept_payment(payment, link)
+            else:
+                sessions = stripe.checkout.Session.list(payment_link=plink_id, limit=5)
+                for session in sessions.data:
+                    if session.payment_status == "paid":
+                        payment = self._session_to_payment(session)
+                        if not payment.get("amount_cents"):
+                            payment["amount_cents"] = link["amount_cents"]
+                        return self._accept_payment(payment, link)
             time.sleep(self.poll_interval)
         return {
             "paid": False,

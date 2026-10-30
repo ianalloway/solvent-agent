@@ -256,7 +256,9 @@ class StageRunner:
                 "web_search_calls": row.get("web_search_calls"),
             }
         status = row.get("status", "")
-        if status in ("completed", "failed"):
+        # `expired` is terminal: the checkout sweep closed the unpaid link.
+        # Falling through to run_job() would resurrect the job as awaiting_payment.
+        if status in ("completed", "failed", "expired"):
             return self._emit(
                 stage="booked",
                 job_id=job_id,
@@ -555,6 +557,19 @@ class StageRunner:
 
         payment_ref = payment.get("payment_ref") or payment.get("stripe_ref")
         with self.t.lock():
+            # Re-check under the lock: a concurrent webhook/worker may have
+            # booked this payment between the fast-path check above and here.
+            if self.t.job_has_revenue(job_id):
+                for e in self.t.entries:
+                    if e.job_id == job_id and e.kind == "revenue":
+                        return {
+                            "paid": True,
+                            "rail": rail,
+                            "stripe_ref": e.stripe_ref,
+                            "payment_ref": e.payment_ref or e.stripe_ref,
+                            "checkout_session_id": e.stripe_session_id or session_id,
+                            "amount_cents": e.amount_cents,
+                        }
             self.t.earn(
                 payment["amount_cents"],
                 f"Payment for {job_id}",
@@ -690,11 +705,23 @@ class StageRunner:
                 existing = self.t.get_stage(spend_key)
                 if existing and existing["status"] == "completed":
                     continue
+                # Crash recovery: spend may have landed in the ledger before
+                # complete_stage; treat an existing vendor expense as done.
+                if self.t.job_has_vendor_spend(job_id, vendor):
+                    self.t.complete_stage(
+                        job_id, "spend", spend_key, {"vendor": vendor, "amount": amount}
+                    )
+                    continue
                 with self.t.lock():
                     # Re-check under the lock: a concurrent advancer may have paid
                     # this vendor between the fast-path check above and here.
                     locked = self.t.get_stage(spend_key)
                     if locked and locked["status"] == "completed":
+                        continue
+                    if self.t.job_has_vendor_spend(job_id, vendor):
+                        self.t.complete_stage(
+                            job_id, "spend", spend_key, {"vendor": vendor, "amount": amount}
+                        )
                         continue
                     decision = self.guard.evaluate(
                         amount, vendor, projected_job_margin_cents=job_margin, job_id=job_id
@@ -753,19 +780,84 @@ class StageRunner:
         except Exception as e:
             reason = str(e)
             refund_key = f"refund:{job_id}:{payment_intent_id}"
-            refund_stage = self.t.get_stage(refund_key)
-            if payment_intent_id and not (refund_stage and refund_stage["status"] == "completed"):
-                refund = self.stripe.refund_payment(payment_intent_id, paid_amount, job_id=job_id)
-                self.t.spend(
-                    amount_cents=paid_amount,
-                    memo=f"Refund for job {job_id} due to block/failure: {reason}",
-                    job_id=job_id,
-                    vendor=REFUND_VENDOR,
-                    stripe_ref=refund["id"],
-                )
-                self.t.complete_stage(job_id, "refund", refund_key, {"refund_id": refund["id"]})
-            self.t.upsert_metrics(job_id, refunded=1)
-            self._emit(stage="refunded", job_id=job_id, amount=paid_amount, reason=reason)
+            refund_booked = False
+            if payment_intent_id:
+                try:
+                    # Fast path: already refunded (stage or ledger).
+                    with self.t.lock():
+                        refund_stage = self.t.get_stage(refund_key)
+                        already = bool(
+                            refund_stage and refund_stage["status"] == "completed"
+                        )
+                        if already or self.t.job_refund_cents(job_id) > 0:
+                            if not already:
+                                self.t.complete_stage(
+                                    job_id,
+                                    "refund",
+                                    refund_key,
+                                    {"refund_id": "existing"},
+                                )
+                            refund_booked = True
+
+                    if not refund_booked:
+                        # Stripe I/O outside the treasury lock; re-check before booking.
+                        # Nano (and other non-Stripe) refs are not PaymentIntents —
+                        # Stripe.refund with a block hash raises in live mode.
+                        if str(payment_intent_id).startswith("pi_"):
+                            refund = self.stripe.refund_payment(
+                                payment_intent_id, paid_amount, job_id=job_id
+                            )
+                            refund_id = refund["id"]
+                        else:
+                            refund_id = "ref_ledger_" + str(payment_intent_id)[:24]
+                        with self.t.lock():
+                            refund_stage = self.t.get_stage(refund_key)
+                            already = bool(
+                                refund_stage and refund_stage["status"] == "completed"
+                            )
+                            if already or self.t.job_refund_cents(job_id) > 0:
+                                if not already:
+                                    self.t.complete_stage(
+                                        job_id,
+                                        "refund",
+                                        refund_key,
+                                        {"refund_id": "existing"},
+                                    )
+                            else:
+                                self.t.spend(
+                                    amount_cents=paid_amount,
+                                    memo=(
+                                        f"Refund for job {job_id} due to "
+                                        f"block/failure: {reason}"
+                                    ),
+                                    job_id=job_id,
+                                    vendor=REFUND_VENDOR,
+                                    stripe_ref=refund_id,
+                                )
+                                self.t.complete_stage(
+                                    job_id,
+                                    "refund",
+                                    refund_key,
+                                    {"refund_id": refund_id},
+                                )
+                            refund_booked = True
+
+                    self._emit(
+                        stage="refunded",
+                        job_id=job_id,
+                        amount=paid_amount,
+                        reason=reason,
+                    )
+                except Exception as refund_err:
+                    reason = f"{reason}; refund failed: {refund_err}"
+                    self._emit(
+                        stage="refund_failed",
+                        job_id=job_id,
+                        amount=paid_amount,
+                        reason=str(refund_err),
+                    )
+            if refund_booked:
+                self.t.upsert_metrics(job_id, refunded=1)
             self.t.upsert_job(job_id, "failed", error_reason=reason, current_stage="failed")
             pnl = self.t.job_pnl_cents(job_id)
             booked_event = self._emit(
@@ -775,19 +867,20 @@ class StageRunner:
                 balance=self.t.balance_cents(),
                 status="failed",
             )
-            try:
-                from .receipt import build_refund_receipt
+            if refund_booked:
+                try:
+                    from .receipt import build_refund_receipt
 
-                _job_row = self.t.get_job(job_id) or {}
-                _full_job = {**_job_row, **job, "error_reason": reason}
-                refund_receipt_text = build_refund_receipt(_full_job, paid_amount)
-                self._emit(
-                    stage="refund_receipt_ready",
-                    job_id=job_id,
-                    receipt=refund_receipt_text,
-                )
-            except Exception:
-                pass
+                    _job_row = self.t.get_job(job_id) or {}
+                    _full_job = {**_job_row, **job, "error_reason": reason}
+                    refund_receipt_text = build_refund_receipt(_full_job, paid_amount)
+                    self._emit(
+                        stage="refund_receipt_ready",
+                        job_id=job_id,
+                        receipt=refund_receipt_text,
+                    )
+                except Exception:
+                    pass
             return booked_event
 
     def handle_webhook_payment(self, payment: dict) -> dict | None:
@@ -814,6 +907,7 @@ class StageRunner:
         - ``payment_pending`` jobs resume from ``_stage_checkout`` (reuses the existing link).
         - ``failed`` pre-payment jobs restart from the quote stage.
         - ``failed`` post-payment jobs re-run ``_stage_fulfill_and_book`` only (no re-charge).
+        - ``failed`` jobs whose payment was refunded refuse retry (no free re-fulfill).
         """
         MAX_RETRIES = 3
 
@@ -827,6 +921,16 @@ class StageRunner:
                 f"Job {job_id!r} cannot be retried: status is {status!r} "
                 "(only 'failed' or 'awaiting_payment'/'payment_pending' jobs are retryable)"
             )
+
+        # Refuse before burning a retry slot: refunded payments must not unlock
+        # free re-fulfillment (revenue row alone is not enough).
+        if status == "failed":
+            net_paid = self.t.job_net_paid_cents(job_id)
+            if self.t.job_has_revenue(job_id) and net_paid <= 0:
+                raise ValueError(
+                    f"Job {job_id!r} was refunded; collect a new payment "
+                    "(or open a new job) before retrying fulfillment"
+                )
 
         new_count = self.t.increment_retry_count(job_id)
         if new_count > MAX_RETRIES:
@@ -908,10 +1012,9 @@ class StageRunner:
             return self._stage_fulfill_and_book(job, quote_obj, paid)
 
         # --- failed job: determine which stage failed ---
-        paid_already = self.t.job_has_revenue(job_id)
-
-        if paid_already:
-            # Payment already collected — only re-run fulfillment (no re-charge)
+        # Net of customer refunds (refunded jobs are refused above).
+        if self.t.job_net_paid_cents(job_id) > 0:
+            # Payment still held — only re-run fulfillment (no re-charge)
             q_data = json.loads(row["quote_json"]) if row.get("quote_json") else {}
             from .pricing import Quote
 
@@ -931,6 +1034,6 @@ class StageRunner:
                     break
             # Clear previous failed stage records so fulfill runs fresh
             return self._stage_fulfill_and_book(job, quote_obj, paid)
-        else:
-            # Failed before payment — restart from quote
-            return self.run_job(job)
+
+        # Failed before payment — restart from quote
+        return self.run_job(job)

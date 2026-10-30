@@ -35,6 +35,7 @@ LEDGER_COLUMNS = (
     "kind",
     "amount_cents",
     "signed_cents",
+    "balance_after_cents",
     "memo",
     "job_id",
     "vendor",
@@ -129,11 +130,17 @@ def ledger_rows(
     since: float | None = None,
     until: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Ledger entries in the window, flattened for CSV."""
+    """Ledger entries in the window, flattened for CSV.
+
+    Rows are oldest-first and carry a running ``balance_after_cents`` so a
+    spreadsheet export ties out without recomputing the ledger.
+    """
     rows = []
-    for entry in entries:
+    running = 0
+    for entry in sorted(entries, key=lambda e: (e.ts, e.id)):
         if not _in_window(entry.ts, since, until):
             continue
+        running += entry.signed_cents()
         rows.append(
             {
                 "id": entry.id,
@@ -142,6 +149,7 @@ def ledger_rows(
                 "kind": entry.kind,
                 "amount_cents": entry.amount_cents,
                 "signed_cents": entry.signed_cents(),
+                "balance_after_cents": running,
                 "memo": entry.memo,
                 "job_id": entry.job_id or "",
                 "vendor": entry.vendor or "",

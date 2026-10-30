@@ -32,6 +32,20 @@ def _is_source_checkout() -> bool:
     return (_REPO_ROOT / "pyproject.toml").is_file() or (_REPO_ROOT / ".git").exists()
 
 
+def _msys_to_windows(value: str) -> str | None:
+    """Translate an MSYS/Git-Bash drive path to Windows form, or ``None``.
+
+    Pure string transform — no ``Path`` construction — so the conversion is
+    unit-testable on Linux without patching ``os.name`` (which would make
+    ``Path(...)`` try to instantiate ``WindowsPath`` and raise).
+    """
+    match = _MSYS_HOME.match(value)
+    if not match:
+        return None
+    drive, rest = match.groups()
+    return f"{drive.upper()}:/{rest}"
+
+
 def _normalise_home(value: str) -> Path:
     """Turn a home path from the environment into a usable ``Path``.
 
@@ -40,10 +54,9 @@ def _normalise_home(value: str) -> Path:
     ``C:\\c\\Users\\name``, so translate the drive prefix first.
     """
     if os.name == "nt":
-        match = _MSYS_HOME.match(value)
-        if match:
-            drive, rest = match.groups()
-            return Path(f"{drive.upper()}:/{rest}")
+        win = _msys_to_windows(value)
+        if win is not None:
+            return Path(win)
     return Path(value)
 
 
@@ -66,7 +79,9 @@ def base_dir() -> Path:
     """The application home directory (created if necessary)."""
     env = os.environ.get("SOLVENT_HOME")
     if env:
-        base = Path(env).expanduser().resolve()
+        # Same MSYS drive-prefix translation we apply to $HOME — otherwise
+        # SOLVENT_HOME=/c/Users/... on Git-Bash writes to a junk path.
+        base = _normalise_home(env).expanduser().resolve()
     elif _is_source_checkout():
         base = _REPO_ROOT
     else:
