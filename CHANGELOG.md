@@ -6,10 +6,12 @@ All notable changes to SOLVENT are recorded here. The format follows
 
 ## [Unreleased]
 
-## [0.3.1] - YYYY-MM-DD
+## [0.3.1] - 2026-10-31
 
 Patch release: money-path hardening found in post-0.3.0 review. No new
 features, no config changes required.
+
+**Not included:** Nano M3 custody (#123, `SOLVENT_NANO_CUSTODY`) is excluded from 0.3.1; it remains on `main` behind its flag for a later release.
 
 ### Fixed
 - Guardrails refuse zero / negative spends (`positive_amount` rule) and `treasury.record` rejects `amount_cents <= 0`, so a negative expense can no longer credit cash (#121).
@@ -19,7 +21,8 @@ features, no config changes required.
 - `solvent reconcile` compares only `pi_` refs inside the `--since` window, removing false drift from Nano block hashes and older rows (#121).
 - Expired jobs are terminal and can no longer be resurrected by `advance_job` (#121).
 - A failed Nano fulfilment books a ledger-only `customer-refund` instead of aborting inside Stripe's refund call (#121).
-- Earn re-checks `job_has_revenue` under the treasury lock (double-earn TOCTOU) (#121).
+- Earn re-checks `job_has_revenue` under the treasury lock (double-earn TOCTOU) (#121); covered by a race test (#126).
+- Zero starting capital works again: `Treasury.seed(0)` books nothing instead of raising, so `solvent --seed 0` no longer crashes after #121 ([#126](https://github.com/ianalloway/solvent-agent/pull/126)).
 - `retry_job` refuses jobs that were refunded, and refund flags/receipts are only written after a successful booking (#121).
 - A vendor spend that landed before a crash is not paid again on retry (#121).
 - Sync `confirm_payment` and polling accept Checkout Session (`cs_…`) ids; webhooks cache by `cs_` id too (#121).
@@ -28,6 +31,10 @@ features, no config changes required.
 - `quote`, `simulate`, `optimize` and `capacity` parse dollars with `dollars_to_cents` (#121).
 - Ledger CSV export adds `balance_after_cents` (#121).
 - HF Space requires `solvent-agent>=0.3.0` (#120).
+
+### Known limitations
+- Nano (XNO) refunds are ledger-only: a failed Nano job books a `customer-refund` expense but no XNO is sent back; return funds manually (#121).
+- A failed Stripe refund emits a `refund_failed` event and is not retried automatically.
 
 ## [0.3.0] - 2026-10-28
 

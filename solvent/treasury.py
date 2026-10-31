@@ -396,7 +396,12 @@ class Treasury:
                 )
             return entry
 
-    def seed(self, amount_cents: int, memo: str = "Initial operating capital") -> LedgerEntry:
+    def seed(
+        self, amount_cents: int, memo: str = "Initial operating capital"
+    ) -> LedgerEntry | None:
+        """Book starting capital. A zero seed is valid and books nothing."""
+        if int(amount_cents) == 0:
+            return None
         return self.record("capital", amount_cents, memo)
 
     def earn(self, amount_cents: int, memo: str, **kw) -> LedgerEntry:
