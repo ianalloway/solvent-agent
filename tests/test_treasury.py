@@ -101,7 +101,9 @@ def test_record_rejects_non_positive_amounts(treasury):
     import pytest
 
     with pytest.raises(ValueError, match="positive"):
-        treasury.seed(0)
+        treasury.record("capital", 0, "zero capital")
+    with pytest.raises(ValueError, match="positive"):
+        treasury.spend(0, "zero debit")
     with pytest.raises(ValueError, match="positive"):
         treasury.earn(-100, "bogus credit")
     with pytest.raises(ValueError, match="positive"):
@@ -109,3 +111,25 @@ def test_record_rejects_non_positive_amounts(treasury):
     assert treasury.balance_cents() == 0
     assert treasury.entries == []
 
+
+def test_zero_seed_books_nothing_but_zero_expense_still_raises(tmp_path):
+    import pytest
+
+    from solvent.treasury import Treasury
+
+    t = Treasury(tmp_path / "l.db")
+    assert t.seed(0) is None
+    assert t.balance_cents() == 0
+    assert t.entries == []
+    with pytest.raises(ValueError):
+        t.record("expense", 0, "zero")
+    with pytest.raises(ValueError):
+        t.seed(-1)
+
+
+def test_solvent_agent_accepts_zero_seed(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOLVENT_HOME", str(tmp_path))
+    from solvent.agent import Solvent
+
+    agent = Solvent(seed_cents=0, fresh=True)
+    assert agent.t.balance_cents() == 0
