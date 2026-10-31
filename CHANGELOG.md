@@ -6,6 +6,10 @@ All notable changes to SOLVENT are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Spends fail closed: a missing/unreadable treasury state or spend-counter store denies with `state_unavailable`, and a present-but-unreadable or invalid `spend_policy.json` denies every spend with `policy_unavailable` instead of falling back to defaults. Fractional cents values (e.g. `job_budget_cents: 0.5`, which used to truncate to 0 and disable the envelope) are now invalid.
+- Non-integer amounts (dollar floats like `4.99`, strings, bools) are rejected with `amount_type` by the guardrails and by Stripe checkout/price creation.
+
 ### Added
 - Nano custody M3 behind `SOLVENT_NANO_CUSTODY` (default off): sim-only sweeps to a cold address with caps + approval, key-by-reference (`env:` / `keyring:`) for live with an external-signer hook, `solvent custody` CLI, doctor `nano_custody` check (#83). Live custody ships no signer and is unvalidated with real funds.
 
