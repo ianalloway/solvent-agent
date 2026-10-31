@@ -24,6 +24,7 @@ inside your browser with <a href="https://pyodide.org" target="_blank" rel="noop
   <p>Runs the five built-in sample jobs end to end. <b>J3</b> is deliberately underpriced, so watch the margin gate decline it and counter-offer.</p>
   <div class="row">
     <label>Seed capital (USD)<input id="seed" type="number" value="100" min="15" max="100000"></label>
+    <label class="check"><input id="nano" type="checkbox"> Use Nano sim settle rail (<code>SOLVENT_NANO=sim</code>): invoices become <code>nano_sim_…</code>, proofs <code>block_sim_…</code>, still offline</label>
     <button id="run" class="primary" disabled>Run the demo</button>
   </div>
   <div class="error"></div>

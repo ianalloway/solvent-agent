@@ -53,11 +53,16 @@ _LIVE_KEYS = (
     "SOLVENT_LIVE_SEARCH",
     "SOLVENT_ASYNC",
     "SOLVENT_ALLOW_POLL",
+    "SOLVENT_NANO",
+    "SOLVENT_NANO_RPC",
+    "SOLVENT_NANO_ADDRESS",
+    "SOLVENT_NANO_RATE_USD",
+    "SOLVENT_FORCE_NANO_SIMULATE",
 )
 
 
 @contextmanager
-def offline_sandbox():
+def offline_sandbox(*, nano_sim: bool = False):
     """Temporary SOLVENT_HOME + simulation-only environment (restored on exit)."""
     with _LOCK, tempfile.TemporaryDirectory(prefix="solvent-space-") as home:
         saved = {k: os.environ.get(k) for k in (*_LIVE_KEYS, "SOLVENT_HOME",
@@ -68,6 +73,8 @@ def offline_sandbox():
             os.environ["SOLVENT_HOME"] = home
             os.environ["SOLVENT_FORCE_STRIPE_SIMULATE"] = "1"
             os.environ["SOLVENT_DELIVERY_SECRET"] = secrets.token_urlsafe(48)
+            if nano_sim:
+                os.environ["SOLVENT_NANO"] = "sim"
             yield home
         finally:
             for k, v in saved.items():
@@ -87,9 +94,9 @@ def usd(cents: int | float) -> str:
 DEMO_HEADERS = ["Job", "Topic", "Verdict", "Price", "Est. cost", "Proj. margin", "Realized P&L", "Cash after"]
 
 
-def run_demo(seed_dollars: float = 100.0) -> dict[str, Any]:
+def run_demo(seed_dollars: float = 100.0, *, nano_sim: bool = False) -> dict[str, Any]:
     """Run solvent's five SAMPLE_JOBS end to end (simulated) and collect results."""
-    with offline_sandbox():
+    with offline_sandbox(nano_sim=nano_sim):
         from solvent.agent import Solvent
         from solvent.jobs import SAMPLE_JOBS
         from solvent.money import dollars_to_cents
@@ -123,7 +130,13 @@ def run_demo(seed_dollars: float = 100.0) -> dict[str, Any]:
             row["balance"] = e["balance"]
         elif st == "cogs_reconciled":
             row["actual_cost"] = e.get("actual_cost_cents")
-    return {"jobs": [jobs[j] for j in order], "snapshot": snap, "events": events, "seed": seed_dollars}
+    return {
+        "jobs": [jobs[j] for j in order],
+        "snapshot": snap,
+        "events": events,
+        "seed": seed_dollars,
+        "nano_sim": nano_sim,
+    }
 
 
 def jobs_table(result: dict[str, Any]) -> list[list[str]]:
@@ -183,7 +196,7 @@ def pnl_markdown(result: dict[str, Any]) -> str:
         "### 📊 Final P&L / treasury snapshot\n\n"
         "| | |\n|---|---:|\n"
         f"| Seed capital | {usd(s['capital_cents'])} |\n"
-        f"| Revenue (simulated Stripe) | {usd(s['revenue_cents'])} |\n"
+        f"| Revenue (simulated) | {usd(s['revenue_cents'])} |\n"
         f"| Operating spend | {usd(s['expense_cents'])} |\n"
         f"| **Net profit** | **{usd(s['net_profit_cents'])}** ({s['margin_pct']}% margin) |\n"
         f"| **Cash balance** | **{usd(s['balance_cents'])}** |\n\n{verdict}"
@@ -202,9 +215,24 @@ def timeline_text(result: dict[str, Any]) -> str:
         elif st == "counter_offer":
             lines.append(f"[{jid}] counter-offer: {e.get('message')} ({e.get('margin_pct')}% margin)")
         elif st == "invoice":
-            lines.append(f"[{jid}] checkout link issued (simulated): {usd(e['amount'])}")
+            rail = e.get("rail") or "stripe"
+            if rail == "nano":
+                dest = e.get("destination") or e.get("url") or "nano_sim_…"
+                lines.append(
+                    f"[{jid}] Nano invoice issued (sim): {usd(e['amount'])} → {dest}"
+                )
+            else:
+                lines.append(f"[{jid}] checkout link issued (simulated): {usd(e['amount'])}")
         elif st == "paid":
-            lines.append(f"[{jid}] payment confirmed (simulated): +{usd(e['amount'])}")
+            rail = e.get("rail") or "stripe"
+            ref = e.get("payment_ref") or e.get("stripe_ref") or ""
+            if rail == "nano":
+                lines.append(
+                    f"[{jid}] Nano payment confirmed (sim block_sim_…): +{usd(e['amount'])}"
+                    + (f" ref={ref}" if ref else "")
+                )
+            else:
+                lines.append(f"[{jid}] payment confirmed (simulated): +{usd(e['amount'])}")
         elif st == "fulfilled":
             lines.append(f"[{jid}] brief written by deterministic stub ({e.get('tokens')} tokens)")
         elif st == "spend":
@@ -214,14 +242,14 @@ def timeline_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def on_run_demo(seed: float):
+def on_run_demo(seed: float, nano_sim: bool = False):
     try:
         seed = float(seed)
         if not 15 <= seed <= 100_000:
             raise ValueError
     except (TypeError, ValueError):
         raise gr.Error("Seed capital must be a number between 15 and 100000 (USD).")
-    r = run_demo(seed)
+    r = run_demo(seed, nano_sim=bool(nano_sim))
     return jobs_table(r), declined_card(r), pnl_markdown(r), timeline_text(r)
 
 
