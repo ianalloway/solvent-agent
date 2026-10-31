@@ -46,3 +46,19 @@ The optional Nano (XNO) earn rail is **verify-only** (Option A custody):
 - A public block hash is a payment receipt, **not** privacy: amounts and
   addresses are visible on the ledger. Do not treat Nano settlement as
   confidential customer data handling.
+
+### Nano custody (M3, off by default)
+
+`SOLVENT_NANO_CUSTODY` is **off** unless set. When enabled:
+
+- **sim** never reads a key, never touches the network, and only sweeps to
+  `nano_sim_cold_…` addresses. Real addresses are refused.
+- **live** names its key by **reference only** (`env:VAR` or
+  `keyring:service/user`); anything that looks like an inline seed or a file
+  path is refused. Resolved secrets are wrapped in a redacting handle and are
+  never logged, persisted, or returned by `status` / `doctor`.
+- Sweeps go **only** to the configured cold address, under a min amount, a
+  rolling-24h cap, and an explicit approval (`solvent custody sweep --yes`).
+- SOLVENT ships **no live signer**. Live sweeps refuse unless an external
+  signer is injected in code. Live custody has **not** been validated with real
+  funds; treat it as experimental.

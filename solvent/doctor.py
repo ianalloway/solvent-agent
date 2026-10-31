@@ -116,6 +116,26 @@ def run_checks() -> list[dict]:
             "unset (Stripe default earn rail; export SOLVENT_NANO=sim or =live)",
         )
 
+    from .nano_custody import NanoCustody
+
+    cust = NanoCustody.from_env().status()
+    if cust["mode"] == "off":
+        add("nano_custody", True, "off (verify-only; SOLVENT_NANO_CUSTODY unset)")
+    elif cust["mode"] == "sim":
+        add("nano_custody", True, f"sim (no keys read; sweeps to {cust['cold_address']})")
+    elif cust["mode"] == "live":
+        if cust.get("signer"):
+            add("nano_custody", True, f"live via {cust['signer']} (unvalidated)")
+        else:
+            add(
+                "nano_custody",
+                False,
+                f"live configured (key ref {cust['key_ref_kind']}:…) but no external "
+                "signer; sweeps refuse — live custody is unvalidated with real funds",
+            )
+    else:
+        add("nano_custody", False, cust.get("misconfig_reason") or "misconfigured")
+
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
 
