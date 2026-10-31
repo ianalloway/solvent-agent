@@ -85,6 +85,9 @@ class SpendPolicy:
     approval_threshold_cents: int | None = None
     # Human-readable notes about overrides that loosened or disabled a limit.
     warnings: list[str] = field(default_factory=list, compare=False)
+    # Set when a policy file exists but cannot be read or is invalid. Every
+    # spend is then denied (fail closed) rather than run on the defaults.
+    invalid_reason: str | None = field(default=None, compare=False)
 
     def vendor_daily_cap_cents(self, vendor: str) -> int:
         """The rolling-24h ceiling for one vendor."""
@@ -128,12 +131,24 @@ def _is_finite_number(value: object) -> bool:
     return isinstance(value, int) or math.isfinite(value)
 
 
+def _is_whole_cents(value: object) -> bool:
+    """A finite, non-negative, integral number (``12`` or ``12.0``, not ``12.5``).
+
+    A fractional value is almost always dollars typed into a cents field, and
+    ``int()`` truncation would turn ``job_budget_cents: 0.5`` into ``0``, which
+    *disables* the per-job envelope.
+    """
+    return _is_finite_number(value) and value >= 0 and float(value).is_integer()
+
+
 def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     """Build the spend policy, applying `.solvent/spend_policy.json` if present.
 
-    Unknown keys and malformed values are ignored: a broken override file must
-    never silently *widen* the policy, so anything that cannot be read falls
-    back to the built-in defaults.
+    Unknown keys are ignored. A policy file that exists but cannot be read, is
+    not a JSON object, or has an invalid value for a known key makes the policy
+    *invalid*: ``invalid_reason`` is set and every spend is denied with rule
+    ``policy_unavailable`` (fail closed) instead of silently using defaults.
+    A missing file means "no overrides" and uses the built-in defaults.
 
     Environment variables may only *tighten* the job budget and the approval
     threshold. An env value that would loosen or disable either one is ignored
@@ -143,8 +158,10 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     policy = SpendPolicy()
     default = SpendPolicy()
     override_path = path if path is not None else config_path("spend_policy.json")
-    if override_path.is_file():
+    if override_path.exists():
         _apply_policy_file(policy, override_path)
+        if policy.invalid_reason:
+            log.error("spend policy: %s; all spends will be denied", policy.invalid_reason)
 
     # Policy-file settings that loosen the built-in envelope are allowed, but visible.
     if policy.job_budget_cents == 0:
@@ -188,33 +205,47 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
 
 
 def _apply_policy_file(policy: SpendPolicy, override_path: Path) -> SpendPolicy:
+    def invalid(why: str) -> SpendPolicy:
+        policy.invalid_reason = f"{override_path.name}: {why}"
+        return policy
+
     try:
         data = json.loads(override_path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):  # JSONDecodeError and UnicodeDecodeError are ValueErrors
-        return policy
+    except (ValueError, OSError) as exc:  # JSONDecodeError/UnicodeDecodeError are ValueErrors
+        return invalid(f"unreadable ({type(exc).__name__})")
     if not isinstance(data, dict):
-        return policy
+        return invalid("not a JSON object")
 
     for key in _SCALAR_LIMITS:
-        value = data.get(key)
-        if _is_finite_number(value) and value >= 0:
-            setattr(policy, key, int(value))
+        if key not in data:
+            continue
+        value = data[key]
+        if not _is_whole_cents(value):
+            return invalid(f"{key} must be a non-negative whole number, got {value!r}")
+        setattr(policy, key, int(value))
 
-    allowlist = data.get("vendor_allowlist")
-    if isinstance(allowlist, list) and all(isinstance(v, str) for v in allowlist):
+    if "vendor_allowlist" in data:
+        allowlist = data["vendor_allowlist"]
+        if not (isinstance(allowlist, list) and all(isinstance(v, str) for v in allowlist)):
+            return invalid("vendor_allowlist must be a list of strings")
         policy.vendor_allowlist = tuple(allowlist)
 
-    overrides = data.get("vendor_daily_overrides")
-    if isinstance(overrides, dict):
-        policy.vendor_daily_overrides = {
-            k: int(v)
-            for k, v in overrides.items()
-            if isinstance(k, str) and _is_finite_number(v) and v >= 0
-        }
+    if "vendor_daily_overrides" in data:
+        overrides = data["vendor_daily_overrides"]
+        if not isinstance(overrides, dict) or not all(
+            isinstance(k, str) and _is_whole_cents(v) for k, v in overrides.items()
+        ):
+            return invalid("vendor_daily_overrides must map vendor -> whole non-negative cents")
+        policy.vendor_daily_overrides = {k: int(v) for k, v in overrides.items()}
 
-    threshold = data.get("approval_threshold_cents")
-    if _is_finite_number(threshold) and threshold >= 0:
-        policy.approval_threshold_cents = int(threshold)
+    if "approval_threshold_cents" in data:
+        threshold = data["approval_threshold_cents"]
+        if threshold is not None:
+            if not _is_whole_cents(threshold):
+                return invalid(
+                    f"approval_threshold_cents must be a non-negative whole number, got {threshold!r}"
+                )
+            policy.approval_threshold_cents = int(threshold)
     return policy
 
 
@@ -387,11 +418,45 @@ class Guardrails:
         consistent snapshot. Returns a :class:`Decision` either way (never
         raises); use :meth:`check_spend` for the raising variant.
         """
-        spent_24h = self._spent_last_24h()
-        vendor_spent_24h = self._spent_last_24h(vendor)
-        txns_last_hour = self._txns_last_hour()
-        balance = self.t.balance_cents()
-        job_spent = self._job_spent(job_id)
+        base: dict[str, Any] = {"job_id": job_id, "vendor": vendor}
+        # Amounts are integer cents. A float or string here is almost always a
+        # dollar figure (4.99) that would sail under every cents cap.
+        if isinstance(amount_cents, bool) or not isinstance(amount_cents, int):
+            return Decision(
+                False,
+                "amount_type",
+                f"amount must be integer cents, got {amount_cents!r}",
+                **base,
+            )
+        base["amount_cents"] = amount_cents
+        if self.policy.invalid_reason:
+            return Decision(
+                False,
+                "policy_unavailable",
+                f"spend policy invalid ({self.policy.invalid_reason}); refusing to spend",
+                **base,
+            )
+        # State (balance) and counters (ledger history) must both be readable;
+        # a missing or broken store denies instead of counting as zero spend.
+        try:
+            if self.t is None:
+                raise RuntimeError("no treasury")
+            spent_24h = self._spent_last_24h()
+            vendor_spent_24h = self._spent_last_24h(vendor)
+            txns_last_hour = self._txns_last_hour()
+            balance = self.t.balance_cents()
+            job_spent = self._job_spent(job_id)
+            for v in (spent_24h, vendor_spent_24h, txns_last_hour, balance, job_spent):
+                if isinstance(v, bool) or not isinstance(v, int):
+                    raise TypeError(f"non-integer counter {v!r}")
+        except Exception as exc:  # fail closed on any state/counter failure
+            return Decision(
+                False,
+                "state_unavailable",
+                f"treasury state or spend counters unavailable ({type(exc).__name__}); "
+                "refusing to spend",
+                **base,
+            )
         ctx: dict[str, Any] = {
             "job_id": job_id,
             "job_spent_cents": job_spent,
