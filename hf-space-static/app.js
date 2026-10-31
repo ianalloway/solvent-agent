@@ -103,7 +103,7 @@ const DEMO_HEADERS = ["Job", "Topic", "Verdict", "Price", "Est. cost", "Proj. ma
 
 tabs();
 wire("#run", () => {
-  const [rows, declinedHtml, pnl, log] = call("on_run_demo", Number($("#seed").value));
+  const [rows, declinedHtml, pnl, log] = call("on_run_demo", Number($("#seed").value), $("#nano").checked);
   $("#jobs").innerHTML = table(DEMO_HEADERS, rows);
   $("#declined").innerHTML = declinedHtml; // built by space.py with html.escape on every value
   $("#pnl").innerHTML = md(pnl);
@@ -118,4 +118,4 @@ wire("#quote", () => {
   $("#cli").textContent = cli;
   $("#clibox").hidden = false;
 });
-boot("solvent-agent==0.2.2", "solvent_agent-0.2.2-py3-none-any.whl").catch((e) => status("Failed to load Python: " + e.message, "err"));
+boot("solvent-agent==0.3.0", "solvent_agent-0.3.0-py3-none-any.whl").catch((e) => status("Failed to load Python: " + e.message, "err"));

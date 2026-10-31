@@ -9,6 +9,29 @@ All notable changes to SOLVENT are recorded here. The format follows
 ### Added
 - Nano custody M3 behind `SOLVENT_NANO_CUSTODY` (default off): sim-only sweeps to a cold address with caps + approval, key-by-reference (`env:` / `keyring:`) for live with an external-signer hook, `solvent custody` CLI, doctor `nano_custody` check (#83). Live custody ships no signer and is unvalidated with real funds.
 
+## [0.3.1] - YYYY-MM-DD
+
+Patch release: money-path hardening found in post-0.3.0 review. No new
+features, no config changes required.
+
+### Fixed
+- Guardrails refuse zero / negative spends (`positive_amount` rule) and `treasury.record` rejects `amount_cents <= 0`, so a negative expense can no longer credit cash (#121).
+- Negative `vendor_daily_overrides` are rejected like the scalar caps (#121).
+- `SOLVENT_HOME` gets the same MSYS `/c/...` → `C:\...` normalisation as `$HOME` (#121).
+- Windows file-lock polling has an upper bound; treasury waits at most 60s (#121).
+- `solvent reconcile` compares only `pi_` refs inside the `--since` window, removing false drift from Nano block hashes and older rows (#121).
+- Expired jobs are terminal and can no longer be resurrected by `advance_job` (#121).
+- A failed Nano fulfilment books a ledger-only `customer-refund` instead of aborting inside Stripe's refund call (#121).
+- Earn re-checks `job_has_revenue` under the treasury lock (double-earn TOCTOU) (#121).
+- `retry_job` refuses jobs that were refunded, and refund flags/receipts are only written after a successful booking (#121).
+- A vendor spend that landed before a crash is not paid again on retry (#121).
+- Sync `confirm_payment` and polling accept Checkout Session (`cs_…`) ids; webhooks cache by `cs_` id too (#121).
+
+### Changed
+- `quote`, `simulate`, `optimize` and `capacity` parse dollars with `dollars_to_cents` (#121).
+- Ledger CSV export adds `balance_after_cents` (#121).
+- HF Space requires `solvent-agent>=0.3.0` (#120).
+
 ## [0.3.0] - 2026-10-28
 
 ### Security
@@ -173,7 +196,8 @@ earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
-[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/ianalloway/solvent-agent/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ianalloway/solvent-agent/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/ianalloway/solvent-agent/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/ianalloway/solvent-agent/compare/v0.2.0...v0.2.1
