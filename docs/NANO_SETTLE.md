@@ -144,4 +144,40 @@ outbound Nano spend are a separate design.
 | Doctor | `nano_rail`: sim / live (RPC probe) / unset / misconfigured |
 | Tests | `tests/test_nano_client.py`, nano cases in `tests/test_checkout.py` |
 
-Still deferred (M3): hot seed / custody, FX oracle, x402, outbound Nano spend.
+Still deferred: FX oracle, x402, outbound Nano spend beyond cold-address sweeps,
+a shipped live signer.
+
+## M3 custody (feature flag, off by default)
+
+Decision implemented: **Option C (external signer)** with a sim-first
+accounting + sweep layer. Option B (hot seed in env / file) is *not* adopted:
+keys are only ever named by reference.
+
+| Piece | Behaviour |
+|---|---|
+| Flag | `SOLVENT_NANO_CUSTODY=off` (default) \| `sim` \| `live` |
+| Rail pairing | custody `sim` requires `SOLVENT_NANO=sim`; custody `live` requires `SOLVENT_NANO=live` |
+| Keys | `SOLVENT_NANO_CUSTODY_KEY_REF=env:VAR` or `keyring:service/user`; inline seeds / file refs refused; sim refuses any key ref |
+| Balance | sum of booked, verified payments in `nano_payments.json` for the same mode (sim blocks never count in live, and vice versa) minus sweeps |
+| Sweep | only to `SOLVENT_NANO_COLD_ADDRESS`; min `SOLVENT_NANO_SWEEP_MIN_RAW`; rolling-24h cap `SOLVENT_NANO_SWEEP_DAILY_CAP_RAW`; explicit approval |
+| Sim sweep | writes `block_sim_sweep_…` to `.solvent/nano_custody_sim.json` |
+| Live sweep | needs an injected `Signer` (`send(key, source, destination, amount_raw) -> block hash`); none shipped, so it refuses |
+| CLI | `solvent custody status`, `solvent custody plan`, `solvent custody sweep --yes` |
+| Doctor | `nano_custody`: off / sim OK; live without signer and any misconfig fail |
+| Tests | `tests/test_nano_custody.py` (sim + fake signer; no keys, no network) |
+
+### Needs live funds to validate (not done)
+
+- A real `Signer`: state-block construction, ed25519-blake2b signing, PoW
+  (`work_generate` or local), `process` RPC publish, and confirmation tracking.
+- Receiving pending blocks into the hot account (`receivable` + receive blocks):
+  verify-only today means funds stay *pending* until the operator's wallet
+  receives them; custody accounting assumes received balance.
+- Reconciling custody balance against `account_balance` RPC rather than the
+  booked-payment ledger.
+- Key backup / rotation drills on the chosen secret store.
+
+Do not use third-party "fresh keypair" endpoints (such as the onramp cited in
+the original issue) for custody keys: a key minted by someone else's server is
+not self-custody.
+

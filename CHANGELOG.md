@@ -6,6 +6,9 @@ All notable changes to SOLVENT are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Nano custody M3 behind `SOLVENT_NANO_CUSTODY` (default off): sim-only sweeps to a cold address with caps + approval, key-by-reference (`env:` / `keyring:`) for live with an external-signer hook, `solvent custody` CLI, doctor `nano_custody` check (#83). Live custody ships no signer and is unvalidated with real funds.
+
 ## [0.3.1] - YYYY-MM-DD
 
 Patch release: money-path hardening found in post-0.3.0 review. No new

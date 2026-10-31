@@ -51,6 +51,11 @@ no hot wallet / seed in-process.
 | `SOLVENT_NANO_RATE_USD` | USD per XNO. Optional for sim (default `0.85`); **required** for live |
 | `SOLVENT_NANO_INVOICE_TTL` | Invoice lifetime seconds (default 48h); checkout chase may expire earlier |
 | `SOLVENT_NANO_RPC_TIMEOUT` | Live RPC timeout seconds (default `10`) |
+| `SOLVENT_NANO_CUSTODY` | `off` (default) \| `sim` \| `live` — M3 custody / sweep to cold address; see [NANO_SETTLE.md](NANO_SETTLE.md#m3-custody-feature-flag-off-by-default) |
+| `SOLVENT_NANO_CUSTODY_KEY_REF` | Live custody only: `env:VAR_NAME` or `keyring:service/user`. Never a raw seed (refused) |
+| `SOLVENT_NANO_COLD_ADDRESS` | Sweep destination. Sim: `nano_sim_cold_…` only (default derived). Live: real `nano_…`, ≠ receive address |
+| `SOLVENT_NANO_SWEEP_MIN_RAW` | Smallest sweep in raw (default `10^27` = 0.001 XNO) |
+| `SOLVENT_NANO_SWEEP_DAILY_CAP_RAW` | Rolling-24h sweep cap in raw (default 100 XNO) |
 
 `solvent doctor` reports `nano_rail` as sim / live (RPC probe) / unset / misconfigured
 (fail closed). Sim and live must never be mixed. Verify-on-submit is

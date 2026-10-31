@@ -44,6 +44,7 @@ Commands:
   guardrails    spend policy in force: caps, vendor exposure, blocked spends
   reconcile     Stripe <-> ledger drift check
   doctor        stack diagnostics
+  custody       Nano custody (off by default): status | plan | sweep --yes
   pairing       manage Telegram DM pairing codes
   workspace     seed the agent workspace (SOUL/BRAIN/AGENTS)
   retry <id>    re-run a stuck job
@@ -196,6 +197,11 @@ def main() -> None:
         from .reconcile import main as reconcile_main
 
         reconcile_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "custody":
+        sys.argv.pop(1)
+        from .nano_custody import main as custody_main
+
+        sys.exit(custody_main(sys.argv[1:]))
     elif len(sys.argv) > 1 and sys.argv[1] == "doctor":
         sys.argv.pop(1)
         from .doctor import main as doctor_main
