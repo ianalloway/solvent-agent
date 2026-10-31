@@ -31,19 +31,20 @@ via Pyodide, so this is a free static Space with no server.
 - **Try your own job**: a dry run of the margin gate, same logic as `solvent quote` on the CLI.
 
 Stripe checkout and the analyst brief are deterministic stubs, so the numbers are illustrative. Not financial advice.
+Tick **Use Nano sim settle rail** to run the same jobs through the simulated Nano rail (`nano_sim_…` invoices, `block_sim_…` proofs; still offline).
 
 ## How it works
 
 - `index.html` + `app.js` + `style.css`: plain static page, no build step.
 - On load it fetches [Pyodide](https://pyodide.org) (CPython compiled to WebAssembly) from the official jsDelivr CDN,
-  then installs the pure-Python `solvent-agent` wheel from PyPI with `micropip` (pinned: `solvent-agent==0.2.2`).
+  then installs the pure-Python `solvent-agent` wheel from PyPI with `micropip` (pinned: `solvent-agent==0.3.0`).
 - `space.py` holds the same logic as the Gradio version in [`../hf-space/app.py`](../hf-space/app.py), with the gradio UI
   removed; `app.js` calls it through a tiny JSON bridge and renders the results.
 - Network: only Pyodide assets (`cdn.jsdelivr.net`) and the wheel (`pypi.org`, `files.pythonhosted.org`). No keys, no server,
   and nothing you type is uploaded. First visit downloads Pyodide (several MB, cached by the browser afterwards).
 
-**Offline wheel (optional fallback):** if PyPI is unreachable, `app.js` tries `wheels/solvent_agent-0.2.2-py3-none-any.whl` next to `index.html`.
-Drop that file from `pip download solvent-agent==0.2.2 --no-deps -d wheels` into a `wheels/` folder to use it.
+**Offline wheel (optional fallback):** if PyPI is unreachable, `app.js` tries `wheels/solvent_agent-0.3.0-py3-none-any.whl` next to `index.html`.
+Drop that file from `pip download solvent-agent==0.3.0 --no-deps -d wheels` into a `wheels/` folder to use it.
 
 ## Run locally
 
