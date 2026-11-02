@@ -891,6 +891,12 @@ docs/              screenshots and supporting docs
 
 ---
 
+## 🔬 Research Use
+
+SOLVENT's spend policy is the label source for [SpendAudit](https://github.com/ianalloway/spendaudit), a benchmark that asks whether an LLM auditor reaches the same verdict as the policy, and whether a prompt injection in a payment memo changes that verdict. The benchmark pins v0.2.2 (`bdc896a`), and its generator rebuilds the dataset byte for byte from that commit. The working paper, every model response, and a one-command recount of the results are in that repository.
+
+---
+
 ## 🏆 Built For
 
 **Hermes Agent Accelerated Business Hackathon** — NVIDIA × Stripe × Nous Research
