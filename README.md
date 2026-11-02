@@ -43,14 +43,11 @@ solvent finance                 # income statement, unit economics, runway
 Then open the dashboard path the demo prints (`~/.solvent/treasury_dashboard.html`
 for a pip/pipx install, or under `$SOLVENT_HOME` if you set it).
 
-> **Newer commands.** PyPI currently ships 0.1.0. Commands added since then (`quote`,
-> `products`, `backlog`, `customers`, `costs`, `simulate`, `guardrails`, …) need an
-> install from `main` until the next release:
->
-> ```bash
-> pipx install git+https://github.com/ianalloway/solvent-agent
-> solvent quote "Edge-AI in industrial robotics" --budget 8   # dry-run the margin gate
-> ```
+Try the margin gate on its own. This dry run declines an $8 order and returns a counter-offer that clears the margin floor:
+
+```bash
+solvent quote "Edge-AI in industrial robotics" --budget 8
+```
 
 | Command | What it does |
 |---|---|
@@ -58,6 +55,8 @@ for a pip/pipx install, or under `$SOLVENT_HOME` if you set it).
 | `solvent init` | create data dirs, treasury DB, and workspace files |
 | `solvent status` | live treasury summary (`--watch` to auto-refresh) |
 | `solvent finance` | income statement, unit economics, runway, forecast |
+| `solvent quote` | dry-run the margin gate on a job and price a counter-offer |
+| `solvent guardrails` | show the spend policy: vendor caps, velocity limit, job budgets |
 | `solvent doctor` | diagnostics: API keys, extras, workspace files |
 | `solvent serve` | webhooks + job API + hosted dashboard (`[serve]` extra) |
 | `solvent worker` | resume incomplete jobs / process the queue |
