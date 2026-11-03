@@ -595,7 +595,7 @@ these are operator-only:
 
 - the **dashboard** channel is the operator by construction — it sits behind
   `SOLVENT_DASHBOARD_TOKEN`;
-- a Telegram id in `SOLVENT_OPERATOR_IDS` is the operator;
+- a Telegram user id in `SOLVENT_OPERATOR_IDS` is the operator in a private chat;
 - anyone else gets "That command is operator-only", and `/help` does not list
   commands they cannot run.
 

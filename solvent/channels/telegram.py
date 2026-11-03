@@ -9,6 +9,7 @@ import urllib.request
 from typing import TYPE_CHECKING
 
 from ..gateway import Gateway, register_outbound
+from ..memory import telegram_chat_destination
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only imports
     from telegram import Update
@@ -21,7 +22,9 @@ def send_telegram_message(external_id: str, text: str) -> None:
     if not token:
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = json.dumps({"chat_id": int(external_id), "text": text[:4000]}).encode()
+    payload = json.dumps(
+        {"chat_id": int(telegram_chat_destination(external_id)), "text": text[:4000]}
+    ).encode()
     headers = {"Content-Type": "application/json"}
     req = urllib.request.Request(url, data=payload, headers=headers)
     try:
@@ -76,12 +79,15 @@ def build_application(gateway: Gateway | None = None) -> object:
     register_outbound("telegram", send_telegram_message)
 
     async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        if not update.message or not update.effective_user:
+        if not update.message or not update.effective_user or not update.effective_chat:
             return
         user = update.effective_user
         text = update.message.text or ""
         username = user.username
-        reply = gw.handle_inbound("telegram", str(user.id), text, user_label=username)
+        reply = gw.handle_inbound(
+            "telegram", str(user.id), text, user_label=username,
+            chat_id=str(update.effective_chat.id), chat_type=update.effective_chat.type,
+        )
         await _reply(update, reply)
 
     app = Application.builder().token(token).build()

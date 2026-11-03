@@ -189,12 +189,13 @@ def handle_message(
     agent: Solvent | None = None,
     memory: SessionMemory | None = None,
     channel: str = "cli",
+    telegram_operator: bool = False,
 ) -> str:
     """Run one conversational turn; returns assistant reply text."""
     ensure_workspace()
     agent = agent or Solvent(seed_cents=10_000, fresh=False, sync_payment=False)
     memory = memory or SessionMemory(agent.t)
-    system_prompt = build_chat_system_prompt(channel)
+    system_prompt = build_chat_system_prompt(channel, telegram_operator=telegram_operator)
 
     try:
         text = sanitise_prompt_input(text, field_name="message", max_len=4000)

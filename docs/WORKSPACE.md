@@ -7,7 +7,7 @@ SOLVENT adopts the **OpenClaw workspace** and **Hermes SOUL** patterns: markdown
 ```
 .solvent/workspace/
 ├── SOUL.md          # Identity, tone, values (Hermes slot #1)
-├── BRAIN.md         # Active pipeline / NOW state (read every session)
+├── BRAIN.md         # Active pipeline / NOW state (operator sessions only)
 ├── AGENTS.md        # Operating rules and workflows
 ├── MEMORY.md        # Optional curated long-term memory (main sessions only; not seeded by default)
 ├── memory/
@@ -26,12 +26,20 @@ Repo-root **`AGENTS.md`** (this repository) is loaded as Hermes-style project co
 |-------|------|-------------|
 | 1 | `SOUL.md` | Every session (identity) |
 | 2 | Core economic rules | Every session (code) |
-| 3 | `BRAIN.md`, `AGENTS.md` | Project context |
-| 4 | `MEMORY.md` | Main/private sessions only, if present |
-| 5 | `memory/today+yesterday` | When present |
+| 3 | `BRAIN.md`, `AGENTS.md` | Project context; `BRAIN.md` only in authorized operator sessions |
+| 4 | `MEMORY.md` | Authorized operator sessions only, if present |
+| 5 | `memory/today+yesterday` | Authorized operator sessions only, if present |
 | 6 | `skills/*.md` | When present |
 
-Shared/group channels skip `MEMORY.md` (OpenClaw privacy pattern) — create the file yourself under `.solvent/workspace/MEMORY.md` if you want durable curated facts; it is not seeded by default.
+Shared/customer/group sessions skip `BRAIN.md`, `MEMORY.md`, and daily notes.
+Telegram loads these only in a private chat with a user ID configured in
+`SOLVENT_OPERATOR_IDS`; pairing alone does not grant operator access. Local CLI
+and interactive sessions retain private context. Dashboard chat uses shared
+context. Keep `SOUL.md`, `AGENTS.md`, repository context, and skills suitable for
+all chat users, since these are included in shared prompts.
+
+Create `.solvent/workspace/MEMORY.md` for durable curated facts; it is not seeded
+by default.
 
 ## Setup
 
@@ -59,7 +67,7 @@ Edit files in `.solvent/workspace/` — changes apply on the next message.
 
 ## BRAIN.md
 
-Not in upstream OpenClaw, but widely used: a living dashboard SOLVENT reads each session (referenced from `SOUL.md`). Update pipeline, blockers, and next actions.
+Not in upstream OpenClaw, but widely used: a living dashboard SOLVENT reads in authorized operator sessions (referenced from `SOUL.md`). Update pipeline, blockers, and next actions.
 
 Job lifecycle events (`paid`, `fulfilled`, `delivered`) append to today's daily memory log automatically.
 
