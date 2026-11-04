@@ -116,8 +116,8 @@ class TestChatTools(unittest.TestCase):
         calls = {"n": 0}
         orig = chatmod._make_executor
 
-        def counting_executor(agent, session_id, live_search):
-            run = orig(agent, session_id, live_search)
+        def counting_executor(agent, session_id, live_search, **kwargs):
+            run = orig(agent, session_id, live_search, **kwargs)
 
             def counting_run(name, args):
                 calls["n"] += 1

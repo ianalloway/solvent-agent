@@ -119,14 +119,13 @@ class Gateway:
         if cmd in ("/help", "/start"):
             lines = [
                 "SOLVENT research business bot.",
-                "/status — treasury snapshot",
                 "/jobs — recent jobs",
-                "/pair qr — generate OpenClaw pairing QR code",
                 "/quote <topic> | <budget_usd> — margin preview",
             ]
             # The business's own numbers are only listed to whoever may read them.
             if ops.is_operator(channel, external_id, chat_type=chat_type):
-                lines += ["", "Operator:"] + ops.help_lines()
+                lines += ["", "Operator:", "/status — treasury snapshot",
+                          "/pair qr — generate OpenClaw pairing QR code"] + ops.help_lines()
             lines += ["", "Or chat naturally to commission a research brief."]
             return "\n".join(lines)
 
@@ -137,6 +136,8 @@ class Gateway:
         if ops_answer is not None:
             return ops_answer
         if cmd == "/status":
+            if not ops.is_operator(channel, external_id, chat_type=chat_type):
+                return "That command is operator-only."
             s = self.agent.t.snapshot()
             return (
                 f"Balance: {fmt(s['balance_cents'])}\n"
@@ -158,6 +159,8 @@ class Gateway:
                     "Pairing QR codes are not available over an open Telegram DM policy. "
                     "Use /pair qr from the dashboard chat, or set SOLVENT_TELEGRAM_DM_POLICY=pairing."
                 )
+            if not ops.is_operator(channel, external_id, chat_type=chat_type):
+                return "That command is operator-only."
             token = self.agent.t.create_openclaw_token(ttl=600)
             from . import qr as _qr
 

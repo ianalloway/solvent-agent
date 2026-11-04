@@ -281,10 +281,14 @@ def test_gateway_pair_qr_refused_on_open_telegram_policy(tmp_path, monkeypatch):
     refused = gw._handle_command("telegram", "stranger", "/pair qr", session)
     assert "Pairing token" not in refused and "not available" in refused
 
-    # The dashboard chat (dashboard-token gated) and a paired Telegram user still work.
+    # Dashboard remains authorized; pairing alone does not grant operator access.
     assert "Pairing token: OC-" in gw._handle_command("dashboard", "d", "/pair qr", session)
     monkeypatch.setenv("SOLVENT_TELEGRAM_DM_POLICY", "pairing")
-    assert "Pairing token: OC-" in gw._handle_command("telegram", "u1", "/pair qr", session)
+    assert "operator-only" in gw._handle_command("telegram", "u1", "/pair qr", session)
+    monkeypatch.setenv("SOLVENT_OPERATOR_IDS", "u1")
+    assert "Pairing token: OC-" in gw._handle_command(
+        "telegram", "u1", "/pair qr", session, chat_type="private"
+    )
 
 
 # --- POST /jobs (public intake) -----------------------------------------------

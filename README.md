@@ -586,7 +586,7 @@ shop's own p95 — and only until then by the fixed hours.
 Fifteen commands' worth of reporting lived in the CLI, which is where the
 operator is not. The gateway's slash commands now cover the business too —
 `/funnel`, `/customers`, `/capacity`, `/alerts`, `/products`, `/quality`,
-`/review`, `/costs` — each a short read over local state, no model call, no
+`/review`, `/costs`, `/status` — each a short read over local state, no model call, no
 spend.
 
 The catch is who is asking. Any *paired* Telegram user reaches that handler,
@@ -598,6 +598,10 @@ these are operator-only:
 - a Telegram user id in `SOLVENT_OPERATOR_IDS` is the operator in a private chat;
 - anyone else gets "That command is operator-only", and `/help` does not list
   commands they cannot run.
+
+The `treasury_status` model tool uses the same operator boundary. Pairing QR
+tokens also require an operator; pairing a customer does not grant permission
+to mint new tokens, and Telegram groups cannot mint them.
 
 ### The deliverable
 
