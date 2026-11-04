@@ -157,6 +157,33 @@ def test_tail_lines_fewer_than_n(tmp_path):
     assert result == ["line1", "line2"]
 
 
+def test_tail_lines_long_lines_return_exactly_n_complete_lines(tmp_path):
+    p = tmp_path / "log"
+    records = [f"{i:02d}-" + "x" * 420 for i in range(10)]
+    p.write_text("\n".join(records) + "\n")
+    assert _tail_lines(p, 5) == records[5:]
+
+
+def test_tail_lines_lines_longer_than_a_read_block(tmp_path):
+    p = tmp_path / "log"
+    records = [f"{i}-" + "y" * 20000 for i in range(4)]
+    p.write_text("\n".join(records) + "\n")
+    assert _tail_lines(p, 2) == records[2:]
+
+
+def test_tail_lines_never_returns_a_partial_first_line(tmp_path):
+    p = tmp_path / "log"
+    records = [f"{i:02d}-" + "z" * 300 for i in range(6)]
+    p.write_text("\n".join(records) + "\n")
+    assert _tail_lines(p, 100) == records
+
+
+def test_tail_lines_skips_blank_lines_when_counting(tmp_path):
+    p = tmp_path / "log"
+    p.write_text("a\n\n\nb\n\nc\n")
+    assert _tail_lines(p, 2) == ["b", "c"]
+
+
 # ---------------------------------------------------------------------------
 # show_logs
 # ---------------------------------------------------------------------------
