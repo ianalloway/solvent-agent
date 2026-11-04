@@ -138,7 +138,7 @@ def _is_whole_cents(value: object) -> bool:
     ``int()`` truncation would turn ``job_budget_cents: 0.5`` into ``0``, which
     *disables* the per-job envelope.
     """
-    return _is_finite_number(value) and value >= 0 and float(value).is_integer()
+    return _is_finite_number(value) and value >= 0 and (isinstance(value, int) or value.is_integer())
 
 
 def load_spend_policy(path: Path | None = None) -> SpendPolicy:
@@ -158,7 +158,7 @@ def load_spend_policy(path: Path | None = None) -> SpendPolicy:
     policy = SpendPolicy()
     default = SpendPolicy()
     override_path = path if path is not None else config_path("spend_policy.json")
-    if override_path.exists():
+    if override_path.exists() or override_path.is_symlink():
         _apply_policy_file(policy, override_path)
         if policy.invalid_reason:
             log.error("spend policy: %s; all spends will be denied", policy.invalid_reason)
