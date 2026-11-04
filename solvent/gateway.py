@@ -9,7 +9,7 @@ from collections.abc import Callable
 from . import ops, pairing
 from .agent import Solvent
 from .chat import format_job_notification, handle_message
-from .memory import SessionMemory
+from .memory import SessionMemory, telegram_session_key
 from .money import dollars_to_cents
 from .rate_limit import RateLimiter
 from .treasury import fmt
@@ -60,12 +60,13 @@ class Gateway:
         text: str,
         *,
         user_label: str | None = None,
+        chat_id: str | None = None,
+        chat_type: str | None = None,
     ) -> str:
         user_key = f"{channel}:{external_id}"
         if _rate_limiter.is_banned(user_key):
             return "You are temporarily blocked from messaging this bot."
 
-        session = self.memory.get_or_create(channel, external_id, user_label)
         stripped = text.strip()
         is_command = stripped.startswith("/")
         command = stripped.split(maxsplit=1)[0].lower() if is_command else ""
@@ -82,14 +83,35 @@ class Gateway:
                 )
             return "Pairing required. Send /start to get a pairing code."
 
+        # Adapter metadata comes from the authenticated Telegram update. Missing
+        # metadata never grants operator trust, including for older callers.
+        scope_type = chat_type if chat_id is not None and chat_type else "unknown"
+        telegram_operator = channel == "telegram" and ops.is_operator(
+            channel, external_id, chat_type=scope_type
+        )
+        session_key = external_id
+        if channel == "telegram":
+            session_key = telegram_session_key(
+                external_id, str(chat_id) if chat_id is not None else external_id,
+                scope_type, operator=telegram_operator,
+            )
+        session = self.memory.get_or_create(channel, session_key, user_label)
+
         if is_command:
-            return self._handle_command(channel, external_id, text.strip(), session)
+            return self._handle_command(
+                channel, external_id, text.strip(), session, chat_type=scope_type,
+                telegram_operator=telegram_operator,
+            )
 
         return handle_message(
-            session["id"], text, agent=self.agent, memory=self.memory, channel=channel
+            session["id"], text, agent=self.agent, memory=self.memory, channel=channel,
+            telegram_operator=telegram_operator,
         )
 
-    def _handle_command(self, channel: str, external_id: str, text: str, session: dict) -> str:
+    def _handle_command(
+        self, channel: str, external_id: str, text: str, session: dict, *,
+        chat_type: str = "unknown", telegram_operator: bool = False,
+    ) -> str:
         parts = text.split(maxsplit=1)
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
@@ -97,23 +119,25 @@ class Gateway:
         if cmd in ("/help", "/start"):
             lines = [
                 "SOLVENT research business bot.",
-                "/status — treasury snapshot",
                 "/jobs — recent jobs",
-                "/pair qr — generate OpenClaw pairing QR code",
                 "/quote <topic> | <budget_usd> — margin preview",
             ]
             # The business's own numbers are only listed to whoever may read them.
-            if ops.is_operator(channel, external_id):
-                lines += ["", "Operator:"] + ops.help_lines()
+            if ops.is_operator(channel, external_id, chat_type=chat_type):
+                lines += ["", "Operator:", "/status — treasury snapshot",
+                          "/pair qr — generate OpenClaw pairing QR code"] + ops.help_lines()
             lines += ["", "Or chat naturally to commission a research brief."]
             return "\n".join(lines)
 
         ops_answer = ops.handle(
-            cmd, channel=channel, external_id=external_id, treasury=self.agent.t
+            cmd, channel=channel, external_id=external_id, treasury=self.agent.t,
+            chat_type=chat_type,
         )
         if ops_answer is not None:
             return ops_answer
         if cmd == "/status":
+            if not ops.is_operator(channel, external_id, chat_type=chat_type):
+                return "That command is operator-only."
             s = self.agent.t.snapshot()
             return (
                 f"Balance: {fmt(s['balance_cents'])}\n"
@@ -135,6 +159,8 @@ class Gateway:
                     "Pairing QR codes are not available over an open Telegram DM policy. "
                     "Use /pair qr from the dashboard chat, or set SOLVENT_TELEGRAM_DM_POLICY=pairing."
                 )
+            if not ops.is_operator(channel, external_id, chat_type=chat_type):
+                return "That command is operator-only."
             token = self.agent.t.create_openclaw_token(ttl=600)
             from . import qr as _qr
 
@@ -167,6 +193,7 @@ class Gateway:
                 agent=self.agent,
                 memory=self.memory,
                 channel=channel,
+                telegram_operator=telegram_operator,
             )
 
         return f"Unknown command {cmd[:32]}. Send /help for the list of commands."

@@ -239,7 +239,8 @@ def build_system_prompt(
     """
     Compose the chat system prompt (Hermes prompt assembly + OpenClaw workspace).
 
-    session_kind: ``main`` (private DM) loads MEMORY.md; ``shared`` skips it.
+    Only ``main`` (authorized operator context) loads private business state,
+    long-term memory, and daily notes. Customer and group sessions use ``shared``.
     """
     ensure_workspace()
     parts: list[str] = []
@@ -261,6 +262,8 @@ def build_system_prompt(
 
     context_sections: list[str] = []
     for name in CONTEXT_FILES:
+        if name == "BRAIN.md" and session_kind != "main":
+            continue
         body = load_context_file(name)
         if body:
             context_sections.append(f"## {name}\n{body}")
@@ -279,9 +282,10 @@ def build_system_prompt(
         if mem:
             add_block(f"# Long-term Memory\n\n{mem}")
 
-    daily = load_daily_memory()
-    if daily:
-        add_block(f"# Recent Daily Notes\n\n{daily}")
+    if include_memory and session_kind == "main":
+        daily = load_daily_memory()
+        if daily:
+            add_block(f"# Recent Daily Notes\n\n{daily}")
 
     skills = load_skills()
     if skills:
@@ -290,9 +294,10 @@ def build_system_prompt(
     return "\n\n".join(parts)
 
 
-def build_chat_system_prompt(channel: str = "cli") -> str:
-    """Gateway/chat entry — authenticated private channels get MEMORY.md."""
-    session_kind = "main" if channel in ("cli", "telegram", "interactive") else "shared"
+def build_chat_system_prompt(channel: str = "cli", *, telegram_operator: bool = False) -> str:
+    """Remote trust must be supplied by the gateway, never inferred from transport."""
+    private = channel in ("cli", "interactive") or (channel == "telegram" and telegram_operator)
+    session_kind = "main" if private else "shared"
     return build_system_prompt(session_kind=session_kind)
 
 

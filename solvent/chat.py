@@ -33,11 +33,15 @@ def _new_chat_job_id(agent: Solvent) -> str:
     return "T" + uuid.uuid4().hex
 
 
-def _make_executor(agent: Solvent, session_id: str, live_search: bool):
+def _make_executor(
+    agent: Solvent, session_id: str, live_search: bool, *, operator: bool = False
+):
     ctx = tools.ToolContext()
 
     def run(name: str, args: dict) -> str:
         if name == "treasury_status":
+            if not operator:
+                return json.dumps({"error": "That tool is operator-only."})
             s = agent.t.snapshot()
             return json.dumps(
                 {
@@ -189,12 +193,13 @@ def handle_message(
     agent: Solvent | None = None,
     memory: SessionMemory | None = None,
     channel: str = "cli",
+    telegram_operator: bool = False,
 ) -> str:
     """Run one conversational turn; returns assistant reply text."""
     ensure_workspace()
     agent = agent or Solvent(seed_cents=10_000, fresh=False, sync_payment=False)
     memory = memory or SessionMemory(agent.t)
-    system_prompt = build_chat_system_prompt(channel)
+    system_prompt = build_chat_system_prompt(channel, telegram_operator=telegram_operator)
 
     try:
         text = sanitise_prompt_input(text, field_name="message", max_len=4000)
@@ -211,7 +216,12 @@ def handle_message(
     )
 
     catalog = {**tools.TOOL_REGISTRY, **tools.BUSINESS_TOOL_REGISTRY}
-    executor = _make_executor(agent, session_id, live_search)
+    operator = channel in ("cli", "interactive", "dashboard") or (
+        channel == "telegram" and telegram_operator
+    )
+    if not operator:
+        catalog.pop("treasury_status", None)
+    executor = _make_executor(agent, session_id, live_search, operator=operator)
     tool_lines = "\n".join(
         f"- {name}: {meta.get('description', '')}" for name, meta in catalog.items()
     )

@@ -33,7 +33,7 @@ class TestGateway(unittest.TestCase):
     @patch.dict(os.environ, {"SOLVENT_TELEGRAM_DM_POLICY": "open"})
     def test_handle_inbound_status_command(self):
         reply = self.gw.handle_inbound("telegram", "12345", "/status")
-        self.assertIn("Balance", reply)
+        self.assertIn("operator-only", reply)
 
     @patch.dict(os.environ, {"SOLVENT_TELEGRAM_DM_POLICY": "pairing"})
     def test_pairing_required(self):

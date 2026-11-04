@@ -87,7 +87,7 @@ Free-form chat also works — Nemotron uses business tools (`quote_brief`, `subm
 Chat loads `.solvent/workspace/` each turn:
 
 - **SOUL.md** — identity and tone (Hermes slot #1)
-- **BRAIN.md** — active pipeline / what needs attention now
+- **BRAIN.md** — active pipeline / what needs attention now (operator private chats only)
 - **AGENTS.md** — operating rules
 
 ```bash
@@ -101,6 +101,18 @@ See **[WORKSPACE.md](WORKSPACE.md)** for the full file map.
 
 - Bot token only in environment variables
 - Default DM policy requires pairing before chat
+- Private workspace context (`BRAIN.md`, `MEMORY.md`, and daily notes) requires
+  a private chat with a numeric user ID in `SOLVENT_OPERATOR_IDS` (comma-separated).
+  Customers and all groups receive shared prompts, even when an operator is speaking.
+- Histories and pending commissions are isolated by user ID, chat ID, chat type,
+  and operator/customer status. Usernames do not grant operator access. Pairing
+  and rate limits continue to apply to the user across chats.
+- The scoped-session upgrade starts fresh Telegram histories and pending
+  commissions; old histories may contain private context and are not imported.
+  Existing jobs remain stored under their old session ownership and will not
+  appear in the new chat's `/jobs` or job tools. Existing job notifications still
+  deliver to their original DM destination. New notifications use the originating
+  chat, including a group when commissioned there.
 - Rate limit: 30 messages/user/hour
 - `submit_brief` runs the same margin gate + checkout stages as the CLI agent
 - Live Stripe keys (`sk_live_*`) are refused

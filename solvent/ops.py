@@ -39,8 +39,10 @@ def operator_ids() -> frozenset[str]:
     return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
 
-def is_operator(channel: str, external_id: str) -> bool:
+def is_operator(channel: str, external_id: str, *, chat_type: str = "private") -> bool:
     """Whether this sender may see the business's own numbers."""
+    if channel == "telegram" and chat_type != "private":
+        return False
     if channel in OPERATOR_CHANNELS:
         return True
     return str(external_id) in operator_ids()
@@ -226,6 +228,7 @@ def handle(
     channel: str,
     external_id: str,
     treasury: Treasury | None = None,
+    chat_type: str = "private",
 ) -> str | None:
     """Answer an ops command, or ``None`` if it is not one.
 
@@ -236,7 +239,7 @@ def handle(
     entry = COMMANDS.get(command.strip().lower())
     if entry is None:
         return None
-    if not is_operator(channel, external_id):
+    if not is_operator(channel, external_id, chat_type=chat_type):
         return "That command is operator-only."
     _blurb, report = entry
     try:

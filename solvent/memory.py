@@ -2,7 +2,31 @@
 
 from __future__ import annotations
 
+import json
+
 from .treasury import Treasury
+
+
+def telegram_session_key(
+    user_id: str, chat_id: str, chat_type: str, *, operator: bool
+) -> str:
+    """Versioned scope avoids reusing histories populated with private memory.
+
+    Include trust so revoking operator access cannot expose an old private reply.
+    Pairing and rate limiting still use the authenticated user ID, not this key.
+    """
+    return "v2:" + json.dumps(
+        ["operator" if operator else "customer", chat_type, chat_id, user_id],
+        separators=(",", ":"),
+    )
+
+
+def telegram_chat_destination(external_id: str) -> str:
+    """Resolve a scoped session's reply destination; retain legacy DM delivery."""
+    if external_id.startswith("v2:"):
+        _role, _kind, chat_id, _user_id = json.loads(external_id[3:])
+        return chat_id
+    return external_id
 
 
 class SessionMemory:
