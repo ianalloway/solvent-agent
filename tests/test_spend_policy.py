@@ -157,8 +157,8 @@ def test_broken_override_file_never_widens_the_policy(tmp_path, content):
 
 
 
-def test_load_spend_policy_ignores_negative_vendor_overrides(tmp_path):
-    """Negative per-vendor caps are malformed, not a way to break the policy."""
+def test_load_spend_policy_negative_vendor_override_fails_closed(tmp_path):
+    """A negative per-vendor cap is malformed: the policy is invalid and spends deny."""
     path = tmp_path / "spend_policy.json"
     path.write_text(
         json.dumps(
@@ -172,9 +172,8 @@ def test_load_spend_policy_ignores_negative_vendor_overrides(tmp_path):
         encoding="utf-8",
     )
     policy = load_spend_policy(path)
-    assert "nvidia-nemotron" not in policy.vendor_daily_overrides
-    assert policy.vendor_daily_overrides["web-search-api"] == 500
-    assert policy.vendor_daily_cap_cents("nvidia-nemotron") == policy.per_vendor_daily_cents
+    assert policy.invalid_reason and "vendor_daily_overrides" in policy.invalid_reason
+    assert policy.vendor_daily_overrides == {}
 
 def test_gather_and_format_report_the_live_policy(tmp_path):
     treasury = Treasury(path=tmp_path / "ledger.db")

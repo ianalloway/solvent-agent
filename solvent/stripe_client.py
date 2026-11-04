@@ -20,6 +20,7 @@ import os
 import time
 import uuid
 
+from .money import require_cents
 from .paths import config_path
 from .security import (
     WebhookAuthError,
@@ -128,7 +129,7 @@ class StripeClient:
 
     def _get_or_create_price(self, amount_cents: int) -> str:
         catalog = self._load_catalog()
-        key = str(amount_cents)
+        key = str(require_cents(amount_cents))
         prices = catalog.setdefault("prices", {})
         if prices.get(key):
             return prices[key]
@@ -268,6 +269,7 @@ class StripeClient:
         cancel_url: str,
     ) -> dict:
         """Create a Stripe Checkout Session (primary) or simulate one."""
+        amount_cents = require_cents(amount_cents)
         try:
             customer_email = validate_email(customer_email)
         except Exception:

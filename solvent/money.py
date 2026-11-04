@@ -34,3 +34,16 @@ def dollars_to_cents(amount: int | float | str | Decimal) -> int:
     if not value.is_finite():
         raise ValueError(f"not a finite dollar amount: {amount!r}")
     return int((value * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+def require_cents(amount_cents: object, *, positive: bool = True) -> int:
+    """Return *amount_cents* if it is integer cents, else raise ValueError.
+
+    Guards boundaries (Stripe, ledger) against a dollar float such as ``19.99``
+    or a string being passed where integer cents are expected.
+    """
+    if isinstance(amount_cents, bool) or not isinstance(amount_cents, int):
+        raise ValueError(f"amount must be integer cents, got {amount_cents!r}")
+    if positive and amount_cents <= 0:
+        raise ValueError(f"amount must be positive cents, got {amount_cents}")
+    return amount_cents
