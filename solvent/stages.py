@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import json
 import os
 import time
@@ -53,14 +54,17 @@ def _coerce_job(job: Any) -> tuple[dict | None, str | None, str | None]:
         job = dict(job)
         sanitise_job(job)
     except SOLVENTSecurityError as exc:
-        return None, f"security violation: {exc}", str(exc)
+        logging.getLogger(__name__).warning("job failed security checks: %s", exc)
+        # Client-facing reason stays generic; details stay in the server log.
+        return None, "security violation", "security violation"
 
     # A job may name a product instead of pricing itself; the product fills in
     # the scope and list price, and everything below validates it as normal.
     try:
         job = apply_product(job)
     except UnknownProduct as exc:
-        return None, str(exc), str(exc)
+        logging.getLogger(__name__).info("job named unknown product: %s", exc)
+        return None, "unknown product", "unknown product"
 
     topic = job.get("topic")
     if not topic or not isinstance(topic, str) or not topic.strip():

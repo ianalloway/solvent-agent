@@ -28,6 +28,33 @@ def is_safe_job_id(job_id: str) -> bool:
     return bool(_SAFE_JOB_ID.fullmatch(job_id))
 
 
+_BRIEF_SUFFIXES = frozenset({".md", ".html", ".pdf"})
+
+
+def resolve_brief_path(reports_dir: Path, job_id: str, suffix: str) -> Path:
+    """Resolve a brief file path that is guaranteed to stay under ``reports_dir``.
+
+    ``job_id`` must already pass :func:`is_safe_job_id`. The result is always a
+    resolved path under ``reports_dir``; callers should treat a raised
+    ``ValueError`` as a rejected path (map it to HTTP 400/403/404).
+    """
+    if suffix not in _BRIEF_SUFFIXES:
+        raise ValueError("unsupported brief suffix")
+    if not isinstance(job_id, str) or not is_safe_job_id(job_id):
+        raise ValueError("unsafe job_id")
+    # Basename-only: reject any accidental directory component even if the
+    # regex above is later loosened.
+    name = f"{job_id}{suffix}"
+    if Path(name).name != name:
+        raise ValueError("unsafe job_id")
+    base = reports_dir.resolve()
+    candidate = (base / name).resolve()
+    if not candidate.is_relative_to(base):
+        raise ValueError("brief path escapes reports directory")
+    return candidate
+
+
+
 def _delivery_secret() -> str:
     secret = os.environ.get("SOLVENT_DELIVERY_SECRET", "").strip()
     if len(secret) < 32 or secret in _PLACEHOLDER_DELIVERY_SECRETS:
