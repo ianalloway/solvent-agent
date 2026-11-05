@@ -118,7 +118,7 @@ def test_rendered_inline_scripts_parse_as_javascript(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard, "OUT", tmp_path / "treasury_dashboard.html")
     page = dashboard.render(_snapshot(), []).read_text()
 
-    scripts = re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S | re.I)
+    scripts = re.findall(r"<script\b[^>]*>(.*?)</script\s*>", page, re.S | re.I)
     assert scripts
     for index, script in enumerate(scripts):
         path = tmp_path / f"inline-{index}.js"
