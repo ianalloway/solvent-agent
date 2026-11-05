@@ -26,8 +26,8 @@ def test_sweep_covers_every_cell_of_the_grid():
     }
 
 
-def test_cells_are_compared_on_identical_demand():
-    """Common random numbers: the same cell twice gives the same answer."""
+def test_repeating_the_same_sweep_is_deterministic():
+    """Repeatability is separate from matching demand across different cells."""
     first = sweep((35.0,), (1_500,), **SMALL)
     second = sweep((35.0,), (1_500,), **SMALL)
     assert first == second
