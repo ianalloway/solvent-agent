@@ -1,0 +1,64 @@
+# Release Drafter v7 config. Changes are sorted by conventional-commit PR title
+# (feat:, fix:, docs: ...) or by label; the first matching category wins.
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+change-template: '- $TITLE (#$NUMBER) $AUTHORS'
+change-title-escapes: '\<*_&'
+categories:
+  - type: 'pre-exclude'
+    when:
+      label: 'skip-changelog'
+  - title: '💥 Breaking changes'
+    exclusive: true
+    semver-increment: 'major'
+    when:
+      - conventional:
+          breaking: true
+      - labels: ['breaking', 'major']
+  - title: '🚀 Features'
+    exclusive: true
+    semver-increment: 'minor'
+    when:
+      - conventional:
+          type: 'feat'
+      - labels: ['enhancement', 'feature']
+  - title: '🔒 Security'
+    exclusive: true
+    when:
+      - conventional:
+          type: 'security'
+      - label: 'security'
+  - title: '🐛 Bug fixes'
+    exclusive: true
+    when:
+      - conventional:
+          types: ['fix', 'perf']
+      - labels: ['bug', 'fix']
+  - title: '⬆️ Dependencies'
+    exclusive: true
+    collapse-after: 5
+    when:
+      - conventional:
+          type: 'chore'
+          scope: 'deps'
+      - labels: ['dependencies', 'github_actions', 'python']
+  - title: '📝 Documentation'
+    exclusive: true
+    when:
+      - conventional:
+          type: 'docs'
+      - label: 'documentation'
+  - title: '🧰 Maintenance'
+    exclusive: true
+    when:
+      - conventional:
+          types: ['chore', 'ci', 'build', 'refactor', 'test', 'style']
+  - title: 'Other changes'
+  - type: 'version-resolver'
+    semver-increment: 'patch'
+template: |
+  ## What's changed
+
+  $CHANGES
+
+  **Full changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
