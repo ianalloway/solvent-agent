@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 
-from . import nemotron, pdf, quality
+from . import nemotron, pdf, quality, tools
 from .paths import reports_dir
 from .pricing import get_resource_costs
 from .resource_budget import (
@@ -117,10 +117,15 @@ def _fulfill(job: dict) -> dict:
                 (text, score), (retry_text, quality.score_brief(retry_text, topic))
             )
             # Bill both drafts' tools, irrespective of which draft ships.
-            tool_ctx.web_search_calls += retry_ctx.web_search_calls
-            tool_ctx.market_data_calls += retry_ctx.market_data_calls
-            if hasattr(tool_ctx, "calls") and hasattr(retry_ctx, "calls"):
-                tool_ctx.calls.extend(retry_ctx.calls)
+            tool_ctx = tools.ToolContext(
+                calls=getattr(tool_ctx, "calls", []) + getattr(retry_ctx, "calls", []),
+                market_data_calls=tool_ctx.market_data_calls + retry_ctx.market_data_calls,
+                web_search_calls=tool_ctx.web_search_calls + retry_ctx.web_search_calls,
+                budget_exhausted=(
+                    getattr(tool_ctx, "budget_exhausted", False)
+                    or getattr(retry_ctx, "budget_exhausted", False)
+                ),
+            )
             usage = {
                 **{
                     key: (usage.get(key, 0) or 0) + (retry_usage.get(key, 0) or 0)
@@ -199,5 +204,5 @@ def reconcile_cogs(quote, result: dict) -> dict:
         "cost_warning": warning,
         "cost_drift_direction": direction,
         "fulfillment_seconds": result.get("fulfillment_seconds", 0),
-        "tool_calls": (tc.total_calls if (tc := result.get("tool_ctx")) else 0),
+        "tool_calls": (tc.total_calls if (tc := result.get("tool_ctx")) else result.get("tool_calls", 0)),
     }

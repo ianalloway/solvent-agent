@@ -7,6 +7,8 @@ from unittest.mock import Mock
 import pytest
 
 from solvent import llm_backend, nemotron, pricing, service, tools
+from solvent import spending
+from solvent.guardrails import Guardrails
 from solvent.resource_budget import (
     BudgetExceeded,
     ResourceBudget,
@@ -25,6 +27,10 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.delenv("SOLVENT_LLM_MODEL", raising=False)
     monkeypatch.setattr(nemotron, "_force_offline", False)
     monkeypatch.setattr(service, "OUTPUT_DIR", tmp_path / "reports")
+    treasury = Treasury(tmp_path / "authorization.db")
+    treasury.seed(100_000)
+    with spending.scope(Guardrails(treasury), "budget-test", 10_000):
+        yield
 
 
 def contract(**scope):
@@ -38,7 +44,7 @@ def response(text="# Brief\nToo short."):
     reply.read.return_value = json.dumps(
         {
             "choices": [{"message": {"content": text}}],
-            "usage": {"total_tokens": 10},
+            "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
         }
     ).encode()
     return reply

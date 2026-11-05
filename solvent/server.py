@@ -611,12 +611,22 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             "job_id and block_hash",
         )
 
+    def _brief_is_published(job_id: str) -> bool:
+        stage = agent.t.get_stage(f"publish:{job_id}")
+        if stage and stage["status"] == "completed":
+            return True
+        # Older successfully booked jobs predate the publication stage. Failed
+        # or in-progress legacy jobs are deliberately not grandfathered in.
+        return (agent.t.get_job(job_id) or {}).get("status") == "completed"
+
     @app.get("/briefs/{job_id}")
     def get_brief(job_id: str, token: str = "", format: str = ""):
         if not is_safe_job_id(job_id):
             raise HTTPException(404, "brief not found")
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
+        if not _brief_is_published(job_id):
+            raise HTTPException(404, "brief not ready")
         reports_dir = reports_dir_fn().resolve()
 
         if format == "pdf":
@@ -672,6 +682,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             raise HTTPException(404, "brief not found")
         if not _is_local_request(request) and not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
+        if not _is_local_request(request) and not _brief_is_published(job_id):
+            raise HTTPException(404, "brief not ready")
         reports_dir = reports_dir_fn().resolve()
 
         path_html = (reports_dir / f"{job_id}.html").resolve()

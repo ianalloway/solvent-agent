@@ -454,6 +454,8 @@ def test_proxy_headers_close_the_local_only_routes(make_client, brief):
         assert client.get("/api/receipt/anything", headers=headers).status_code == 404  # no such job: not a leak
     # A valid delivery token still works through the proxy.
     token = make_delivery_token(brief)
+    assert client.get(f"/api/briefs/{brief}?token={token}", headers=PROXY).status_code == 404
+    client.app.state.agent.t.complete_stage(brief, "publish", f"publish:{brief}", {})
     assert client.get(f"/api/briefs/{brief}?token={token}", headers=PROXY).status_code == 200
 
 

@@ -129,6 +129,15 @@ class Treasury:
             self._ensure_column(conn, "ledger", "stripe_link_id", "TEXT")
             self._ensure_column(conn, "ledger", "payment_ref", "TEXT")
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS spend_reservations (
+                    id TEXT PRIMARY KEY,
+                    job_id TEXT,
+                    vendor TEXT NOT NULL,
+                    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+                    memo TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
                     CREATE TABLE IF NOT EXISTS jobs (
                         id TEXT PRIMARY KEY,
                         topic TEXT,
@@ -346,6 +355,7 @@ class Treasury:
         """Clear the ledger and jobs table."""
         with self.lock(), self._conn() as conn, conn:
             conn.execute("DELETE FROM ledger")
+            conn.execute("DELETE FROM spend_reservations")
             conn.execute("DELETE FROM jobs")
             conn.execute("DELETE FROM job_stages")
             conn.execute("DELETE FROM job_metrics")
@@ -409,6 +419,46 @@ class Treasury:
 
     def spend(self, amount_cents: int, memo: str, **kw) -> LedgerEntry:
         return self.record("expense", amount_cents, memo, **kw)
+
+    def reserved_spends(self) -> list[LedgerEntry]:
+        """Unresolved liabilities count against every budget until reconciled.
+
+        Do not age these out: a worker can die after the provider accepted a
+        request but before recording its usage. Reclaiming that reservation
+        automatically would authorize the same money twice.
+        """
+        with self.lock(), self._conn() as conn:
+            return [LedgerEntry(kind="expense", **dict(row)) for row in conn.execute(
+                "SELECT id, job_id, vendor, amount_cents, memo FROM spend_reservations"
+            )]
+
+    def reserve_spend(self, amount: int, vendor: str, memo: str, job_id: str | None) -> str:
+        """Insert a liability; callers must hold lock() across policy evaluation."""
+        reservation_id = "rs_" + uuid.uuid4().hex
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute(
+                "INSERT INTO spend_reservations VALUES (?, ?, ?, ?, ?)",
+                (reservation_id, job_id, vendor, amount, memo),
+            )
+        return reservation_id
+
+    def settle_spend(self, reservation_id: str, actual: int) -> None:
+        """Atomically replace a reservation with incurred cost, at most once."""
+        with self.lock(), self._conn() as conn, conn:
+            row = conn.execute(
+                "SELECT * FROM spend_reservations WHERE id = ?", (reservation_id,)
+            ).fetchone()
+            if row is None:
+                return
+            if type(actual) is not int or not 0 <= actual <= row["amount_cents"]:
+                raise ValueError("actual spend exceeds reservation")
+            if actual:
+                conn.execute(
+                    "INSERT INTO ledger (id, kind, amount_cents, memo, job_id, vendor, ts) "
+                    "VALUES (?, 'expense', ?, ?, ?, ?, ?)",
+                    (reservation_id, actual, row["memo"], row["job_id"], row["vendor"], time.time()),
+                )
+            conn.execute("DELETE FROM spend_reservations WHERE id = ?", (reservation_id,))
 
     # ---- reads -------------------------------------------------------
     def balance_cents(self) -> int:

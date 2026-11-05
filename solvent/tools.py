@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
+from . import spending
 from .resource_budget import BudgetExceeded, current_budget
 
 MAX_TOOL_ROUNDS = 8
@@ -97,6 +98,7 @@ def _stub_web_search(query: str) -> str:
     )
 
 
+@spending.metered_tool("web-search-api", "web_search_call")
 def _live_web_search(query: str) -> str:
     try:
         url = "https://api.duckduckgo.com/?" + urllib.parse.urlencode(
@@ -127,6 +129,7 @@ def _stub_market_data(symbol: str) -> str:
     )
 
 
+@spending.metered_tool("market-data-api", "market_data_call")
 def _live_market_data(symbol: str) -> str:
     """Keyless live quote via Stooq's CSV endpoint; falls back to the stub."""
     sym = symbol.upper()[:12]

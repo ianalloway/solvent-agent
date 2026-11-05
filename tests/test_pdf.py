@@ -252,6 +252,8 @@ def test_the_hosted_route_serves_the_pdf(tmp_path, monkeypatch):
     client = TestClient(create_app())
     token = make_delivery_token("J1")
 
+    assert client.get(f"/briefs/J1?token={token}&format=pdf").status_code == 404
+    client.app.state.agent.t.complete_stage("J1", "publish", "publish:J1", {})
     served = client.get(f"/briefs/J1?token={token}&format=pdf")
     assert served.status_code == 200
     assert served.headers["content-type"] == "application/pdf"

@@ -337,6 +337,23 @@ class Guardrails:
         self.policy: SpendPolicy = policy or load_spend_policy()
         self.approver: Approver = approver or hold_for_approval
 
+    def _policy_entries(self):
+        # Reservations are liabilities even before a provider returns usage.
+        reserved = getattr(self.t, "reserved_spends", lambda: [])()
+        return [*self.t.entries, *reserved]
+
+    def reserve(self, amount: int, vendor: str, memo: str, *, job_id=None, margin=None) -> str:
+        """Authorize and durably reserve a request's maximum cost atomically."""
+        with self.t.lock():
+            decision = self.evaluate(amount, vendor, margin, job_id=job_id)
+            if not decision.allowed:
+                if job_id is not None:
+                    self.t.upsert_metrics(
+                        job_id, block_rule=decision.rule, block_reason=decision.reason
+                    )
+                raise GuardrailError(decision.reason)
+            return self.t.reserve_spend(amount, vendor, memo, job_id)
+
     def _job_spent(self, job_id: str | None) -> int:
         """All operating spend ever attributed to one job (refunds excluded).
 
@@ -345,7 +362,7 @@ class Guardrails:
         """
         return sum(
             e.amount_cents
-            for e in self.t.entries
+            for e in self._policy_entries()
             if e.kind == "expense" and e.job_id == job_id and e.vendor != REFUND_VENDOR
         )
 
@@ -367,7 +384,7 @@ class Guardrails:
         cutoff = time.time() - 86_400
         return sum(
             e.amount_cents
-            for e in self.t.entries
+            for e in self._policy_entries()
             if e.kind == "expense"
             and e.ts >= cutoff
             and (e.vendor == vendor if vendor is not None else e.vendor != REFUND_VENDOR)
@@ -378,7 +395,7 @@ class Guardrails:
         cutoff = time.time() - 3_600
         return sum(
             1
-            for e in self.t.entries
+            for e in self._policy_entries()
             if e.kind == "expense" and e.ts >= cutoff and e.vendor != REFUND_VENDOR
         )
 
@@ -449,6 +466,8 @@ class Guardrails:
             for v in (spent_24h, vendor_spent_24h, txns_last_hour, balance, job_spent):
                 if isinstance(v, bool) or not isinstance(v, int):
                     raise TypeError(f"non-integer counter {v!r}")
+            reserved = getattr(self.t, "reserved_spends", lambda: [])()
+            balance -= sum(e.amount_cents for e in reserved)
         except Exception as exc:  # fail closed on any state/counter failure
             return Decision(
                 False,

@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 
+MAX_COMPLETION_TOKENS = 1200
+
 
 class BudgetExceeded(RuntimeError):
     """The quoted allowance cannot fund another operation."""
@@ -102,8 +104,8 @@ class ResourceBudget:
         # bytes. Reserve a further 256 tokens for the two-message chat template.
         # Do not use the display-only len(text)/4 estimate for admission.
         prompt_bound = len(system.encode("utf-8")) + len(user.encode("utf-8")) + 256
-        self.reserve(tokens=prompt_bound + 1200)
-        return 1200
+        self.reserve(tokens=prompt_bound + MAX_COMPLETION_TOKENS)
+        return MAX_COMPLETION_TOKENS
 
 
 _active: ContextVar[ResourceBudget | None] = ContextVar("resource_budget", default=None)

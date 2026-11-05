@@ -149,7 +149,7 @@ A typical **offline demo** batch (illustrative numbers from the simulated run �
  │   STRIPE    │ ── Payment Link → poll/webhook until paid ──▶ + revenue
  └─────┬───────┘    (records cs_... + pi_... on ledger)
        ▼
- ┌─────────────┐   FULFIL
+ ┌─────────────┐   FULFIL (each live request authorized before I/O)
  │  NEMOTRON   │ ── Llama-3.1-Nemotron-Ultra produces the brief ──▶ resource usage
  └─────┬───────┘
        ▼
@@ -182,7 +182,8 @@ cost-calibration reports show how actual spending compares with that estimate.
 **Key design choices:**
 
 - **Structural profitability** — `pricing.py` computes unit cost before quoting. If margin < floor, the job never reaches Stripe.
-- **Spend policy** — `guardrails.py` enforces vendor allowlist, per-transaction cap, rolling 24h budget, minimum cash reserve, and no-negative-ROI rule.
+- **Spend policy** — `guardrails.py` enforces vendor allowlist, per-transaction cap, rolling 24h budget, minimum cash reserve, and no-negative-ROI rule. Live model and research-tool requests reserve their maximum modeled charge in SQLite before network I/O; retries and nested model calls each need authorization. Outstanding reservations count against shared and per-job budgets. Validated usage settles the charge atomically; a timeout is conservatively charged at the reserved maximum. Reservations left by a crashed worker remain held for reconciliation.
+- **Delivery authorization** — resource charges are booked before email or hosted publication. A checkout delivery token alone cannot retrieve an unfinished brief. Cached fulfillment retains resource charges for resume; legacy caches missing that accounting fail closed. Once a brief is published, delivery errors require review instead of an automatic refund. Successfully completed legacy jobs remain accessible.
 - **Offline-first** — without API keys the demo runs on deterministic stubs. Add `NVIDIA_API_KEY` + `STRIPE_API_KEY=sk_test_...` to unlock live inference and real Payment Links.
 - **Audit trail** — every `cs_...` checkout session ID and `pi_...` PaymentIntent ID is recorded on the ledger before fulfilment begins.
 
@@ -867,7 +868,8 @@ solvent/
   __main__.py      `python -m solvent` / `solvent` command dispatcher
   cli.py           demo / interactive CLI (`solvent` with no subcommand)
   agent.py         the orchestrator (earn → fulfil → spend → book)
-  stages.py        idempotent stage machine (quote→paid→fulfill→deliver→spend)
+  stages.py        idempotent stage machine (quote→paid→fulfill→spend→publish→deliver)
+  spending.py      durable authorization at live provider boundaries
   treasury.py      SQLite ledger / balance sheet
   pricing.py       the margin gate (+ counter-offers on a decline)
   quote_cmd.py     `solvent quote` — dry-run the margin gate

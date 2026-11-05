@@ -21,7 +21,7 @@ import os
 import urllib.error
 import urllib.request
 
-from .resource_budget import current_budget
+from . import spending
 
 log = logging.getLogger(__name__)
 
@@ -81,13 +81,12 @@ def describe() -> str:
     return f"{model()} @ {base_url()} (api key set: {key})"
 
 
+@spending.metered_model
 def complete(system: str, user: str) -> tuple[str, dict]:
     """One chat completion. Returns (text, usage). Raises LLMBackendError on any failure."""
     url = base_url() + "/chat/completions"
     if not url.startswith(("http://", "https://")):
         raise LLMBackendError("SOLVENT_LLM_BASE_URL must start with http:// or https://")
-    budget = current_budget()
-    max_tokens = budget.completion(system, user) if budget else 1200
     body = json.dumps(
         {
             "model": model(),
@@ -96,7 +95,7 @@ def complete(system: str, user: str) -> tuple[str, dict]:
                 {"role": "user", "content": user},
             ],
             "temperature": 0.4,
-            "max_tokens": max_tokens,
+            "max_tokens": spending.MAX_COMPLETION_TOKENS,
             "stream": False,
         }
     ).encode()
@@ -129,9 +128,9 @@ def complete(system: str, user: str) -> tuple[str, dict]:
     usage = data.get("usage") if isinstance(data, dict) else None
     if isinstance(usage, dict) and usage:
         return text, {
-            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-            "completion_tokens": int(usage.get("completion_tokens") or 0),
-            "total_tokens": int(usage.get("total_tokens") or 0),
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+            "total_tokens": usage.get("total_tokens"),
             "estimated": False,
         }
     return text, {}

@@ -12,7 +12,9 @@ _Hermes-style project instructions (architecture + conventions). Operator rules 
 
 ## Economic kernel
 
-Margin gate (`pricing.py`) → Stripe checkout → Nemotron fulfill → deliver → guardrailed spend → book.
+Margin gate (`pricing.py`) → Stripe checkout → authorized Nemotron fulfill → book resource charges → publish/deliver → book job.
+Live provider adapters reserve a conservative maximum cost before each request
+(`spending.py`); outstanding SQLite reservations count against spend guardrails.
 
 A decline carries a counter-offer (narrower scope at the same budget, else the
 lowest price clearing the floor). `backlog.py` ranks open work — paid jobs

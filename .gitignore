@@ -23,6 +23,7 @@ ENV/
 # Local data & databases
 data/solvent.db
 data/solvent.lock
+data/*.fulfill.lock
 data/ledger.lock
 data/ledger.json
 data/dashboard_status.json

@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import threading
 import time
+import tempfile
 import unittest
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 
 from solvent import llm_backend, nemotron
+from solvent import spending
+from solvent.guardrails import Guardrails
+from solvent.treasury import Treasury
 
 SECRET = "sk-test-SUPERSECRET-123"
 
@@ -97,6 +102,13 @@ class LLMBackendTest(unittest.TestCase):
         cls.catcher.server_close()
 
     def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        treasury = Treasury(Path(tmp.name) / "ledger.db")
+        treasury.seed(100_000)
+        authorization = spending.scope(Guardrails(treasury), "backend-test", 10_000)
+        authorization.__enter__()
+        self.addCleanup(authorization.__exit__, None, None, None)
         _Handler.mode = "ok"
         _Handler.seen = []
         _Handler.redirect_to = self.catcher_url

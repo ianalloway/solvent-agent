@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -9,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from . import delivery, service, tools
+from . import _filelock, delivery, service, spending, tools
 from .guardrails import GuardrailError, Guardrails
 from .intake import decline_reason, screen_job
 from .products import UnknownProduct, apply_product
@@ -615,16 +616,35 @@ class StageRunner:
         return result
 
     def _stage_fulfill_and_book(self, job: dict, q, paid: dict) -> dict:
+        # Serialize duplicate advancers without holding the treasury lock over
+        # provider I/O. Different jobs still reserve shared budgets atomically.
+        digest = hashlib.sha256(job["id"].encode()).hexdigest()
+        lock_path = self.t.path.with_name(self.t.path.name + "." + digest + ".fulfill.lock")
+        with lock_path.open("a") as handle:
+            _filelock.acquire(handle, timeout=60.0)
+            try:
+                row = self.t.get_job(job["id"]) or {}
+                if row.get("status") == "completed" or self.t.job_refund_cents(job["id"]):
+                    return self._emit(stage="booked", job_id=job["id"], status=row.get("status"))
+                return self._fulfill_and_book_locked(job, q, paid)
+            finally:
+                _filelock.release(handle)
+
+    def _fulfill_and_book_locked(self, job: dict, q, paid: dict) -> dict:
         job_id = job["id"]
         payment_intent_id = paid.get("stripe_ref")
         paid_amount = paid.get("amount_cents", getattr(q, "price_cents", 0))
         self.t.upsert_job(job_id, "in_progress", current_stage="fulfill")
 
         try:
+            if any(e.job_id == job_id for e in self.t.reserved_spends()):
+                raise GuardrailError("unresolved provider charges; review required")
             fulfill_key = f"fulfill:{job_id}"
             fulfill_stage = self.t.get_stage(fulfill_key)
             if fulfill_stage and fulfill_stage["status"] == "completed":
                 result = json.loads(fulfill_stage["result_json"] or "{}")
+                if "resources_used" not in result:
+                    raise GuardrailError("cached fulfillment lacks resource accounting; review required")
             else:
                 if not q.resource_contract:
                     raise ValueError("legacy quote lacks a resource contract; requote before fulfilment")
@@ -635,7 +655,8 @@ class StageRunner:
                         job_id, limits, increments
                     ),
                 )
-                with using_budget(budget):
+                margin = getattr(q, "margin_cents", q.price_cents - q.est_cost_cents)
+                with using_budget(budget), spending.scope(self.guard, job_id, margin):
                     result = service.fulfill(job)
                 self.t.complete_stage(
                     job_id,
@@ -644,6 +665,11 @@ class StageRunner:
                     {
                         "deliverable_path": result["deliverable_path"],
                         "tokens": result["tokens"],
+                        "pdf_path": result.get("pdf_path"),
+                        "resources_used": result.get("resources_used", []),
+                        "actual_cost_cents": result.get("actual_cost_cents", 0),
+                        "fulfillment_seconds": result.get("fulfillment_seconds", 0),
+                        "tool_calls": getattr(result.get("tool_ctx"), "total_calls", 0),
                     },
                 )
                 _tctx = result.get("tool_ctx")
@@ -678,20 +704,74 @@ class StageRunner:
                     attempts=result.get("quality_attempts", 1),
                 )
 
-            cogs = service.reconcile_cogs(q, result)
-            self.t.upsert_metrics(
-                job_id,
-                est_cost_cents=cogs["est_cost_cents"],
-                actual_cost_cents=cogs["actual_cost_cents"],
-                est_margin_pct=cogs["est_margin_pct"],
-                actual_margin_pct=cogs["actual_margin_pct"],
-                margin_drift_cents=cogs["margin_drift_cents"],
-                fulfillment_seconds=cogs["fulfillment_seconds"],
-                tool_calls=cogs["tool_calls"],
-                refunded=0,
-            )
-            self._emit(stage="cogs_reconciled", job_id=job_id, **cogs)
+            job_margin = getattr(q, "margin_cents", q.price_cents - q.est_cost_cents)
+            resources = {}
+            for vendor, amount, memo in result.get("resources_used", []):
+                if type(amount) is not int or amount < 0:
+                    raise GuardrailError("invalid resource charge")
+                resources[vendor] = resources.get(vendor, 0) + amount
+            for vendor, expected in resources.items():
+                if expected <= 0:
+                    continue
+                memo = f"Resources for {job_id}: {vendor}"
+                spend_key = f"spend:{job_id}:{vendor}"
+                with self.t.lock():
+                    # Live adapters already booked their charges. Account only
+                    # for the remainder (offline/simulated resources), never
+                    # use the existence of one charge to skip an entire vendor.
+                    charges = [
+                        e for e in self.t.entries
+                        if e.kind == "expense" and e.job_id == job_id and e.vendor == vendor
+                    ]
+                    booked = sum(e.amount_cents for e in charges)
+                    # Quote resource usage is a conservative allowance. Live
+                    # adapters settle actual/ambiguous charges themselves; do
+                    # not pay the unused quote allowance a second time.
+                    if any(e.id.startswith("rs_") for e in charges):
+                        expected = booked
+                    amount = max(0, expected - booked)
+                    if amount:
+                        decision = self.guard.evaluate(
+                            amount, vendor, projected_job_margin_cents=job_margin, job_id=job_id
+                        )
+                        if not decision.allowed:
+                            self.t.upsert_metrics(
+                                job_id, block_rule=decision.rule, block_reason=decision.reason
+                            )
+                            self._emit(
+                                stage="spend_held" if decision.pending_approval else "spend_blocked",
+                                job_id=job_id, vendor=vendor, amount=amount, memo=memo,
+                                rule=decision.rule, reason=decision.reason,
+                            )
+                            raise GuardrailError(
+                                f"spend to {vendor} of {amount}c rejected by guardrails: "
+                                f"{decision.reason}"
+                            )
+                        pay = self.stripe.pay_vendor(vendor, amount, memo, job_id=job_id)
+                        self.t.spend(amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"])
+                        self._emit(stage="spend", job_id=job_id, vendor=vendor, amount=amount, memo=memo)
+                    self.t.complete_stage(
+                        job_id, "spend", spend_key, {"vendor": vendor, "amount": max(booked, expected)}
+                    )
 
+            # Include conservative charges for failed/unknown live attempts,
+            # which may not appear in the successful completion's usage report.
+            result["actual_cost_cents"] = sum(
+                e.amount_cents for e in self.t.entries
+                if e.kind == "expense" and e.job_id == job_id and e.vendor != REFUND_VENDOR
+            )
+            cogs = service.reconcile_cogs(q, result)
+            self.t.upsert_metrics(job_id, **{k: v for k, v in cogs.items() if k in (
+                "est_cost_cents", "actual_cost_cents", "est_margin_pct", "actual_margin_pct",
+                "margin_drift_cents", "fulfillment_seconds", "tool_calls"
+            )})
+            self.t.upsert_metrics(job_id, refunded=0)
+            self._emit(stage="cogs_reconciled", job_id=job_id, **cogs)
+            if any(e.job_id == job_id for e in self.t.reserved_spends()):
+                raise GuardrailError("unresolved provider charges; review required")
+            # Once published, delivery errors require review, never an automatic
+            # refund: the customer may already have retrieved the hosted brief.
+            self.t.complete_stage(job_id, "publish", f"publish:{job_id}", {})
             deliver_key = f"deliver:{job_id}"
             deliver_stage = self.t.get_stage(deliver_key)
             if not (deliver_stage and deliver_stage["status"] == "completed"):
@@ -713,66 +793,6 @@ class StageRunner:
                     current_stage="deliver",
                 )
                 self._emit(stage="delivered", job_id=job_id, url=hosted)
-
-            job_margin = getattr(q, "margin_cents", q.price_cents - q.est_cost_cents)
-            for vendor, amount, memo in result.get("resources_used", []):
-                if amount <= 0:
-                    continue
-                spend_key = f"spend:{job_id}:{vendor}"
-                existing = self.t.get_stage(spend_key)
-                if existing and existing["status"] == "completed":
-                    continue
-                # Crash recovery: spend may have landed in the ledger before
-                # complete_stage; treat an existing vendor expense as done.
-                if self.t.job_has_vendor_spend(job_id, vendor):
-                    self.t.complete_stage(
-                        job_id, "spend", spend_key, {"vendor": vendor, "amount": amount}
-                    )
-                    continue
-                with self.t.lock():
-                    # Re-check under the lock: a concurrent advancer may have paid
-                    # this vendor between the fast-path check above and here.
-                    locked = self.t.get_stage(spend_key)
-                    if locked and locked["status"] == "completed":
-                        continue
-                    if self.t.job_has_vendor_spend(job_id, vendor):
-                        self.t.complete_stage(
-                            job_id, "spend", spend_key, {"vendor": vendor, "amount": amount}
-                        )
-                        continue
-                    decision = self.guard.evaluate(
-                        amount, vendor, projected_job_margin_cents=job_margin, job_id=job_id
-                    )
-                    if not decision.allowed:
-                        self.t.upsert_metrics(
-                            job_id,
-                            block_rule=decision.rule,
-                            block_reason=decision.reason,
-                        )
-                        self._emit(
-                            stage="spend_held" if decision.pending_approval else "spend_blocked",
-                            job_id=job_id,
-                            vendor=vendor,
-                            amount=amount,
-                            memo=memo,
-                            rule=decision.rule,
-                            reason=decision.reason,
-                        )
-                        raise GuardrailError(
-                            f"spend to {vendor} of {amount}c rejected by guardrails: {decision.reason}"
-                        )
-                    pay = self.stripe.pay_vendor(vendor, amount, memo, job_id=job_id)
-                    self.t.spend(amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"])
-                    self.t.complete_stage(
-                        job_id, "spend", spend_key, {"vendor": vendor, "amount": amount}
-                    )
-                    self._emit(
-                        stage="spend",
-                        job_id=job_id,
-                        vendor=vendor,
-                        amount=amount,
-                        memo=memo,
-                    )
 
             self.t.upsert_job(job_id, "completed", current_stage="booked")
             pnl = self.t.job_pnl_cents(job_id)
@@ -798,7 +818,11 @@ class StageRunner:
             reason = str(e)
             refund_key = f"refund:{job_id}:{payment_intent_id}"
             refund_booked = False
-            if payment_intent_id:
+            published = self.t.get_stage(f"publish:{job_id}")
+            delivered = self.t.get_stage(f"deliver:{job_id}")
+            if published or delivered:
+                self._emit(stage="delivery_review_required", job_id=job_id, reason=reason)
+            if payment_intent_id and not (published or delivered):
                 try:
                     # Fast path: already refunded (stage or ledger).
                     with self.t.lock():

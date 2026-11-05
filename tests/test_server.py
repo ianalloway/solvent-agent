@@ -35,6 +35,9 @@ class TestHostedBriefs(unittest.TestCase):
 
         token = make_delivery_token("victim-job")
         response = client.get(f"/briefs/victim-job?token={token}")
+        self.assertEqual(response.status_code, 404)
+        client.app.state.agent.t.complete_stage("victim-job", "publish", "publish:victim-job", {})
+        response = client.get(f"/briefs/victim-job?token={token}")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Private brief", response.text)
 
@@ -59,6 +62,9 @@ class TestHostedBriefs(unittest.TestCase):
         self.assertEqual(remote_client.get("/api/briefs/victim-job").status_code, 403)
 
         token = make_delivery_token("victim-job")
+        remote_client.app.state.agent.t.complete_stage(
+            "victim-job", "publish", "publish:victim-job", {}
+        )
         response = remote_client.get(f"/api/briefs/victim-job?token={token}")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Private brief", response.text)

@@ -16,8 +16,9 @@ import time
 import urllib.error
 import urllib.request
 
-from . import llm_backend, tools
-from .resource_budget import BudgetExceeded, current_budget
+from . import llm_backend, spending, tools
+from .guardrails import GuardrailError
+from .resource_budget import BudgetExceeded
 
 MODEL = os.environ.get("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -65,11 +66,10 @@ def _estimate_tokens(system: str, user: str, text: str) -> dict:
     }
 
 
+@spending.metered_model
 def _live_request(system: str, user: str) -> dict:
     """Single HTTP round-trip to the Nemotron endpoint. Raises on failure."""
     key = os.environ["NVIDIA_API_KEY"]
-    budget = current_budget()
-    max_tokens = budget.completion(system, user) if budget else 1200
     body = json.dumps(
         {
             "model": MODEL,
@@ -78,7 +78,7 @@ def _live_request(system: str, user: str) -> dict:
                 {"role": "user", "content": user},
             ],
             "temperature": 0.4,
-            "max_tokens": max_tokens,
+            "max_tokens": spending.MAX_COMPLETION_TOKENS,
         }
     ).encode()
     req = urllib.request.Request(
@@ -165,7 +165,7 @@ def complete(system: str, user: str) -> tuple[str, dict]:
     if os.environ.get("NVIDIA_API_KEY"):
         try:
             return _live_complete(system, user)
-        except BudgetExceeded:
+        except (BudgetExceeded, GuardrailError):
             raise
         except Exception as e:
             text = _stub_complete(system, user) + f"\n\n<!-- live call failed: {e} -->"
