@@ -7,6 +7,7 @@ All notable changes to SOLVENT are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- CodeQL hardening: brief routes resolve paths with `resolve_brief_path` (reject escapes), chat/job APIs no longer echo exception text to clients, budget/email slot regexes are ReDoS-safe, and webhook replay returns a generic 500.
 - Spends fail closed: a missing/unreadable treasury state or spend-counter store denies with `state_unavailable`, and a present-but-unreadable or invalid `spend_policy.json` denies every spend with `policy_unavailable` instead of falling back to defaults. Fractional cents values (e.g. `job_budget_cents: 0.5`, which used to truncate to 0 and disable the envelope) are now invalid.
 - Non-integer amounts (dollar floats like `4.99`, strings, bools) are rejected with `amount_type` by the guardrails and by Stripe checkout/price creation.
 

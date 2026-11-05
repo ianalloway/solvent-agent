@@ -17,11 +17,16 @@ from .security import InputValidationError, PromptInjectionError, sanitise_promp
 from .treasury import fmt
 from .workspace import build_chat_system_prompt, ensure_workspace
 
-_EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
+# Bounded character classes and limited whitespace avoid polynomial backtracking
+# on long attacker-controlled chat input (CodeQL py/polynomial-redos).
+_EMAIL_RE = re.compile(
+    r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}"
+)
 _BUDGET_RE = re.compile(
-    r"(?:budget|pay|spend)\s*[:\\$]?\s*\$?(\d+(?:\.\d{1,2})?)",
+    r"(?:budget|pay|spend)(?:[ \t]{0,8})[:\\$]?(?:[ \t]{0,8})\$?(\d{1,9}(?:\.\d{1,2})?)",
     re.IGNORECASE,
 )
+_MAX_SLOT_SCAN_CHARS = 4000
 
 
 def _new_chat_job_id(agent: Solvent) -> str:
@@ -140,6 +145,8 @@ def _save_pending(agent: Solvent, session_id: str, pending: dict) -> None:
 def _merge_commission_slots(agent: Solvent, session_id: str, text: str) -> dict:
     """Accumulate topic/budget/email across turns for brief commissioning."""
     pending = _load_pending(agent, session_id)
+    if len(text) > _MAX_SLOT_SCAN_CHARS:
+        text = text[:_MAX_SLOT_SCAN_CHARS]
     lower = text.lower()
     if any(k in lower for k in ("brief", "commission", "research on", "report on")):
         pending.setdefault("intent", "commission")
@@ -204,7 +211,8 @@ def handle_message(
     try:
         text = sanitise_prompt_input(text, field_name="message", max_len=4000)
     except (PromptInjectionError, InputValidationError) as exc:
-        return f"Message rejected: {exc}"
+        logging.getLogger(__name__).warning("chat message rejected: %s", exc)
+        return "Message rejected."
 
     memory.append(session_id, "user", text)
     pending = _merge_commission_slots(agent, session_id, text)

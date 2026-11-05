@@ -105,9 +105,9 @@ def test_client_renders_job_fields_as_text_not_markup(tmp_path, monkeypatch):
 
 
 def test_rendered_inline_scripts_parse_as_javascript(tmp_path, monkeypatch):
-    import re
     import shutil
     import subprocess
+    from html.parser import HTMLParser
 
     import pytest
 
@@ -118,7 +118,30 @@ def test_rendered_inline_scripts_parse_as_javascript(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard, "OUT", tmp_path / "treasury_dashboard.html")
     page = dashboard.render(_snapshot(), []).read_text()
 
-    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+    # Parse with the stdlib HTML parser instead of a regex tag filter so this
+    # test is not itself a py/bad-tag-filter finding (it is not an XSS sanitizer).
+    class _ScriptCollector(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.scripts: list[str] = []
+            self._parts: list[str] | None = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag.lower() == "script":
+                self._parts = []
+
+        def handle_endtag(self, tag):
+            if tag.lower() == "script" and self._parts is not None:
+                self.scripts.append("".join(self._parts))
+                self._parts = None
+
+        def handle_data(self, data):
+            if self._parts is not None:
+                self._parts.append(data)
+
+    collector = _ScriptCollector()
+    collector.feed(page)
+    scripts = collector.scripts
     assert scripts
     for index, script in enumerate(scripts):
         path = tmp_path / f"inline-{index}.js"

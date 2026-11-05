@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import json
 import os
 import re
@@ -14,7 +15,7 @@ from contextlib import asynccontextmanager
 from . import __version__
 from .access import FailureLimiter, is_local_request, peer_host
 from .agent import Solvent
-from .delivery import is_safe_job_id, markdown_to_html, verify_delivery_token
+from .delivery import is_safe_job_id, markdown_to_html, resolve_brief_path, verify_delivery_token
 from .event_hub import EventHub
 from .gateway import Gateway, register_outbound
 from .money import dollars_to_cents
@@ -619,22 +620,29 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         # or in-progress legacy jobs are deliberately not grandfathered in.
         return (agent.t.get_job(job_id) or {}).get("status") == "completed"
 
+    def _resolved_brief(job_id: str, suffix: str):
+        """Resolve a brief path under reports_dir, or raise HTTP 400/403/404."""
+        try:
+            return resolve_brief_path(reports_dir_fn(), job_id, suffix)
+        except ValueError as exc:
+            msg = str(exc)
+            if "escapes" in msg:
+                raise HTTPException(403, "brief path rejected") from None
+            if "unsafe" in msg or "unsupported" in msg:
+                raise HTTPException(400, "invalid brief id") from None
+            raise HTTPException(404, "brief not found") from None
+
     @app.get("/briefs/{job_id}")
     def get_brief(job_id: str, token: str = "", format: str = ""):
         if not is_safe_job_id(job_id):
-            raise HTTPException(404, "brief not found")
+            raise HTTPException(400, "invalid brief id")
         if not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
         if not _brief_is_published(job_id):
             raise HTTPException(404, "brief not ready")
-        reports_dir = reports_dir_fn().resolve()
 
         if format == "pdf":
-            path_pdf = (reports_dir / f"{job_id}.pdf").resolve()
-            try:
-                path_pdf.relative_to(reports_dir)
-            except ValueError:
-                raise HTTPException(404, "brief not found") from None
+            path_pdf = _resolved_brief(job_id, ".pdf")
             if not path_pdf.is_file():
                 raise HTTPException(404, "brief not found")
             from starlette.responses import Response
@@ -645,21 +653,13 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 headers={"Content-Disposition": f'inline; filename="{job_id}.pdf"'},
             )
 
-        path_html = (reports_dir / f"{job_id}.html").resolve()
-        try:
-            path_html.relative_to(reports_dir)
-            if path_html.is_file():
-                return HTMLResponse(path_html.read_text(encoding="utf-8"))
-        except ValueError:
-            raise HTTPException(404, "brief not found") from None
+        path_html = _resolved_brief(job_id, ".html")
+        if path_html.is_file():
+            return HTMLResponse(path_html.read_text(encoding="utf-8"))
 
-        path_md = (reports_dir / f"{job_id}.md").resolve()
-        try:
-            path_md.relative_to(reports_dir)
-            if path_md.is_file():
-                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
-        except ValueError:
-            raise HTTPException(404, "brief not found") from None
+        path_md = _resolved_brief(job_id, ".md")
+        if path_md.is_file():
+            return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
 
         raise HTTPException(404, "brief not found")
 
@@ -679,28 +679,19 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     @app.get("/api/briefs/{job_id}")
     def get_brief_api(job_id: str, token: str = "", request: Request = None):  # type: ignore[assignment]
         if not is_safe_job_id(job_id):
-            raise HTTPException(404, "brief not found")
+            raise HTTPException(400, "invalid brief id")
         if not _is_local_request(request) and not verify_delivery_token(job_id, token):
             raise HTTPException(403, "invalid or expired delivery token")
         if not _is_local_request(request) and not _brief_is_published(job_id):
             raise HTTPException(404, "brief not ready")
-        reports_dir = reports_dir_fn().resolve()
 
-        path_html = (reports_dir / f"{job_id}.html").resolve()
-        try:
-            path_html.relative_to(reports_dir)
-            if path_html.is_file():
-                return HTMLResponse(path_html.read_text(encoding="utf-8"))
-        except ValueError:
-            raise HTTPException(404, "brief not found") from None
+        path_html = _resolved_brief(job_id, ".html")
+        if path_html.is_file():
+            return HTMLResponse(path_html.read_text(encoding="utf-8"))
 
-        path_md = (reports_dir / f"{job_id}.md").resolve()
-        try:
-            path_md.relative_to(reports_dir)
-            if path_md.is_file():
-                return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
-        except ValueError:
-            raise HTTPException(404, "brief not found") from None
+        path_md = _resolved_brief(job_id, ".md")
+        if path_md.is_file():
+            return HTMLResponse(markdown_to_html(path_md.read_text(encoding="utf-8")))
 
         raise HTTPException(404, "brief not found")
 
@@ -739,8 +730,11 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 _publish_status()
             webhook_log.mark_processed(event_id)
         except Exception as exc:
-            webhook_log.mark_error(event_id, str(exc))
-            raise HTTPException(500, str(exc)) from exc
+            logging.getLogger(__name__).exception(
+                "webhook replay failed for event_id=%s", event_id
+            )
+            webhook_log.mark_error(event_id, type(exc).__name__)
+            raise HTTPException(500, "webhook replay failed") from None
         return {"replayed": True, "event_id": event_id}
 
     return app
