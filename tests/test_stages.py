@@ -160,17 +160,9 @@ class TestFulfillmentRefundRails(unittest.TestCase):
                 "market_data_calls": 0,
                 "web_search_calls": 1,
             }
-            from solvent.pricing import Quote
+            from solvent.pricing import quote
 
-            q = Quote(
-                price_cents=5000,
-                est_cost_cents=100,
-                margin_cents=4900,
-                margin_pct=98.0,
-                accept=True,
-                reason="accepted",
-                cost_breakdown={},
-            )
+            q = quote(job)
             paid = {
                 "paid": True,
                 "stripe_ref": "B" * 64,
@@ -225,17 +217,9 @@ class TestFulfillmentRefundRails(unittest.TestCase):
                 "market_data_calls": 0,
                 "web_search_calls": 1,
             }
-            from solvent.pricing import Quote
+            from solvent.pricing import quote
 
-            q = Quote(
-                price_cents=5000,
-                est_cost_cents=100,
-                margin_cents=4900,
-                margin_pct=98.0,
-                accept=True,
-                reason="accepted",
-                cost_breakdown={},
-            )
+            q = quote(job)
             paid = {
                 "paid": True,
                 "stripe_ref": "pi_will_fail",
@@ -300,17 +284,9 @@ class TestFulfillmentRefundRails(unittest.TestCase):
                 "market_data_calls": 0,
                 "web_search_calls": 1,
             }
-            from solvent.pricing import Quote
+            from solvent.pricing import quote
 
-            q = Quote(
-                price_cents=5000,
-                est_cost_cents=100,
-                margin_cents=4900,
-                margin_pct=98.0,
-                accept=True,
-                reason="accepted",
-                cost_breakdown={},
-            )
+            q = quote(job)
             paid = {
                 "paid": True,
                 "stripe_ref": "pi_spend",

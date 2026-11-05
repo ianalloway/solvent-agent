@@ -663,6 +663,31 @@ class Treasury:
                     )
             return result or {}
 
+    def reserve_job_resources(self, job_id: str, limits: dict, increments: dict) -> dict:
+        """Durably debit a quote allowance before a provider request.
+
+        Uses the same cross-process lock as the ledger. Crashes, retries and
+        concurrent workers cannot reset or double-spend the allowance.
+        """
+        from .resource_budget import reserve
+
+        key = f"resource_budget:{job_id}"
+        with self.lock(), self._conn() as conn, conn:
+            row = conn.execute(
+                "SELECT result_json FROM job_stages WHERE idempotency_key = ?", (key,)
+            ).fetchone()
+            used = json.loads(row["result_json"]) if row else {}
+            updated = reserve(limits, used, increments)
+            conn.execute(
+                """INSERT INTO job_stages
+                (id, job_id, stage, idempotency_key, status, payload_json, result_json, ts)
+                VALUES (?, ?, 'resource_budget', ?, 'completed', '{}', ?, ?)
+                ON CONFLICT(idempotency_key) DO UPDATE SET
+                    result_json = excluded.result_json, ts = excluded.ts""",
+                ("st_" + uuid.uuid4().hex[:12], job_id, key, json.dumps(updated), time.time()),
+            )
+            return updated
+
     def record_event(self, job_id: str, stage: str, payload: dict) -> None:
         with self.lock():
             with self._conn() as conn:

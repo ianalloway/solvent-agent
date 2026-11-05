@@ -21,6 +21,8 @@ import os
 import urllib.error
 import urllib.request
 
+from .resource_budget import current_budget
+
 log = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
@@ -84,6 +86,8 @@ def complete(system: str, user: str) -> tuple[str, dict]:
     url = base_url() + "/chat/completions"
     if not url.startswith(("http://", "https://")):
         raise LLMBackendError("SOLVENT_LLM_BASE_URL must start with http:// or https://")
+    budget = current_budget()
+    max_tokens = budget.completion(system, user) if budget else 1200
     body = json.dumps(
         {
             "model": model(),
@@ -92,7 +96,7 @@ def complete(system: str, user: str) -> tuple[str, dict]:
                 {"role": "user", "content": user},
             ],
             "temperature": 0.4,
-            "max_tokens": 1200,
+            "max_tokens": max_tokens,
             "stream": False,
         }
     ).encode()

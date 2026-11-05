@@ -319,6 +319,23 @@ decline, so any channel — terminal, Telegram, the job API — can quote it bac
 treasury, no Stripe call is made, and the exit code is 1 on a decline so
 scripts can gate on the verdict.
 
+Accepted quotes persist a resource contract. `est_tokens`, `web_search_calls`
+and `market_data_calls` are total job allowances, including the quality retry,
+not estimates that permit additional consumption. The server applies a minimum
+of 4,000 tokens and three searches; zero market-data calls is supported. Both
+research attempts share these allowances and a 20-tool-call cap.
+
+Before each live model request (including nested summaries and transport
+retries), SOLVENT reserves UTF-8 prompt bytes plus 256 chat-template tokens and
+the 1,200-token output cap. This conservative bound assumes a byte-level
+tokenizer and a two-message template within that overhead. Reservations are
+not returned after uncertain failures. Tool and attempt reservations are also
+saved before execution, so restarting a worker cannot reset a paid job's
+budget. Reserved model usage is reported as estimated COGS at the quoted rates.
+A quality retry that runs out of budget keeps the first draft; an initial
+attempt that cannot finish follows the normal failure/refund path. Existing
+quotes without a resource contract must be requoted before new fulfilment.
+
 ### Spend policy — bounding *how* money moves, not just how much
 
 The guardrails gained two rules that shape the distribution of spend:

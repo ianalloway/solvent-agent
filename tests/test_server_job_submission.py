@@ -89,6 +89,24 @@ def _client(tmp_path, monkeypatch):
     return TestClient(server.create_app(fresh=True)), treasury.Treasury()
 
 
+def test_public_zero_estimates_cannot_override_saved_resource_contract(tmp_path, monkeypatch):
+    import json
+
+    client, store = _client(tmp_path, monkeypatch)
+    response = client.post("/jobs", json={
+        "id": "zero-scope", "topic": "AI chip market", "budget_cents": 1500,
+        "customer_email": "buyer@example.test", "est_tokens": 0,
+        "market_data_calls": 0, "web_search_calls": 0,
+        "resource_contract": {"tokens": 1_000_000, "web_search": 1000},
+    })
+    assert response.status_code == 200
+    saved = json.loads(store.get_job("zero-scope")["quote_json"])
+    assert saved["resource_contract"]["tokens"] == 4000
+    assert saved["resource_contract"]["web_search"] == 3
+    assert saved["resource_contract"]["market_data"] == 0
+    assert saved["est_cost_cents"] == 189
+
+
 def test_operator_submission_with_an_existing_id_is_refused(tmp_path, monkeypatch):
     client, t = _client(tmp_path, monkeypatch)
     t.upsert_job("taken", "in_progress", topic="Original", customer_email="v@example.test")

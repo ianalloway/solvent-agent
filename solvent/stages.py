@@ -15,6 +15,7 @@ from .intake import decline_reason, screen_job
 from .products import UnknownProduct, apply_product
 from .observability import log_event
 from .pricing import PricingPolicy, quote
+from .resource_budget import ResourceBudget, ResourceContract, using_budget
 from .security import SOLVENTSecurityError, sanitise_job
 from .nano_client import NanoClient
 from .stripe_client import StripeClient
@@ -324,7 +325,13 @@ class StageRunner:
         cached = self.t.get_stage(key)
         if cached and cached["status"] == "completed":
             data = json.loads(cached["result_json"] or "{}")
-            return self._emit(stage="quote", job_id=job_id, **data)
+            emitted = self._emit(stage="quote", job_id=job_id, **data)
+            row = self.t.get_job(job_id)
+            if data.get("accept") and row and row.get("quote_json"):
+                from .pricing import Quote
+
+                return {**emitted, "_quote": Quote(**json.loads(row["quote_json"]))}
+            return emitted
 
         q = quote(job, self.pricing)
         result = {
@@ -619,7 +626,17 @@ class StageRunner:
             if fulfill_stage and fulfill_stage["status"] == "completed":
                 result = json.loads(fulfill_stage["result_json"] or "{}")
             else:
-                result = service.fulfill(job)
+                if not q.resource_contract:
+                    raise ValueError("legacy quote lacks a resource contract; requote before fulfilment")
+                contract = ResourceContract(**q.resource_contract)
+                budget = ResourceBudget(
+                    contract,
+                    persist=lambda limits, increments: self.t.reserve_job_resources(
+                        job_id, limits, increments
+                    ),
+                )
+                with using_budget(budget):
+                    result = service.fulfill(job)
                 self.t.complete_stage(
                     job_id,
                     "fulfill",

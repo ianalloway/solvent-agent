@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .paths import config_path
+from .resource_budget import ResourceContract, scope_for
 
 # Estimated cost of each resource the analyst might consume, in cents.
 # These are the prices SOLVENT pays its own vendors (see stripe_client.spend).
@@ -58,6 +59,7 @@ class Quote:
     reason: str
     cost_breakdown: dict[str, int]
     counter_offer: dict[str, Any] | None = None
+    resource_contract: dict[str, int] | None = None
 
 
 @dataclass
@@ -116,16 +118,8 @@ def get_resource_costs() -> dict[str, int]:
 
 
 def estimate_cost(job: dict[str, Any]) -> tuple[int, dict[str, int]]:
-    """Estimate fulfilment cost from the job's declared complexity."""
-    costs = get_resource_costs()
-    tokens_k = job.get("est_tokens", 8_000) / 1_000
-    breakdown = {
-        "nemotron_inference": round(tokens_k * costs["nemotron_tokens_per_1k"]),
-        "market_data": job.get("market_data_calls", 2) * costs["market_data_call"],
-        "web_search": job.get("web_search_calls", 6) * costs["web_search_call"],
-        "pdf_render": costs["pdf_render"],
-        "email_send": costs["email_send"],
-    }
+    """Price the enforced allowance, shared across research and all retries."""
+    breakdown = ResourceContract.for_job(job, get_resource_costs()).breakdown()
     return sum(breakdown.values()), breakdown
 
 
@@ -141,11 +135,7 @@ _SCOPE_STEPS: tuple[tuple[str, int], ...] = (
 
 def job_scope(job: dict[str, Any]) -> dict[str, int]:
     """The three resource dials a brief can be scoped on, with defaults filled in."""
-    return {
-        "est_tokens": int(job.get("est_tokens", 8_000)),
-        "market_data_calls": int(job.get("market_data_calls", 2)),
-        "web_search_calls": int(job.get("web_search_calls", 6)),
-    }
+    return scope_for(job)
 
 
 def min_viable_price_cents(est_cost_cents: int, policy: PricingPolicy | None = None) -> int | None:
@@ -258,7 +248,8 @@ def _describe_scope(changes: dict[str, int]) -> str:
 
 
 def calibrated_cost(
-    job: dict[str, Any], policy: PricingPolicy | None = None
+    job: dict[str, Any], policy: PricingPolicy | None = None,
+    *, contract: ResourceContract | None = None,
 ) -> tuple[int, dict[str, int]]:
     """Estimated cost with the policy's calibration applied, itemised.
 
@@ -266,8 +257,9 @@ def calibrated_cost(
     items a customer or an operator sees always add up to the quoted cost.
     """
     applied = policy or PricingPolicy()
-    raw_total, breakdown = estimate_cost(job)
-    factor = applied.cost_calibration
+    breakdown = (contract or ResourceContract.for_job(job, get_resource_costs())).breakdown()
+    raw_total = sum(breakdown.values())
+    factor = max(1.0, applied.cost_calibration)
     if factor == 1.0:
         return raw_total, breakdown
     scaled = {k: round(v * factor) for k, v in breakdown.items()}
@@ -295,7 +287,8 @@ def quote(
         A Quote object indicating whether the job was accepted or rejected.
     """
     applied_policy = policy or PricingPolicy()
-    est_cost, breakdown = calibrated_cost(job, applied_policy)
+    contract = ResourceContract.for_job(job, get_resource_costs())
+    est_cost, breakdown = calibrated_cost(job, applied_policy, contract=contract)
 
     # We can never charge more than the customer is willing to pay, so the
     # budget IS the price. The gate then decides whether that price clears
@@ -323,4 +316,7 @@ def quote(
         return _decline(
             f"projected margin {margin_pct}% below floor {applied_policy.margin_floor_pct}%"
         )
-    return Quote(price, est_cost, margin, margin_pct, True, "accepted", breakdown)
+    return Quote(
+        price, est_cost, margin, margin_pct, True, "accepted", breakdown,
+        resource_contract=contract.to_dict(),
+    )
