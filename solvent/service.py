@@ -14,6 +14,9 @@ import time
 from . import nemotron, pdf, quality
 from .paths import reports_dir
 from .pricing import get_resource_costs
+from .resource_budget import (
+    BudgetExceeded, ResourceBudget, ResourceContract, current_budget, using_budget,
+)
 from .security import (
     InputValidationError,
     PromptInjectionError,
@@ -31,6 +34,16 @@ def _resources_from_usage(
     include_delivery: bool = True,
 ) -> list[tuple[str, int, str]]:
     costs = get_resource_costs()
+    budget = current_budget()
+    if budget:
+        contract = budget.contract
+        costs = {
+            "nemotron_tokens_per_1k": contract.token_rate,
+            "market_data_call": contract.data_rate,
+            "web_search_call": contract.search_rate,
+            "pdf_render": contract.pdf_rate,
+            "email_send": contract.email_rate,
+        }
     tokens = usage.get("total_tokens", 0)
     resources = [
         (
@@ -57,6 +70,16 @@ def _resources_from_usage(
 
 def fulfill(job: dict) -> dict:
     """Produce the report and return deliverable metadata + resources_used."""
+    if current_budget() is not None:
+        return _fulfill(job)
+    # Direct/local callers get the same contract as pricing; production stages
+    # supply the saved quote's contract and a durable reservation store.
+    contract = ResourceContract.for_job(job, get_resource_costs())
+    with using_budget(ResourceBudget(contract)):
+        return _fulfill(job)
+
+
+def _fulfill(job: dict) -> dict:
     try:
         topic = sanitise_prompt_input(job.get("topic", ""), field_name="topic", max_len=500)
         context = (
@@ -70,6 +93,9 @@ def fulfill(job: dict) -> dict:
         raise ValueError(f"job input rejected by security layer: {exc}") from exc
 
     started = time.time()
+    budget = current_budget()
+    assert budget is not None
+    budget.reserve(attempts=1)
     text, usage, tool_ctx = nemotron.research_brief(topic, context)
     score = quality.score_brief(text, topic)
     attempts = 1
@@ -79,21 +105,36 @@ def fulfill(job: dict) -> dict:
         # a deterministic model that returns the same text costs us one call and
         # changes nothing, which is why this is capped at a single retry.
         retry_context = f"{context}\n\n{quality.retry_instruction(score)}"
-        retry_text, retry_usage, retry_ctx = nemotron.research_brief(topic, retry_context)
-        attempts = 2
-        text, score = quality.better(
-            (text, score), (retry_text, quality.score_brief(retry_text, topic))
-        )
-        if text is retry_text:
-            tool_ctx = retry_ctx
-        # Both attempts were paid for, so both are billed.
-        usage = {
-            **{
-                key: (usage.get(key, 0) or 0) + (retry_usage.get(key, 0) or 0)
-                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
-            },
-            "estimated": bool(usage.get("estimated")) or bool(retry_usage.get("estimated")),
-        }
+        try:
+            budget.reserve(attempts=1)
+            attempts = 2
+            retry_text, retry_usage, retry_ctx = nemotron.research_brief(topic, retry_context)
+        except BudgetExceeded:
+            # Keep the first draft; a retry never gets a fresh allowance.
+            tool_ctx.budget_exhausted = True
+        else:
+            text, score = quality.better(
+                (text, score), (retry_text, quality.score_brief(retry_text, topic))
+            )
+            # Bill both drafts' tools, irrespective of which draft ships.
+            tool_ctx.web_search_calls += retry_ctx.web_search_calls
+            tool_ctx.market_data_calls += retry_ctx.market_data_calls
+            if hasattr(tool_ctx, "calls") and hasattr(retry_ctx, "calls"):
+                tool_ctx.calls.extend(retry_ctx.calls)
+            usage = {
+                **{
+                    key: (usage.get(key, 0) or 0) + (retry_usage.get(key, 0) or 0)
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                },
+                "estimated": bool(usage.get("estimated")) or bool(retry_usage.get("estimated")),
+            }
+
+    # Include ambiguous/failed provider requests and partial retry consumption.
+    # Reservations are conservative COGS estimates, never refunded on failure.
+    if budget.used.get("tokens", 0) > usage.get("total_tokens", 0):
+        usage = {**usage, "total_tokens": budget.used["tokens"], "estimated": True}
+    tool_ctx.web_search_calls = max(tool_ctx.web_search_calls, budget.used.get("web_search", 0))
+    tool_ctx.market_data_calls = max(tool_ctx.market_data_calls, budget.used.get("market_data", 0))
 
     fulfillment_seconds = time.time() - started
 

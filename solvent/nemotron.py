@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 
 from . import llm_backend, tools
+from .resource_budget import BudgetExceeded, current_budget
 
 MODEL = os.environ.get("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -67,6 +68,8 @@ def _estimate_tokens(system: str, user: str, text: str) -> dict:
 def _live_request(system: str, user: str) -> dict:
     """Single HTTP round-trip to the Nemotron endpoint. Raises on failure."""
     key = os.environ["NVIDIA_API_KEY"]
+    budget = current_budget()
+    max_tokens = budget.completion(system, user) if budget else 1200
     body = json.dumps(
         {
             "model": MODEL,
@@ -75,7 +78,7 @@ def _live_request(system: str, user: str) -> dict:
                 {"role": "user", "content": user},
             ],
             "temperature": 0.4,
-            "max_tokens": 1200,
+            "max_tokens": max_tokens,
         }
     ).encode()
     req = urllib.request.Request(
@@ -162,6 +165,8 @@ def complete(system: str, user: str) -> tuple[str, dict]:
     if os.environ.get("NVIDIA_API_KEY"):
         try:
             return _live_complete(system, user)
+        except BudgetExceeded:
+            raise
         except Exception as e:
             text = _stub_complete(system, user) + f"\n\n<!-- live call failed: {e} -->"
             return text, _estimate_tokens(system, user, text)

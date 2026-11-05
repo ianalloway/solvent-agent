@@ -8,6 +8,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
+from .resource_budget import BudgetExceeded, current_budget
+
 MAX_TOOL_ROUNDS = 8
 MAX_TOOL_CALLS = 20
 
@@ -183,6 +185,16 @@ def dispatch(
     if ctx.total_calls >= MAX_TOOL_CALLS:
         ctx.budget_exhausted = True
         raise RuntimeError(f"max tool calls ({MAX_TOOL_CALLS}) exceeded")
+    budget = current_budget()
+    if budget:
+        increments = {"tool_calls": 1}
+        if name in ("web_search", "market_data"):
+            increments[name] = 1
+        try:
+            budget.reserve(**increments)
+        except BudgetExceeded:
+            ctx.budget_exhausted = True
+            raise
     if name == "web_search":
         result = web_search(args.get("query", ""), live=live_search)
     elif name == "market_data":
