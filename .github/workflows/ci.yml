@@ -30,9 +30,75 @@ jobs:
           pip install -e ".[dev,all]" -c constraints.txt
       - name: Lint
         run: ruff check solvent tests run_demo.py
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          python -m pytest tests/ -v
+          pip install pytest-cov
+          python -m pytest tests/ -v --cov=solvent --cov-report=term --cov-report=json
+      - name: Coverage summary
+        if: always() && hashFiles('coverage.json') != ''
+        run: |
+          total=$(python -c "import json; print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          {
+            echo "## Coverage (Python ${{ matrix.python-version }}): ${total}%"
+            echo
+            echo "<details><summary>Per-file report</summary>"
+            echo
+            coverage report --format=markdown
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage data
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-json
+          path: coverage.json
+          retention-days: 7
+
+  coverage-badge:
+    # Publishes a shields.io endpoint JSON to the `badges` branch so the README
+    # badge needs no third-party service or secret. Runs only on main.
+    name: coverage badge
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage-json
+      - name: Build badge JSON
+        run: |
+          python3 - <<'PY'
+          import json
+          pct = json.load(open("coverage.json"))["totals"]["percent_covered"]
+          color = ("brightgreen" if pct >= 90 else "green" if pct >= 80
+                   else "yellow" if pct >= 70 else "orange" if pct >= 60 else "red")
+          badge = {"schemaVersion": 1, "label": "coverage",
+                   "message": f"{pct:.0f}%", "color": color}
+          json.dump(badge, open("coverage-badge.json", "w"))
+          PY
+          cat coverage-badge.json
+      - name: Push to the badges branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Append a commit to the badges branch (created on first run); no force-push.
+          url="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if git clone -q --depth 1 --branch badges "$url" badges 2>/dev/null; then
+            cd badges
+          else
+            mkdir badges && cd badges && git init -q -b badges
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp ../coverage-badge.json .
+          git add coverage-badge.json
+          if git diff --cached --quiet; then echo "Badge unchanged"; exit 0; fi
+          git commit -q -m "Update coverage badge for ${GITHUB_SHA::7}"
+          git push -q "$url" HEAD:badges
 
   core:
     name: zero-dependency core

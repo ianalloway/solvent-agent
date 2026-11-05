@@ -5,6 +5,7 @@
 **A Python agent that runs a tiny research business: it quotes each job against its own costs, gets paid through Stripe, pays its own vendor bills within a spend policy, and declines work that would lose money.**
 
 [![CI](https://github.com/ianalloway/solvent-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ianalloway/solvent-agent/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fianalloway%2Fsolvent-agent%2Fbadges%2Fcoverage-badge.json)](https://github.com/ianalloway/solvent-agent/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/solvent-agent.svg)](https://pypi.org/project/solvent-agent/)
 [![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Space-try%20in%20browser-yellow)](https://huggingface.co/spaces/ianalloway/solvent-agent-demo)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)

@@ -52,3 +52,4 @@ data/outbox/
 data/solvent.log
 solvent/dashboard_live.py
 solvent/events.py
+coverage.json
