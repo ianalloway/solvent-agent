@@ -154,6 +154,10 @@ def run_trial(
 
     for index in range(jobs):
         job = mix.draw(rng, index)
+        # Draw the latent cost for every offered job, even if this policy
+        # declines it. Otherwise acceptance changes RNG consumption and later
+        # demand, so same-seed policy comparisons do not share the same jobs.
+        realized_factor = cost_multiplier * rng.lognormvariate(0, cost_spread)
         q = quote(job, pricing, with_counter_offer=False)
         if not q.accept:
             result.declined += 1
@@ -178,7 +182,6 @@ def run_trial(
         result.accepted += 1
 
         # Realized cost lands around the estimate, split across the same vendors.
-        realized_factor = cost_multiplier * rng.lognormvariate(0, cost_spread)
         spends = [
             (COST_LINE_VENDORS[line], max(round(cents * realized_factor), 0))
             for line, cents in q.cost_breakdown.items()
