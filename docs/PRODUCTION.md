@@ -90,6 +90,11 @@ curl -X POST "$SOLVENT_BASE_URL/payments/nano/verify" \
 4. Set `STRIPE_WEBHOOK_SECRET=whsec_...` (required: with no secret `/webhooks/stripe` rejects every request, and requests with a bad signature are rejected without being stored)
 5. Submit jobs via `POST /jobs` — response includes `checkout_url` (also as `url`)
 
+Webhook bodies are limited to 1 MiB (1,048,576 bytes), enforced while streaming
+before signature verification. Larger requests receive `413`; invalid or
+conflicting `Content-Length` headers receive `400` before the body is read.
+Rejected requests are not stored in the webhook log.
+
 Polling is disabled by default. For CLI-only test flows:
 
 ```bash

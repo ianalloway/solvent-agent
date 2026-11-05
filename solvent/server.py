@@ -38,6 +38,9 @@ except ImportError:
 MAX_JOB_BODY_BYTES = 32 * 1024
 MAX_PAIR_BODY_BYTES = 1024
 
+#: Bound raw Stripe events before signature verification or JSON parsing.
+MAX_STRIPE_WEBHOOK_BODY_BYTES = 1024 * 1024
+
 #: Fields a public ``POST /jobs`` caller may set.  Anything else in the body is
 #: dropped, so an anonymous caller cannot set internal flags such as
 #: ``intake_approved`` (which skips the intake screen) or ``job_owner_session_id``.
@@ -179,20 +182,35 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         if not _has_dashboard_auth(req):
             raise HTTPException(403, "invalid dashboard token")
 
+    async def _read_limited_body(req: Request, limit: int) -> bytes:
+        """Read raw bytes with a streaming cap, regardless of Content-Length."""
+        declared = None
+        for header in req.headers.getlist("content-length"):
+            for value in header.split(","):
+                value = value.strip(" \t")
+                if not value or not value.isascii() or not value.isdigit():
+                    raise HTTPException(400, "invalid content-length")
+                value = value.lstrip("0") or "0"
+                if declared is not None and value != declared:
+                    raise HTTPException(400, "conflicting content-length")
+                declared = value
+        # Compare decimal strings so an arbitrarily long header cannot trigger
+        # Python's integer conversion limit (or expensive large-integer work).
+        bound = str(limit)
+        if declared is not None and (len(declared), declared) > (len(bound), bound):
+            raise HTTPException(413, "request body too large")
+        body = bytearray()
+        async for chunk in req.stream():
+            if len(body) + len(chunk) > limit:
+                raise HTTPException(413, "request body too large")
+            body.extend(chunk)
+        return bytes(body)
+
     async def _read_limited_json(req: Request, limit: int) -> object:
         """Read and parse a JSON body, refusing anything over ``limit`` bytes."""
-        declared = req.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > limit:
-            raise HTTPException(413, "request body too large")
-        chunks: list[bytes] = []
-        size = 0
-        async for chunk in req.stream():
-            size += len(chunk)
-            if size > limit:
-                raise HTTPException(413, "request body too large")
-            chunks.append(chunk)
+        body = await _read_limited_body(req, limit)
         try:
-            return json.loads(b"".join(chunks) or b"null")
+            return json.loads(body or b"null")
         except (ValueError, UnicodeDecodeError):
             raise HTTPException(400, "request body must be valid JSON") from None
 
@@ -493,7 +511,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         if not stripe.webhook_secret:
             # Fail closed: with no secret we cannot authenticate anything.
             raise HTTPException(503, "stripe webhook endpoint is not configured")
-        payload = await req.body()
+        payload = await _read_limited_body(req, MAX_STRIPE_WEBHOOK_BODY_BYTES)
         sig = req.headers.get("Stripe-Signature", "")
         try:
             event = stripe.verify_webhook(payload, sig)
