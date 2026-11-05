@@ -8,10 +8,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 import time
+from unittest.mock import Mock
 
 import pytest
 
@@ -95,6 +97,113 @@ def make_client(tmp_path, monkeypatch):
 
 def _rows(log: WebhookLog) -> list[dict]:
     return log.list_recent(100)
+
+
+def _post_chunks(app, headers, chunks):
+    """Exercise real ASGI chunks; TestClient can coalesce a body iterator."""
+    messages = []
+    consumed = []
+
+    async def receive():
+        index = len(consumed)
+        assert index < len(chunks), "read past the supplied body"
+        consumed.append(index)
+        return {
+            "type": "http.request", "body": chunks[index],
+            "more_body": index + 1 < len(chunks),
+        }
+
+    async def send(message):
+        messages.append(message)
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": "/webhooks/stripe",
+        "query_string": b"", "headers": headers,
+        "client": ("203.0.113.1", 12345), "server": ("testserver", 80),
+    }
+    asyncio.run(app(scope, receive, send))
+    return messages[0]["status"], len(consumed)
+
+
+@pytest.mark.parametrize("headers", [[], [(b"content-length", b"1")]])
+def test_oversized_webhook_stream_stops_before_verification(make_client, monkeypatch, headers):
+    client, log = make_client()
+    monkeypatch.setattr(server, "MAX_STRIPE_WEBHOOK_BODY_BYTES", 1024, raising=False)
+    verify = Mock(side_effect=AssertionError("must not verify oversized payload"))
+    monkeypatch.setattr(_LiveStripe, "verify_webhook", verify)
+    status, consumed = _post_chunks(client.app, headers, [b"x" * 1024, b"x", b"unread"])
+    assert status == 413
+    assert consumed == 2
+    verify.assert_not_called()
+    assert _rows(log) == []
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ([(b"content-length", b"1025")], 413),
+        ([(b"content-length", b"9" * 5000)], 413),
+        ([(b"content-length", b"1"), (b"content-length", b"2")], 400),
+        ([(b"content-length", b"1, 2")], 400),
+        ([(b"content-length", b"-1")], 400),
+        ([(b"content-length", b"invalid")], 400),
+        ([(b"content-length", b"")], 400),
+    ],
+)
+def test_webhook_rejects_bad_length_before_reading(make_client, monkeypatch, headers, expected):
+    client, log = make_client()
+    monkeypatch.setattr(server, "MAX_STRIPE_WEBHOOK_BODY_BYTES", 1024, raising=False)
+    verify = Mock(side_effect=AssertionError("must not verify rejected payload"))
+    monkeypatch.setattr(_LiveStripe, "verify_webhook", verify)
+    status, consumed = _post_chunks(client.app, headers, [])
+    assert status == expected
+    assert consumed == 0
+    verify.assert_not_called()
+    assert _rows(log) == []
+
+
+@pytest.mark.parametrize("padding", [0, 1])
+def test_signed_webhook_at_or_below_limit_preserves_bytes(make_client, monkeypatch, padding):
+    client, log = make_client()
+    payload = _event("evt_bounded") + b" \n\t"
+    monkeypatch.setattr(server, "MAX_STRIPE_WEBHOOK_BODY_BYTES", len(payload) + padding, raising=False)
+    response = client.post(
+        "/webhooks/stripe", content=payload,
+        headers={"Stripe-Signature": _sign(payload)},
+    )
+    assert response.status_code == 200
+    assert log.get_payload("evt_bounded") == payload
+    assert log.get_status("evt_bounded") == "processed"
+
+
+@pytest.mark.parametrize("length_mode", ["absent", "duplicate", "combined"])
+def test_signed_streamed_webhook_preserves_bytes(make_client, length_mode):
+    client, log = make_client()
+    payload = _event("evt_streamed") + b" \n\t"
+    headers = [(b"stripe-signature", _sign(payload).encode())]
+    length = str(len(payload)).encode()
+    if length_mode == "duplicate":
+        headers += [(b"content-length", length), (b"content-length", b"0" + length)]
+    elif length_mode == "combined":
+        headers.append((b"content-length", length + b", " + length))
+    status, consumed = _post_chunks(client.app, headers, [payload[:20], payload[20:]])
+    assert status == 200
+    assert consumed == 2
+    assert log.get_payload("evt_streamed") == payload
+    assert log.get_status("evt_streamed") == "processed"
+
+
+def test_webhook_one_byte_over_default_limit_is_rejected(make_client, monkeypatch):
+    client, log = make_client()
+    verify = Mock(side_effect=AssertionError("must not verify oversized payload"))
+    monkeypatch.setattr(_LiveStripe, "verify_webhook", verify)
+    response = client.post(
+        "/webhooks/stripe", content=b"x" * (server.MAX_STRIPE_WEBHOOK_BODY_BYTES + 1)
+    )
+    assert response.status_code == 413
+    verify.assert_not_called()
+    assert _rows(log) == []
 
 
 # ---------------------------------------------------------------------------
