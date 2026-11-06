@@ -157,6 +157,33 @@ def test_tail_lines_fewer_than_n(tmp_path):
     assert result == ["line1", "line2"]
 
 
+def test_tail_lines_long_lines_return_exactly_n_complete_lines(tmp_path):
+    p = tmp_path / "log"
+    records = [f"{i:02d}-" + "x" * 420 for i in range(10)]
+    p.write_text("\n".join(records) + "\n")
+    assert _tail_lines(p, 5) == records[5:]
+
+
+def test_tail_lines_lines_longer_than_a_read_block(tmp_path):
+    p = tmp_path / "log"
+    records = [f"{i}-" + "y" * 20000 for i in range(4)]
+    p.write_text("\n".join(records) + "\n")
+    assert _tail_lines(p, 2) == records[2:]
+
+
+def test_tail_lines_never_returns_a_partial_first_line(tmp_path):
+    p = tmp_path / "log"
+    records = [f"{i:02d}-" + "z" * 300 for i in range(6)]
+    p.write_text("\n".join(records) + "\n")
+    assert _tail_lines(p, 100) == records
+
+
+def test_tail_lines_skips_blank_lines_when_counting(tmp_path):
+    p = tmp_path / "log"
+    p.write_text("a\n\n\nb\n\nc\n")
+    assert _tail_lines(p, 2) == ["b", "c"]
+
+
 # ---------------------------------------------------------------------------
 # show_logs
 # ---------------------------------------------------------------------------
@@ -261,3 +288,30 @@ def test_main_default_runs(tmp_path):
 
                 main()
     assert "b" in buf.getvalue()
+
+
+def test_tail_lines_nonpositive_limit(tmp_path):
+    path = tmp_path / 'log'
+    path.write_text('one\ntwo\n')
+    assert _tail_lines(path, 0) == []
+    assert _tail_lines(path, -1) == []
+
+
+def test_tail_lines_preserves_utf8_across_read_blocks(tmp_path):
+    path = tmp_path / 'log'
+    records = [f'{i}-' + '\u00e9\U0001f642' * 2000 for i in range(4)]
+    path.write_text('\n'.join(records) + '\n', encoding='utf-8')
+    assert _tail_lines(path, 2) == records[-2:]
+
+
+def test_tail_lines_handles_exact_block_boundary_and_crlf(tmp_path):
+    path = tmp_path / 'log'
+    records = ['x' * 8190, 'last']
+    path.write_bytes(('\r\n'.join(records) + '\r\n').encode())
+    assert _tail_lines(path, 2) == records
+
+
+def test_tail_lines_preserves_unterminated_last_record(tmp_path):
+    path = tmp_path / 'log'
+    path.write_text('first\nlast')
+    assert _tail_lines(path, 1) == ['last']
