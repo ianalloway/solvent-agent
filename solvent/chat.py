@@ -77,7 +77,7 @@ def _make_executor(
                     "customer_email": row.get("customer_email"),
                     "checkout_url": row.get("checkout_url"),
                     "deliverable_url": row.get("deliverable_url"),
-                    "error_reason": row.get("error_reason"),
+                    "error_reason": "Contact the operator for help with this job." if row.get("error_reason") else None,
                     "current_stage": row.get("current_stage"),
                 }
                 return json.dumps({"job": public_job})
@@ -96,7 +96,7 @@ def _make_executor(
             payload = {
                 "accept": q.accept,
                 "price_cents": q.price_cents,
-                "reason": q.reason,
+                "reason": q.reason if operator or q.accept else "This budget does not cover the requested brief.",
             }
             if operator:
                 payload["est_cost_cents"] = q.est_cost_cents
@@ -129,6 +129,12 @@ def _make_executor(
                         "stage": result.get("stage", "invoice"),
                     }
                 )
+            if not operator:
+                result = {
+                    "job_id": job_id,
+                    "stage": result.get("stage", "received"),
+                    "reason": "This request cannot be accepted right now.",
+                }
             return json.dumps(result)
         if name in tools.ALLOWED_TOOLS:
             return tools.dispatch(
@@ -334,7 +340,7 @@ def format_job_notification(event: dict) -> str | None:
     if stage == "delivered":
         return f"Your brief for {jid} is ready: {event.get('url', '')}"
     if stage == "declined":
-        return f"Job {jid} declined: {event.get('reason', '')}"
+        return f"Job {jid} declined. Contact the operator for options."
     if stage == "payment_pending":
         return f"Awaiting payment for {jid}: {event.get('url', '')}"
     return None

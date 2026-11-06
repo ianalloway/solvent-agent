@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
+from contextvars import ContextVar
 
 from . import llm_backend, spending, tools
 from .guardrails import GuardrailError
@@ -48,7 +49,7 @@ def _is_transient(exc: Exception) -> bool:
 
 _force_offline = False
 #: When True, every live/metered backend is skipped (customer chat).
-_block_metered = False
+_block_metered = ContextVar("block_metered", default=False)
 
 
 def configure(model: str = "offline", nemotron_model: str | None = None) -> None:
@@ -67,13 +68,11 @@ def force_offline():
     Distinct from :func:`configure` ``offline``, which still allows an
     explicit ``SOLVENT_LLM_*`` backend.
     """
-    global _block_metered
-    previous = _block_metered
-    _block_metered = True
+    token = _block_metered.set(True)
     try:
         yield
     finally:
-        _block_metered = previous
+        _block_metered.reset(token)
 
 
 def _estimate_tokens(system: str, user: str, text: str) -> dict:
@@ -170,7 +169,7 @@ def _stub_complete(system: str, user: str) -> str:
 def complete(system: str, user: str) -> tuple[str, dict]:
     """Return (text, usage_dict). usage_dict has prompt/completion/total tokens."""
     # Customer chat sets this so unscoped Nemotron/LLM spend cannot drain cash.
-    if _block_metered:
+    if _block_metered.get():
         text = _stub_complete(system, user)
         return text, _estimate_tokens(system, user, text)
     # Explicit opt-in via SOLVENT_LLM_* env wins over the onboarding default,

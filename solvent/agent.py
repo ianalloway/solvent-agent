@@ -78,8 +78,8 @@ class Solvent:
     def handle_job(self, job: dict) -> dict:
         return self._runner.run_job(job)
 
-    def advance_job(self, job_id: str) -> dict:
-        return self._runner.advance_job(job_id)
+    def advance_job(self, job_id: str, *, verified_nano_payment: dict | None = None) -> dict:
+        return self._runner.advance_job(job_id, verified_nano_payment=verified_nano_payment)
 
     def enqueue_job(self, job: dict) -> dict:
         """Validate and persist a new job for async worker processing.

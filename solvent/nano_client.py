@@ -95,6 +95,10 @@ def is_block_hash(value: str | None) -> bool:
     return bool(value) and bool(_BLOCK_HASH_RE.match(value.strip()))
 
 
+def _canonical_hash(value: str) -> str:
+    return value.strip().upper() if is_block_hash(value) else value
+
+
 def _sim_destination(job_id: str) -> str:
     digest = hashlib.sha256(f"solvent-nano-sim:{job_id}".encode()).hexdigest()[:20]
     return f"nano_sim_{digest}"
@@ -240,38 +244,71 @@ class NanoClient:
     def _load_booked(self) -> None:
         path = self._booked_path()
         if not path.is_file():
+            self._booked_blocks = {}
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                self._booked_blocks = data
+                canonical = {}
+                for key, value in data.items():
+                    key = _canonical_hash(key)
+                    if not isinstance(value, dict) or (key in canonical and canonical[key] != value):
+                        raise NanoClientError("conflicting Nano payment journal; operator review required")
+                    canonical[key] = value
+                self._booked_blocks = canonical
+            else:
+                raise NanoClientError("invalid Nano payment journal; operator review required")
         except (json.JSONDecodeError, OSError):
-            self._booked_blocks = {}
+            raise NanoClientError("unreadable Nano payment journal; operator review required") from None
 
     def _save_booked(self) -> None:
         path = self._booked_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self._booked_blocks, indent=2) + "\n", encoding="utf-8")
+        temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+        try:
+            with temp.open("w", encoding="utf-8") as handle:
+                handle.write(json.dumps(self._booked_blocks, indent=2) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp, path)
+            if os.name != "nt":
+                directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+        finally:
+            temp.unlink(missing_ok=True)
 
     def _remember_block(self, block_hash: str, payment: dict) -> None:
+        previous = self._booked_blocks.copy()
         self._booked_blocks[block_hash] = {
             "job_id": payment.get("job_id"),
             "invoice_id": payment.get("invoice_id"),
             "amount_raw": payment.get("amount_raw"),
             "ts": payment.get("ts") or time.time(),
         }
-        self._save_booked()
+        try:
+            self._save_booked()
+        except Exception:
+            self._booked_blocks = previous
+            raise
 
     def is_block_booked(self, block_hash: str) -> bool:
-        return bool(block_hash) and block_hash in self._booked_blocks
+        return bool(block_hash) and _canonical_hash(block_hash) in self._booked_blocks
 
-    def _try_book_block(self, block_hash: str, payment: dict) -> bool:
+    def _try_book_block(
+        self, block_hash: str, payment: dict, *, resume_invoice: bool = False
+    ) -> bool:
         """Atomically book ``block_hash`` or return False if already used.
 
         Thread- and process-safe via an in-process lock plus an advisory flock
         on the booked-blocks file, so concurrent verify requests cannot both
         accept the same on-chain send.
+        ``resume_invoice`` permits only the same persisted invoice reservation
+        to resume an interrupted earn; the caller must serialize ledger booking.
         """
+        block_hash = _canonical_hash(block_hash)
         path = self._booked_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = path.with_suffix(path.suffix + ".lock")
@@ -281,7 +318,16 @@ class NanoClient:
                 try:
                     self._load_booked()
                     if self.is_block_booked(block_hash):
-                        return False
+                        previous = self._booked_blocks[block_hash]
+                        # Recover a crash after proof reservation but before the
+                        # SQLite earn. Never transfer proof ownership to another invoice.
+                        return bool(
+                            resume_invoice
+                            and payment.get("job_id")
+                            and payment.get("invoice_id")
+                            and all(previous.get(key) == payment.get(key)
+                                    for key in ("job_id", "invoice_id", "amount_raw"))
+                        )
                     self._remember_block(block_hash, payment)
                     return True
                 finally:
@@ -466,12 +512,17 @@ class NanoClient:
         *,
         block: dict | None = None,
         now: float | None = None,
+        book: bool = True,
     ) -> dict:
         """Verify a send proof against an invoice before fulfilment.
 
         Sim accepts ``block_sim_…`` only (optional ``block`` inject for tests).
         Live fetches RPC ``block_info`` and never accepts sim proofs.
+        ``book=False`` validates only. The stage runner must reserve that proof
+        under its treasury lock before booking revenue or fulfilling a job.
         """
+        if isinstance(block_hash, str):
+            block_hash = _canonical_hash(block_hash)
         stamp = time.time() if now is None else now
         invoice_id = invoice.get("id") or invoice.get("invoice_id") or ""
         expected_dest = invoice.get("destination") or ""
@@ -506,7 +557,7 @@ class NanoClient:
             return reject("missing block hash")
 
         # Fast path only — authoritative booking happens in _try_book_block.
-        if self.is_block_booked(block_hash):
+        if book and self.is_block_booked(block_hash):
             return reject("block hash already booked (replay)")
 
         if self.simulate or self.mode == "sim":
@@ -520,6 +571,7 @@ class NanoClient:
                 expected_raw=expected_raw,
                 job_id=job_id,
                 reject=reject,
+                book=book,
             )
 
         # Live path — hard reject sim tokens.
@@ -579,7 +631,7 @@ class NanoClient:
             "job_id": job_id,
             "ts": stamp,
         }
-        if not self._try_book_block(block_hash, payment):
+        if book and not self._try_book_block(block_hash, payment):
             return reject("block hash already booked (replay)")
         return payment
 
@@ -595,6 +647,7 @@ class NanoClient:
         expected_raw: str,
         job_id: str | None,
         reject,
+        book: bool = True,
     ) -> dict:
         if self.rpc_url:
             return reject("simulate mode must not use SOLVENT_NANO_RPC")
@@ -646,7 +699,7 @@ class NanoClient:
             "job_id": job_id,
             "ts": stamp,
         }
-        if not self._try_book_block(block_hash, payment):
+        if book and not self._try_book_block(block_hash, payment):
             return reject("block hash already booked (replay)")
         return payment
 

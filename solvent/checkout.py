@@ -210,7 +210,7 @@ def sweep(
             # open_checkouts() and here. Never downgrade a paid/terminal job.
             with t.lock():
                 current = t.get_job(job_id) or {}
-                if current.get("status") != "awaiting_payment":
+                if current.get("status") != "awaiting_payment" or t.job_has_revenue(job_id):
                     continue
                 t.upsert_checkout(
                     job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail
