@@ -19,7 +19,10 @@ export SOLVENT_DASHBOARD_TOKEN=$(python3 -c 'import secrets; print(secrets.token
 
 # Terminal 1 — API + webhooks + interactive dashboard
 python3 -m solvent serve --port 8787
+# Prefer the header for API clients. Query tokens work for browser GETs but
+# can leak via history / Referer; the server sends Referrer-Policy: no-referrer.
 open "http://127.0.0.1:8787/?token=$SOLVENT_DASHBOARD_TOKEN"
+# curl -H "X-Solvent-Dashboard-Token: $SOLVENT_DASHBOARD_TOKEN" http://127.0.0.1:8787/api/status
 
 # Terminal 2 — async job processor
 python3 -m solvent worker
@@ -27,7 +30,7 @@ python3 -m solvent worker
 
 ### Interactive dashboard + voice
 
-`python3 -m solvent serve` serves a live dashboard at `/` protected by `SOLVENT_DASHBOARD_TOKEN`. Pass it as `?token=...` in a browser URL or as `X-Solvent-Dashboard-Token` for API clients. The protected dashboard includes:
+`python3 -m solvent serve` serves a live dashboard at `/` protected by `SOLVENT_DASHBOARD_TOKEN`. Prefer the `X-Solvent-Dashboard-Token` header for API clients; browsers may use `?token=...` (EventSource cannot set custom headers). Responses send `Referrer-Policy: no-referrer` so query tokens are less likely to leak to third parties. The protected dashboard includes:
 
 - **SSE** (`GET /api/events`) — treasury metrics, job cards, and console log update in real time
 - **Chat** (`POST /api/chat`) — talk to the agent; supports `/status`, `/jobs`, `/quote topic | 50`

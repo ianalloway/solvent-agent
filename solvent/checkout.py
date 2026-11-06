@@ -200,26 +200,34 @@ def sweep(
                         stripe.expire_checkout_session(session_id)
                 except Exception:
                     pass
-            t.upsert_checkout(job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail)
             nano_inv = t.get_nano_invoice(job_id)
-            if nano_inv:
-                if nano is not None and hasattr(nano, "expire_invoice"):
-                    try:
-                        nano.expire_invoice(nano_inv)
-                    except Exception:
-                        pass
-                t.mark_nano_invoice(job_id, status=EXPIRED_STATUS)
-            reason = (
-                "nano invoice expired"
-                if row.get("invoice_expired")
-                else f"checkout unpaid after {rules.expire_after_hours}h"
-            )
-            t.upsert_job(
-                job_id,
-                EXPIRED_STATUS,
-                error_reason=reason,
-                current_stage=EXPIRED_STATUS,
-            )
+            if nano_inv and nano is not None and hasattr(nano, "expire_invoice"):
+                try:
+                    nano.expire_invoice(nano_inv)
+                except Exception:
+                    pass
+            # Re-check under the lock: a webhook/worker may have paid between
+            # open_checkouts() and here. Never downgrade a paid/terminal job.
+            with t.lock():
+                current = t.get_job(job_id) or {}
+                if current.get("status") != "awaiting_payment":
+                    continue
+                t.upsert_checkout(
+                    job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail
+                )
+                if t.get_nano_invoice(job_id):
+                    t.mark_nano_invoice(job_id, status=EXPIRED_STATUS)
+                reason = (
+                    "nano invoice expired"
+                    if row.get("invoice_expired")
+                    else f"checkout unpaid after {rules.expire_after_hours}h"
+                )
+                t.upsert_job(
+                    job_id,
+                    EXPIRED_STATUS,
+                    error_reason=reason,
+                    current_stage=EXPIRED_STATUS,
+                )
             expired.append(job_id)
             emit(
                 {

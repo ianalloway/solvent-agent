@@ -14,7 +14,9 @@ def _margin_pct(revenue_cents: int, pnl_cents: int) -> float:
     return pnl_cents / revenue_cents * 100
 
 
-def build_receipt(job: dict, pnl_cents: int, balance_cents: int) -> str:
+def build_receipt(
+    job: dict, pnl_cents: int, balance_cents: int, *, internal: bool = False
+) -> str:
     """Build a plaintext/markdown receipt string for a completed or failed job.
 
     Args:
@@ -22,6 +24,8 @@ def build_receipt(job: dict, pnl_cents: int, balance_cents: int) -> str:
              and ``status`` keys (as stored/returned by Treasury).
         pnl_cents: Net profit & loss for this job in cents (may be negative).
         balance_cents: Current treasury balance in cents after booking.
+        internal: When True, include shop Balance / COGS / margin (operator
+            only). Customer-facing receipts omit those fields.
 
     Returns:
         Multi-line string suitable for Telegram Markdown or plain text.
@@ -30,32 +34,37 @@ def build_receipt(job: dict, pnl_cents: int, balance_cents: int) -> str:
     topic: str = (job.get("topic") or "")[:80]
     status: str = job.get("status", "unknown")
     revenue_cents: int = int(job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0)
-    cogs_cents: int = revenue_cents - pnl_cents
-    margin_pct = _margin_pct(revenue_cents, pnl_cents)
 
-    return (
-        f"{_RULE}\n"
-        f"SOLVENT Receipt — Job {job_id[:8]}\n"
-        f"{_RULE}\n"
-        f"Topic:    {topic}\n"
-        f"Status:   {status}\n"
-        f"Earned:   ${revenue_cents / 100:.2f}\n"
-        f"COGS:     ${cogs_cents / 100:.2f}\n"
-        f"Net P&L:  ${pnl_cents / 100:.2f} ({margin_pct:.0f}% margin)\n"
-        f"Balance:  ${balance_cents / 100:.2f}\n"
-        f"\n"
-        f"Ref: {job_id}\n"
-        f"{_RULE}"
-    )
+    lines = [
+        _RULE,
+        f"SOLVENT Receipt — Job {job_id[:8]}",
+        _RULE,
+        f"Topic:    {topic}",
+        f"Status:   {status}",
+        f"Earned:   ${revenue_cents / 100:.2f}",
+    ]
+    if internal:
+        cogs_cents: int = revenue_cents - pnl_cents
+        margin_pct = _margin_pct(revenue_cents, pnl_cents)
+        lines += [
+            f"COGS:     ${cogs_cents / 100:.2f}",
+            f"Net P&L:  ${pnl_cents / 100:.2f} ({margin_pct:.0f}% margin)",
+            f"Balance:  ${balance_cents / 100:.2f}",
+        ]
+    lines += ["", f"Ref: {job_id}", _RULE]
+    return "\n".join(lines)
 
 
-def build_html_receipt(job: dict, pnl_cents: int, balance_cents: int) -> str:
+def build_html_receipt(
+    job: dict, pnl_cents: int, balance_cents: int, *, internal: bool = False
+) -> str:
     """Return the same receipt content as styled HTML suitable for email.
 
     Args:
         job: Job dict (same shape as :func:`build_receipt`).
         pnl_cents: Net P&L in cents.
         balance_cents: Current treasury balance in cents.
+        internal: When True, include shop Balance / COGS / margin.
 
     Returns:
         Full HTML document string.
@@ -64,28 +73,38 @@ def build_html_receipt(job: dict, pnl_cents: int, balance_cents: int) -> str:
     topic: str = (job.get("topic") or "")[:80]
     status: str = job.get("status", "unknown")
     revenue_cents: int = int(job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0)
-    cogs_cents: int = revenue_cents - pnl_cents
-    margin_pct = _margin_pct(revenue_cents, pnl_cents)
+
+    def _esc(value: str) -> str:
+        return (
+            value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
 
     def row(label: str, value: str) -> str:
         return (
             f"<tr>"
             f"<td style='padding:4px 12px 4px 0;color:#888;font-weight:bold'>{label}</td>"
-            f"<td style='padding:4px 0'>{value}</td>"
+            f"<td style='padding:4px 0'>{_esc(value)}</td>"
             f"</tr>"
         )
 
-    rows = "".join(
-        [
-            row("Topic", topic),
-            row("Status", status),
-            row("Earned", f"${revenue_cents / 100:.2f}"),
+    rows_list = [
+        row("Topic", topic),
+        row("Status", status),
+        row("Earned", f"${revenue_cents / 100:.2f}"),
+    ]
+    if internal:
+        cogs_cents: int = revenue_cents - pnl_cents
+        margin_pct = _margin_pct(revenue_cents, pnl_cents)
+        rows_list += [
             row("COGS", f"${cogs_cents / 100:.2f}"),
             row("Net P&amp;L", f"${pnl_cents / 100:.2f} ({margin_pct:.0f}% margin)"),
             row("Balance", f"${balance_cents / 100:.2f}"),
-            row("Ref", job_id),
         ]
-    )
+    rows_list.append(row("Ref", job_id))
+    rows = "".join(rows_list)
 
     return (
         "<html>"
