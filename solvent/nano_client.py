@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -30,6 +31,7 @@ import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 from typing import Any
 
+from . import _filelock
 from .paths import config_path
 
 #: 1 XNO = 10^30 raw (Nano protocol).
@@ -135,6 +137,7 @@ class NanoClient:
         self.receive_address = address
         self._rpc_post = rpc_post  # injectable for tests
         self._booked_blocks: dict[str, dict] = {}
+        self._book_lock = threading.Lock()
         self._load_booked()
         self._rate_explicit = bool(os.environ.get("SOLVENT_NANO_RATE_USD", "").strip())
         self.misconfig_reason = ""
@@ -261,6 +264,28 @@ class NanoClient:
 
     def is_block_booked(self, block_hash: str) -> bool:
         return bool(block_hash) and block_hash in self._booked_blocks
+
+    def _try_book_block(self, block_hash: str, payment: dict) -> bool:
+        """Atomically book ``block_hash`` or return False if already used.
+
+        Thread- and process-safe via an in-process lock plus an advisory flock
+        on the booked-blocks file, so concurrent verify requests cannot both
+        accept the same on-chain send.
+        """
+        path = self._booked_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = path.with_suffix(path.suffix + ".lock")
+        with self._book_lock:
+            with open(lock_path, "a+", encoding="utf-8") as lf:
+                _filelock.acquire(lf, timeout=30.0)
+                try:
+                    self._load_booked()
+                    if self.is_block_booked(block_hash):
+                        return False
+                    self._remember_block(block_hash, payment)
+                    return True
+                finally:
+                    _filelock.release(lf)
 
     # ---- status ----------------------------------------------------------
     def status(self) -> dict:
@@ -480,6 +505,7 @@ class NanoClient:
         if not isinstance(block_hash, str) or not block_hash:
             return reject("missing block hash")
 
+        # Fast path only — authoritative booking happens in _try_book_block.
         if self.is_block_booked(block_hash):
             return reject("block hash already booked (replay)")
 
@@ -553,7 +579,8 @@ class NanoClient:
             "job_id": job_id,
             "ts": stamp,
         }
-        self._remember_block(block_hash, payment)
+        if not self._try_book_block(block_hash, payment):
+            return reject("block hash already booked (replay)")
         return payment
 
     def _verify_sim(
@@ -619,7 +646,8 @@ class NanoClient:
             "job_id": job_id,
             "ts": stamp,
         }
-        self._remember_block(block_hash, payment)
+        if not self._try_book_block(block_hash, payment):
+            return reject("block hash already booked (replay)")
         return payment
 
     def mint_sim_block(self, invoice: dict | None = None) -> str:

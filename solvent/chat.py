@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import uuid
+from contextlib import nullcontext
 
 from . import nemotron, tools
 from .agent import Solvent
@@ -66,6 +67,20 @@ def _make_executor(
             row = agent.t.get_job_for_session(jid, session_id)
             if not row:
                 return json.dumps({"error": "job not found"})
+            # Customers see status fields only — not COGS / margin metrics.
+            if not operator:
+                public_job = {
+                    "id": row.get("id"),
+                    "status": row.get("status"),
+                    "topic": row.get("topic"),
+                    "budget_cents": row.get("budget_cents"),
+                    "customer_email": row.get("customer_email"),
+                    "checkout_url": row.get("checkout_url"),
+                    "deliverable_url": row.get("deliverable_url"),
+                    "error_reason": row.get("error_reason"),
+                    "current_stage": row.get("current_stage"),
+                }
+                return json.dumps({"job": public_job})
             metrics = agent.t.get_metrics(jid)
             return json.dumps({"job": row, "metrics": metrics})
         if name == "quote_brief":
@@ -78,15 +93,15 @@ def _make_executor(
                 "web_search_calls": 6,
             }
             q = quote(job, agent.pricing)
-            return json.dumps(
-                {
-                    "accept": q.accept,
-                    "price_cents": q.price_cents,
-                    "est_cost_cents": q.est_cost_cents,
-                    "margin_pct": q.margin_pct,
-                    "reason": q.reason,
-                }
-            )
+            payload = {
+                "accept": q.accept,
+                "price_cents": q.price_cents,
+                "reason": q.reason,
+            }
+            if operator:
+                payload["est_cost_cents"] = q.est_cost_cents
+                payload["margin_pct"] = q.margin_pct
+            return json.dumps(payload)
         if name == "submit_brief":
             topic = args.get("topic", "")
             budget = int(args.get("budget_cents", 0))
@@ -229,6 +244,8 @@ def handle_message(
     )
     if not operator:
         catalog.pop("treasury_status", None)
+        # Customers must not trigger metered live search against the treasury.
+        live_search = False
     executor = _make_executor(agent, session_id, live_search, operator=operator)
     tool_lines = "\n".join(
         f"- {name}: {meta.get('description', '')}" for name, meta in catalog.items()
@@ -245,6 +262,31 @@ def handle_message(
     user += f"\nUser: {text}"
 
     tool_budget = tools.MAX_TOOL_CALLS
+    # Non-operators always use the offline stub so chat cannot burn unscoped
+    # Nemotron / LLM spend against the shop treasury.
+    complete_ctx = nemotron.force_offline() if not operator else nullcontext()
+    with complete_ctx:
+        return _run_chat_loop(
+            agent=agent,
+            memory=memory,
+            session_id=session_id,
+            system_prompt=system_prompt,
+            user=user,
+            executor=executor,
+            tool_budget=tool_budget,
+        )
+
+
+def _run_chat_loop(
+    *,
+    agent: Solvent,
+    memory: SessionMemory,
+    session_id: str,
+    system_prompt: str,
+    user: str,
+    executor,
+    tool_budget: int,
+) -> str:
     calls_made = 0
     for _ in range(6):
         reply, _ = nemotron.complete(system_prompt, user)

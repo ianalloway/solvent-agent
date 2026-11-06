@@ -422,6 +422,14 @@ class StripeClient:
             return self._invalid_payment(link, reason)
         return payment
 
+    def accept_cached_payment(self, payment: dict, link: dict) -> dict:
+        """Validate a webhook-cached payment against the expected checkout link.
+
+        Production ``serve`` books from the webhook cache without polling; this
+        applies the same amount/currency/identity checks as sync confirm.
+        """
+        return self._accept_payment(payment, link)
+
     def _poll_checkout_session(self, plink_id: str, link: dict) -> dict:
         deadline = time.time() + self.poll_timeout
         while time.time() < deadline:

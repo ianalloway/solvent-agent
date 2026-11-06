@@ -47,13 +47,26 @@ class TestBuildReceipt(unittest.TestCase):
         from solvent.receipt import build_receipt
 
         job = self._make_job(revenue_cents=5000)
-        receipt = build_receipt(job, pnl_cents=2000, balance_cents=12000)
+        receipt = build_receipt(
+            job, pnl_cents=2000, balance_cents=12000, internal=True
+        )
         # Revenue
         self.assertIn("$50.00", receipt)
         # P&L
         self.assertIn("$20.00", receipt)
-        # Balance
+        # Balance (operator-only)
         self.assertIn("$120.00", receipt)
+
+    def test_customer_receipt_omits_balance_and_cogs(self):
+        from solvent.receipt import build_receipt
+
+        job = self._make_job(revenue_cents=5000)
+        receipt = build_receipt(job, pnl_cents=2000, balance_cents=12000)
+        self.assertIn("$50.00", receipt)
+        self.assertNotIn("Balance:", receipt)
+        self.assertNotIn("COGS:", receipt)
+        self.assertNotIn("Net P&L:", receipt)
+        self.assertNotIn("$120.00", receipt)
 
     def test_status_present(self):
         from solvent.receipt import build_receipt
@@ -73,7 +86,9 @@ class TestBuildReceipt(unittest.TestCase):
         from solvent.receipt import build_receipt
 
         job = self._make_job(revenue_cents=1000)
-        receipt = build_receipt(job, pnl_cents=-200, balance_cents=5000)
+        receipt = build_receipt(
+            job, pnl_cents=-200, balance_cents=5000, internal=True
+        )
         self.assertIn("$-2.00", receipt)
 
 
@@ -139,7 +154,9 @@ class TestBuildHtmlReceipt(unittest.TestCase):
             "status": "completed",
             "revenue_cents": 4000,
         }
-        html = build_html_receipt(job, pnl_cents=1500, balance_cents=9000)
+        html = build_html_receipt(
+            job, pnl_cents=1500, balance_cents=9000, internal=True
+        )
         self.assertIn("$40.00", html)
         self.assertIn("$15.00", html)
         self.assertIn("$90.00", html)

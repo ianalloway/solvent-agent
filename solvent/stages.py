@@ -555,6 +555,10 @@ class StageRunner:
                     "paid": False,
                     "reason": "awaiting webhook",
                 }
+                # Production serve uses the webhook cache; apply the same
+                # amount/currency/PI/session checks as sync confirm/poll.
+                if payment.get("paid"):
+                    payment = self.stripe.accept_cached_payment(payment, link)
 
         if not payment.get("paid"):
             reason = payment.get("reason", "payment not received")
@@ -569,6 +573,17 @@ class StageRunner:
 
         payment_ref = payment.get("payment_ref") or payment.get("stripe_ref")
         with self.t.lock():
+            # Refuse earn on terminal jobs (expire race / late webhook).
+            job_row = self.t.get_job(job_id) or {}
+            if job_row.get("status") in ("expired", "failed", "completed"):
+                return self._emit(
+                    stage="payment_pending",
+                    job_id=job_id,
+                    reason=f"job is {job_row.get('status')}; payment not booked",
+                    url=checkout.get("url"),
+                    rail=rail,
+                    status=job_row.get("status"),
+                )
             # Re-check under the lock: a concurrent webhook/worker may have
             # booked this payment between the fast-path check above and here.
             if self.t.job_has_revenue(job_id):

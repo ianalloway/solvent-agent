@@ -1193,7 +1193,9 @@ class Treasury:
                 return bool(prow)
 
     def create_openclaw_token(self, ttl: float = 600) -> str:
-        token = "OC-" + uuid.uuid4().hex[:8].upper()
+        # 128 bits of entropy (32 hex) — short 32-bit OC-XXXXXXXX tokens were
+        # guessable on the public /api/pair/verify endpoint within the TTL.
+        token = "OC-" + uuid.uuid4().hex.upper()
         now = time.time()
         with self.lock():
             with self._conn() as conn:

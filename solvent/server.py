@@ -310,6 +310,14 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     app.state.webhook_log = webhook_log
     app.state.agent = agent
 
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        # Query-string dashboard/delivery tokens must not leak via Referer to
+        # third-party assets (fonts, analytics).
+        response = await call_next(request)
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        return response
+
     @app.get("/health")
     def health(req: Request):
         # Public liveness probe: no financial detail unless the caller is authenticated.
@@ -578,6 +586,13 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             "status": invoice_row.get("status") or "open",
             "url": invoice_row.get("pay_uri") or "",
         }
+        # Refuse before consuming a block hash on terminal jobs.
+        job_row = agent.t.get_job(job_id) or {}
+        if job_row.get("status") != "awaiting_payment":
+            raise HTTPException(
+                409,
+                f"job status is {job_row.get('status')!r}; expected awaiting_payment",
+            )
         # Optional test/debug overrides are refused on the public path.
         payment = agent.nano.verify_nano_block(invoice, block_hash)
         if not payment.get("paid"):
@@ -585,10 +600,17 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 {"paid": False, "reason": payment.get("reason", "not paid"), "job_id": job_id},
                 status_code=402,
             )
-        agent.t.mark_nano_invoice(
-            job_id, status="paid", block_hash=payment.get("block_hash") or block_hash
-        )
-        # Advance the job through paid → fulfil (sync_payment is False on server).
+        # Do not mark the invoice paid here — _stage_paid does that after earn.
+        # Advance under a fresh status check so an expire race cannot strand a
+        # "paid" invoice on an expired job with no revenue row.
+        with agent.t.lock():
+            job_row = agent.t.get_job(job_id) or {}
+            if job_row.get("status") != "awaiting_payment":
+                raise HTTPException(
+                    409,
+                    f"job became {job_row.get('status')!r} during verify; "
+                    "block booked but payment not advanced",
+                )
         result = agent.advance_job(job_id)
         _publish_status()
         return {
