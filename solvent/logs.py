@@ -79,21 +79,33 @@ def _human_line(record: dict) -> str:
     return "  ".join(parts)
 
 
+_TAIL_BLOCK = 8192
+
+
 def _tail_lines(path: Path, n: int) -> list[str]:
-    """Return the last n lines of the log file efficiently."""
-    if not path.is_file():
+    """Return the last n complete lines of the log file, however long they are."""
+    if n <= 0 or not path.is_file():
         return []
     with path.open("rb") as f:
         f.seek(0, 2)
-        size = f.tell()
-        if size == 0:
-            return []
-        chunk = min(size, n * 200)
-        f.seek(max(0, size - chunk))
-        raw = f.read()
+        pos = f.tell()
+        raw = b""
+        while pos > 0:
+            step = min(_TAIL_BLOCK, pos)
+            pos -= step
+            f.seek(pos)
+            raw = f.read(step) + raw
+            lines = _complete_lines(raw, at_start=pos == 0)
+            if len(lines) >= n:
+                break
+    return _complete_lines(raw, at_start=pos == 0)[-n:]
+
+
+def _complete_lines(raw: bytes, *, at_start: bool) -> list[str]:
     lines = raw.decode(errors="replace").splitlines()
-    lines = [line for line in lines if line.strip()]
-    return lines[-n:]
+    if not at_start:
+        lines = lines[1:]
+    return [line for line in lines if line.strip()]
 
 
 def _parse(line: str) -> dict | None:
