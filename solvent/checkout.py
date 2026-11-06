@@ -212,6 +212,10 @@ def sweep(
                 current = t.get_job(job_id) or {}
                 if current.get("status") != "awaiting_payment":
                     continue
+                # A verified Nano block is waiting to be booked by the next
+                # advance; expiring now would strand the customer's payment.
+                if (t.get_nano_invoice(job_id) or {}).get("status") == "paid":
+                    continue
                 t.upsert_checkout(
                     job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail
                 )
