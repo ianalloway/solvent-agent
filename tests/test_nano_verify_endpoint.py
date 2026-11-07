@@ -1,12 +1,10 @@
 """Regression tests for POST /payments/nano/verify on the async (serve) path.
 
-The server runs with ``sync_payment=False``, so the payment stage only books a
-Nano job once the invoice row is marked paid with the verified block hash. The
-verify endpoint must record that, and the checkout sweep must not expire a job
-whose block was already verified (the block is single-use once booked).
+The server runs with ``sync_payment=False``. A verified block must reach the
+ledger exactly once: an interrupted verify must leave the proof unconsumed so
+the same block can be resubmitted, and a resubmit after booking must not book
+it again (regression for #141, where verified blocks were never booked).
 """
-
-import time
 
 import pytest
 
@@ -15,7 +13,7 @@ try:
 except ImportError:
     pytest.skip("FastAPI test client is not installed", allow_module_level=True)
 
-from solvent import checkout, server, treasury
+from solvent import server, treasury
 from solvent.webhook_log import WebhookLog
 
 TOKEN = "d" * 32
@@ -73,26 +71,31 @@ def test_verified_block_books_the_payment(client):
     assert agent.t.get_nano_invoice("nano-paid")["status"] == "paid"
 
 
-def test_sweep_does_not_expire_a_verified_but_unadvanced_job(client, monkeypatch):
+def _revenue_rows(agent, job_id: str) -> int:
+    return sum(e.kind == "revenue" and e.job_id == job_id for e in agent.t.entries)
+
+
+def test_interrupted_verify_can_be_resubmitted_and_books_once(client, monkeypatch):
     agent = client.app.state.agent
-    invoice = _nano_job(client, "nano-race")
+    invoice = _nano_job(client, "nano-retry")
     block = agent.nano.mint_sim_block(invoice)
 
-    # Verify succeeds, then the process dies before the job is advanced.
+    def submit():
+        return client.post(
+            "/payments/nano/verify",
+            json={"job_id": "nano-retry", "block_hash": block},
+            headers=HEADERS,
+        )
+
+    # The process dies after verification but before the job is advanced.
     real_advance = agent.advance_job
-    monkeypatch.setattr(agent, "advance_job", lambda job_id: {"stage": "interrupted"})
-    response = client.post(
-        "/payments/nano/verify",
-        json={"job_id": "nano-race", "block_hash": block},
-        headers=HEADERS,
-    )
-    assert response.status_code == 200, response.text
+    monkeypatch.setattr(agent, "advance_job", lambda job_id, **kwargs: {"stage": "interrupted"})
+    assert submit().status_code == 409
+    assert not agent.nano.is_block_booked(block)
+    assert not agent.t.job_has_revenue("nano-retry")
 
-    # A sweep long after the invoice deadline must leave the job payable.
-    result = checkout.sweep(agent.t, nano=agent.nano, now=time.time() + 30 * 86_400)
-    assert "nano-race" not in result["expired"]
-    assert agent.t.get_job("nano-race")["status"] == "awaiting_payment"
-
-    # The next worker pass books the revenue from the recorded block.
-    real_advance("nano-race")
-    assert agent.t.job_has_revenue("nano-race")
+    # The customer's same block still pays for the job, and only once.
+    monkeypatch.setattr(agent, "advance_job", real_advance)
+    assert submit().status_code == 200
+    submit()
+    assert _revenue_rows(agent, "nano-retry") == 1

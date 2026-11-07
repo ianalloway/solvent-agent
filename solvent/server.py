@@ -586,29 +586,30 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             "status": invoice_row.get("status") or "open",
             "url": invoice_row.get("pay_uri") or "",
         }
-        # Check, verify and record under one treasury lock: the checkout sweep
-        # takes the same lock, so a job cannot expire between consuming the
-        # (single-use) block hash and recording it on the invoice.
-        with agent.t.lock():
-            job_row = agent.t.get_job(job_id) or {}
-            if job_row.get("status") != "awaiting_payment":
-                raise HTTPException(
-                    409,
-                    f"job status is {job_row.get('status')!r}; expected awaiting_payment",
-                )
-            # Optional test/debug overrides are refused on the public path.
-            payment = agent.nano.verify_nano_block(invoice, block_hash)
-            if not payment.get("paid"):
-                return JSONResponse(
-                    {"paid": False, "reason": payment.get("reason", "not paid"), "job_id": job_id},
-                    status_code=402,
-                )
-            # The async payment stage books revenue from this paid row; the
-            # sweep leaves a paid invoice alone until a worker advances it.
-            agent.t.mark_nano_invoice(
-                job_id, status="paid", block_hash=payment.get("block_hash") or block_hash
+        # Refuse before consuming a block hash on terminal jobs.
+        job_row = agent.t.get_job(job_id) or {}
+        if job_row.get("status") != "awaiting_payment":
+            raise HTTPException(
+                409,
+                f"job status is {job_row.get('status')!r}; expected awaiting_payment",
             )
-        result = agent.advance_job(job_id)
+        # Optional test/debug overrides are refused on the public path.
+        # Network validation is side-effect-free. Proof reservation and earn
+        # happen together under the treasury lock in _stage_paid.
+        payment = agent.nano.verify_nano_block(invoice, block_hash, book=False)
+        if not payment.get("paid"):
+            return JSONResponse(
+                {"paid": False, "reason": payment.get("reason", "not paid"), "job_id": job_id},
+                status_code=402,
+            )
+        result = agent.advance_job(job_id, verified_nano_payment=payment)
+        booked = any(
+            entry.kind == "revenue" and entry.job_id == job_id
+            and entry.resolved_payment_ref() == payment.get("payment_ref")
+            for entry in agent.t.entries
+        )
+        if not booked:
+            raise HTTPException(409, "payment was not booked; job or invoice changed during verification")
         _publish_status()
         return {
             "paid": True,
