@@ -22,7 +22,7 @@ def resume_incomplete_jobs(treasury: Treasury) -> list[str]:
     for job in treasury.list_jobs():
         jid = job["id"]
         status = job.get("status", "")
-        if status in ("completed", "failed"):
+        if status in ("completed", "failed", "refund_pending") or treasury.pending_refunds(jid):
             continue
         if treasury.job_has_revenue(jid) and not treasury.stage_completed(jid, "fulfill"):
             treasury.upsert_job(jid, "paid_pending_fulfill")

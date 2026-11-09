@@ -313,6 +313,12 @@ def format_report(report: dict) -> str:
         for vendor, amt in inc["expense_by_vendor"].items():
             lines.append(f"    - {vendor:<22} {fmt(amt)}")
 
+    if report.get("pending_refunds"):
+        lines += ["", "WARNING: unresolved refunds require reconciliation.",
+                  "  Booked revenue/profit above are not confirmed retained funds.",
+                  f"  Pending refunds    {fmt(report['pending_refund_cents'])}",
+                  f"  Available balance  {fmt(report['available_balance_cents'])}"]
+
     lines += [
         "",
         "Unit economics (per completed job)",
@@ -411,9 +417,15 @@ def main() -> None:
             print(usage)
             sys.exit(1)
 
-    entries = Treasury().entries
+    treasury = Treasury()
+    entries = treasury.entries
     report = build_report(
         entries, reserve_cents=reserve_cents, period=period, horizon_days=horizon_days
+    )
+    report["pending_refunds"] = treasury.pending_refunds()
+    report["pending_refund_cents"] = sum(r["amount_cents"] for r in report["pending_refunds"])
+    report["available_balance_cents"] = treasury.balance_cents() - sum(
+        e.amount_cents for e in treasury.reserved_spends()
     )
     if as_json:
         print(json.dumps(report, indent=2))

@@ -91,6 +91,26 @@ class Treasury:
         self.lock_path = self.path.with_suffix(".lock")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        self._restore_legacy_refund_intents()
+
+    def _restore_legacy_refund_intents(self) -> None:
+        """Quarantine pre-upgrade refund failures whose outcome was never booked.
+
+        Older versions logged a timeout as refund_failed without saving intent.
+        Treat those events conservatively too, rather than unlocking a retry on
+        upgrade. No provider request is made and no successful refund is assumed.
+        """
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT l.job_id, l.stripe_ref, l.amount_cents FROM ledger l "
+                "WHERE l.kind = 'revenue' AND l.stripe_ref LIKE 'pi_%' "
+                "AND EXISTS (SELECT 1 FROM events e WHERE e.job_id = l.job_id "
+                "AND e.stage = 'refund_failed') "
+                "AND NOT EXISTS (SELECT 1 FROM ledger r WHERE r.job_id = l.job_id "
+                "AND r.kind = 'expense' AND r.vendor = ?)", (REFUND_VENDOR,),
+            ).fetchall()
+            for row in rows:
+                self.begin_refund(row["job_id"], row["stripe_ref"], row["amount_cents"])
 
     @contextmanager
     def _conn(self):
@@ -532,6 +552,10 @@ class Treasury:
             margin = 0.0 if revenue == 0 else round(100 * net_profit / revenue, 1)
             return {
                 "balance_cents": balance,
+                "pending_refunds": self.pending_refunds(),
+                "available_balance_cents": balance - sum(
+                    e.amount_cents for e in self.reserved_spends()
+                ),
                 "capital_cents": capital,
                 "revenue_cents": revenue,
                 "expense_cents": expense,
@@ -678,6 +702,81 @@ class Treasury:
                 (idempotency_key,),
             ).fetchone()
             return dict(row) if row else None
+
+    def begin_refund(self, job_id: str, payment_ref: str, amount_cents: int) -> bool:
+        """Persist intent and reserve cash before I/O. Never resend an existing intent.
+
+        A timeout or process exit cannot prove that the provider did not refund.
+        The pending stage and liability survive until confirmed settlement.
+        """
+        if type(amount_cents) is not int or amount_cents <= 0:
+            raise ValueError("refund amount must be positive integer cents")
+        key = f"refund:{job_id}:{payment_ref}"
+        payload = {"payment_ref": payment_ref, "amount_cents": amount_cents,
+                   "provider_idempotency_key": f"refund-{job_id}"}
+        with self.lock(), self._conn() as conn, conn:
+            if conn.execute(
+                "SELECT 1 FROM job_stages WHERE job_id = ? AND stage = 'refund'", (job_id,)
+            ).fetchone():
+                return False
+            conn.execute(
+                "INSERT INTO job_stages "
+                "(id, job_id, stage, idempotency_key, status, payload_json, result_json, ts) "
+                "VALUES (?, ?, 'refund', ?, 'pending', ?, '{}', ?)",
+                (key, job_id, key, json.dumps(payload), time.time()),
+            )
+            conn.execute(
+                "INSERT INTO spend_reservations VALUES (?, ?, ?, ?, ?)",
+                (key, job_id, REFUND_VENDOR, amount_cents, f"Unresolved refund for {job_id}"),
+            )
+        return True
+
+    def pending_refunds(self, job_id: str | None = None) -> list[dict]:
+        """Unresolved refund intents, including requests interrupted by a crash."""
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM job_stages WHERE stage = 'refund' AND status != 'completed' "
+                "AND (? IS NULL OR job_id = ?) ORDER BY ts, id",
+                (job_id, job_id),
+            ).fetchall()
+            return [{**json.loads(row["payload_json"] or "{}"),
+                     "job_id": row["job_id"], "status": row["status"],
+                     "idempotency_key": row["idempotency_key"]} for row in rows]
+
+    def complete_refund(self, job_id: str, payment_ref: str, refund_id: str) -> None:
+        """Atomically book a confirmed refund, release its reserve and finish its stage."""
+        key = f"refund:{job_id}:{payment_ref}"
+        with self.lock(), self._conn() as conn, conn:
+            row = conn.execute(
+                "SELECT * FROM job_stages WHERE idempotency_key = ?", (key,)
+            ).fetchone()
+            if row is None:
+                raise ValueError("refund has no durable intent")
+            if row["status"] == "completed":
+                return
+            payload = json.loads(row["payload_json"])
+            conn.execute(
+                "INSERT INTO ledger "
+                "(id, kind, amount_cents, memo, job_id, vendor, stripe_ref, payment_ref, ts) "
+                "VALUES (?, 'expense', ?, ?, ?, ?, ?, ?, ?)",
+                (key, payload["amount_cents"], f"Confirmed refund for {job_id}", job_id,
+                 REFUND_VENDOR, refund_id, refund_id, time.time()),
+            )
+            conn.execute("DELETE FROM spend_reservations WHERE id = ?", (key,))
+            conn.execute(
+                "UPDATE job_stages SET status = 'completed', result_json = ? "
+                "WHERE idempotency_key = ?", (json.dumps({"refund_id": refund_id}), key),
+            )
+            conn.execute(
+                "UPDATE jobs SET status = 'failed', current_stage = 'failed', "
+                "error_reason = 'refund confirmed', updated_at = ? WHERE id = ?",
+                (time.time(), job_id),
+            )
+            conn.execute(
+                "INSERT INTO job_metrics (job_id, refunded, ts) VALUES (?, 1, ?) "
+                "ON CONFLICT(job_id) DO UPDATE SET refunded = 1, ts = excluded.ts",
+                (job_id, time.time()),
+            )
 
     def complete_stage(
         self,
@@ -1001,7 +1100,8 @@ class Treasury:
                     ).fetchone()["s"]
                     or 0
                 )
-                return rev - refunded
+                pending = sum(r["amount_cents"] for r in self.pending_refunds(job_id))
+                return rev - refunded - pending
 
     def job_has_vendor_spend(self, job_id: str, vendor: str) -> bool:
         """True when an operating (non-refund) expense already exists for vendor."""

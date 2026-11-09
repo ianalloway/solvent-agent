@@ -605,8 +605,9 @@ class StripeClient:
                 refund = stripe.Refund.create(**kwargs)
             return {
                 "id": refund.id,
-                "stripe_ref": payment_intent_id,
-                "amount_cents": amount_cents,
+                "stripe_ref": refund.payment_intent,
+                "amount_cents": refund.amount,
+                "status": refund.status,
                 "simulated": False,
                 "ts": time.time(),
             }
@@ -615,6 +616,7 @@ class StripeClient:
             "id": ref,
             "stripe_ref": payment_intent_id,
             "amount_cents": amount_cents,
+            "status": "succeeded",
             "simulated": True,
             "ts": time.time(),
         }

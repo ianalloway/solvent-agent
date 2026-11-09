@@ -238,6 +238,7 @@ LIVE_CLIENT_JS = """
       document.getElementById("header-net-growth-val").innerHTML = `${growth >= 0 ? '+' : ''}${formatCents(growth)}`;
       document.getElementById("header-net-growth-val").className = growth >= 0 ? 'green' : 'red';
       document.getElementById("metric-cash-balance").innerText = formatCents(data.balance_cents);
+      updateRefundWarning(data);
       document.getElementById("metric-revenue").innerText = formatCents(data.revenue_cents);
       document.getElementById("metric-operating-spend").innerText = formatCents(data.expense_cents);
       const netProfit = data.net_profit_cents;

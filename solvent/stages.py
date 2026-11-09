@@ -221,6 +221,10 @@ class StageRunner:
         return event
 
     def run_job(self, job: dict) -> dict:
+        if isinstance(job, dict) and isinstance(job.get("id"), str):
+            if (self.t.pending_refunds(job["id"])
+                    or (self.t.get_job(job["id"]) or {}).get("status") == "refund_pending"):
+                return self._refund_pending(job["id"])
         validated, err = validate_and_coerce_job(job, self.t)
         if err:
             # Validation and intake failures still belong to the job that was
@@ -245,6 +249,8 @@ class StageRunner:
 
     def advance_job(self, job_id: str, *, verified_nano_payment: dict | None = None) -> dict:
         """Resume a job from its current DB state."""
+        if self.t.pending_refunds(job_id):
+            return self._refund_pending(job_id)
         row = self.t.get_job(job_id)
         if not row:
             return self._emit(stage="declined", job_id=job_id, reason="job not found")
@@ -264,6 +270,8 @@ class StageRunner:
         status = row.get("status", "")
         # `expired` is terminal: the checkout sweep closed the unpaid link.
         # Falling through to run_job() would resurrect the job as awaiting_payment.
+        if status == "refund_pending":
+            return self._refund_pending(job_id)
         if status in ("completed", "failed", "expired"):
             return self._emit(
                 stage="booked",
@@ -680,12 +688,26 @@ class StageRunner:
         with lock_path.open("a") as handle:
             _filelock.acquire(handle, timeout=60.0)
             try:
+                if self.t.pending_refunds(job["id"]):
+                    return self._refund_pending(job["id"])
                 row = self.t.get_job(job["id"]) or {}
+                if row.get("status") == "refund_pending":
+                    return self._refund_pending(job["id"])
                 if row.get("status") == "completed" or self.t.job_refund_cents(job["id"]):
                     return self._emit(stage="booked", job_id=job["id"], status=row.get("status"))
                 return self._fulfill_and_book_locked(job, q, paid)
             finally:
                 _filelock.release(handle)
+
+    def _refund_pending(self, job_id: str, reason: str = "refund outcome requires review") -> dict:
+        with self.t.lock():
+            # A resolver may have committed after the caller observed pending.
+            # Never overwrite that terminal state with a stale hold.
+            if not self.t.pending_refunds(job_id) and self.t.job_refund_cents(job_id):
+                return self._emit(stage="booked", job_id=job_id, status="failed")
+            self.t.upsert_job(job_id, "refund_pending", current_stage="refund", error_reason=reason)
+        return self._emit(stage="refund_pending", job_id=job_id, status="refund_pending",
+                          reason=reason)
 
     def _fulfill_and_book_locked(self, job: dict, q, paid: dict) -> dict:
         job_id = job["id"]
@@ -898,6 +920,8 @@ class StageRunner:
                             refund_booked = True
 
                     if not refund_booked:
+                        if not self.t.begin_refund(job_id, payment_intent_id, paid_amount):
+                            return self._refund_pending(job_id)
                         # Stripe I/O outside the treasury lock; re-check before booking.
                         # Nano (and other non-Stripe) refs are not PaymentIntents —
                         # Stripe.refund with a block hash raises in live mode.
@@ -905,40 +929,16 @@ class StageRunner:
                             refund = self.stripe.refund_payment(
                                 payment_intent_id, paid_amount, job_id=job_id
                             )
+                            if (refund.get("status") != "succeeded"
+                                    or refund.get("amount_cents") != paid_amount
+                                    or refund.get("stripe_ref") != payment_intent_id
+                                    or not refund.get("id")):
+                                raise ValueError("refund response does not confirm the full refund")
                             refund_id = refund["id"]
                         else:
                             refund_id = "ref_ledger_" + str(payment_intent_id)[:24]
-                        with self.t.lock():
-                            refund_stage = self.t.get_stage(refund_key)
-                            already = bool(
-                                refund_stage and refund_stage["status"] == "completed"
-                            )
-                            if already or self.t.job_refund_cents(job_id) > 0:
-                                if not already:
-                                    self.t.complete_stage(
-                                        job_id,
-                                        "refund",
-                                        refund_key,
-                                        {"refund_id": "existing"},
-                                    )
-                            else:
-                                self.t.spend(
-                                    amount_cents=paid_amount,
-                                    memo=(
-                                        f"Refund for job {job_id} due to "
-                                        f"block/failure: {reason}"
-                                    ),
-                                    job_id=job_id,
-                                    vendor=REFUND_VENDOR,
-                                    stripe_ref=refund_id,
-                                )
-                                self.t.complete_stage(
-                                    job_id,
-                                    "refund",
-                                    refund_key,
-                                    {"refund_id": refund_id},
-                                )
-                            refund_booked = True
+                        self.t.complete_refund(job_id, payment_intent_id, refund_id)
+                        refund_booked = True
 
                     self._emit(
                         stage="refunded",
@@ -947,13 +947,8 @@ class StageRunner:
                         reason=reason,
                     )
                 except Exception as refund_err:
-                    reason = f"{reason}; refund failed: {refund_err}"
-                    self._emit(
-                        stage="refund_failed",
-                        job_id=job_id,
-                        amount=paid_amount,
-                        reason=str(refund_err),
-                    )
+                    reason = f"{reason}; refund outcome unresolved: {refund_err}"
+                    return self._refund_pending(job_id, reason)
             if refund_booked:
                 self.t.upsert_metrics(job_id, refunded=1)
             self.t.upsert_job(job_id, "failed", error_reason=reason, current_stage="failed")
@@ -1008,6 +1003,9 @@ class StageRunner:
         - ``failed`` jobs whose payment was refunded refuse retry (no free re-fulfill).
         """
         MAX_RETRIES = 3
+
+        if self.t.pending_refunds(job_id):
+            raise ValueError(f"Job {job_id!r} has an unresolved refund; reconcile before retrying")
 
         row = self.t.get_job(job_id)
         if not row:
