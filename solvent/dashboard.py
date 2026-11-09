@@ -384,6 +384,8 @@ def build_status_data(snapshot: dict, log: list[dict]) -> dict:
 
     return {
         "balance_cents": s["balance_cents"],
+        "pending_refund_cents": sum(r["amount_cents"] for r in s.get("pending_refunds", [])),
+        "available_balance_cents": s.get("available_balance_cents", s["balance_cents"]),
         "capital_cents": s["capital_cents"],
         "revenue_cents": s["revenue_cents"],
         "expense_cents": s["expense_cents"],
@@ -636,6 +638,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
         document.getElementById("header-net-growth-val").innerHTML = `${growth >= 0 ? '+' : ''}${formatCents(growth)}`;
         document.getElementById("header-net-growth-val").className = growth >= 0 ? 'green' : 'red';
         document.getElementById("metric-cash-balance").innerText = formatCents(data.balance_cents);
+        updateRefundWarning(data);
         document.getElementById("metric-revenue").innerText = formatCents(data.revenue_cents);
         document.getElementById("metric-operating-spend").innerText = formatCents(data.expense_cents);
         const netProfit = data.net_profit_cents;
@@ -1369,6 +1372,13 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
     </div>
   </header>
 
+  <div id="refund-warning" class="metric-card red-txt"
+       style="display: {'block' if status_data['pending_refund_cents'] else 'none'}">
+    Unresolved refunds: {fmt(status_data['pending_refund_cents'])}.
+    Booked revenue/profit are not confirmed retained funds.
+    Available cash: {fmt(status_data['available_balance_cents'])}. Run solvent reconcile.
+  </div>
+
   <div class="metrics-grid">
     <div class="metric-card">
       <div class="label">Cash Balance</div>
@@ -1586,6 +1596,15 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
       currentOpenJobId = null;
       document.getElementById("drawer").classList.remove("open");
       document.getElementById("overlay").classList.remove("open");
+    }}
+
+    function updateRefundWarning(data) {{
+      const warning = document.getElementById('refund-warning');
+      const pending = data.pending_refund_cents || 0;
+      warning.style.display = pending ? 'block' : 'none';
+      warning.textContent = 'Unresolved refunds: ' + formatCents(pending) +
+        '. Booked revenue/profit are not confirmed retained funds. Available cash: ' +
+        formatCents(data.available_balance_cents) + '. Run solvent reconcile.';
     }}
 
     function formatCents(cents) {{

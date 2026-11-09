@@ -633,6 +633,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         )
 
     def _brief_is_published(job_id: str) -> bool:
+        if agent.t.pending_refunds(job_id):
+            return False
         stage = agent.t.get_stage(f"publish:{job_id}")
         if stage and stage["status"] == "completed":
             return True

@@ -187,6 +187,44 @@ export SOLVENT_LOG_JSON=1
 python3 -m solvent reconcile --since 7d
 ```
 
+### Refund uncertainty and recovery
+
+A refund timeout is **not** proof that Stripe rejected the refund. SOLVENT
+persists the intent and reserves the full amount before contacting Stripe.
+An exception, interrupted worker, or non-final/mismatched response leaves the
+job `refund_pending`: retry, worker resume, and delivery are blocked. The
+reservation reduces spendable cash without claiming a successful refund.
+Finance and dashboard reports flag the unresolved amount alongside the booked
+ledger figures. Older `refund_failed` events without a booked refund are
+quarantined the same way when the treasury opens.
+
+Before resuming workers on an older treasury, audit previously interrupted
+paid jobs against Stripe. A pre-upgrade crash after provider acceptance but
+before logging `refund_failed` leaves no local evidence to migrate. Use a
+lookback covering that history; the new durable intent only protects requests
+started after this upgrade.
+
+`solvent reconcile` is read-only by default. It reports pending local intents
+even without Stripe access, and in full mode checks refund IDs, amounts and
+statuses as well as PaymentIntents. A succeeded PaymentIntent alone does not
+prove that its proceeds are still held. Use an appropriate `--since` window
+when auditing historical refunds.
+
+After locating the existing refund in the Stripe **test** dashboard, resolve
+its local record with:
+
+```bash
+python3 -m solvent reconcile --resolve-refund JOB_ID re_EXISTING_REFUND_ID
+```
+
+This retrieves the refund and requires a succeeded, full USD refund for the
+same PaymentIntent before atomically booking it and releasing the reservation.
+It never sends or retries a refund. Failed, partial, pending, missing or
+mismatched evidence leaves the job held for operator review. Do not clear a
+reservation or start a replacement refund just because a response timed out:
+provider idempotency keys may eventually expire. No automatic recovery is
+attempted when the provider's outcome cannot be established.
+
 ## Environment variables
 
 | Variable | Purpose |

@@ -259,8 +259,8 @@ class TestFulfillmentRefundRails(unittest.TestCase):
                     ):
                         event = agent._runner._stage_fulfill_and_book(job, q, paid)
 
-            self.assertEqual(event.get("status"), "failed")
-            self.assertTrue(any(e.get("stage") == "refund_failed" for e in events))
+            self.assertEqual(event.get("status"), "refund_pending")
+            self.assertTrue(any(e.get("stage") == "refund_pending" for e in events))
             self.assertFalse(any(e.get("stage") == "refund_receipt_ready" for e in events))
             metrics = agent.t.get_metrics("J-ref-fail") or {}
             self.assertEqual(metrics.get("refunded") or 0, 0)
