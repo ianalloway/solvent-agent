@@ -1,5 +1,9 @@
 # Release 0.3.0 — publish steps (parent)
 
+Historical release checklist only. Nano is retired in the unreleased code; see
+[Nano retirement and migration](NANO_SETTLE.md). Use [RELEASING.md](RELEASING.md)
+for current release procedures.
+
 Do **not** twine-upload from this agent. After the feature PR is squash-merged to `main`:
 
 1. Confirm `solvent/__init__.py` is `__version__ = "0.3.0"` and CHANGELOG has `[0.3.0]`.

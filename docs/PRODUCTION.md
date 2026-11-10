@@ -37,53 +37,15 @@ python3 -m solvent worker
 - **Voice** — mic button uses browser Web Speech API (Chrome/Edge); toggle 🔊 for spoken replies
 - **Jobs** (`POST /api/job`) — same payload as `POST /jobs`
 
-## Payment rails
+## Payments
 
-Earn defaults to Stripe test-mode Checkout / Payment Links. An optional Nano
-(XNO) settle rail sits beside it (issue [#83](https://github.com/ianalloway/solvent-agent/issues/83);
-design in [NANO_SETTLE.md](NANO_SETTLE.md)). Custody is **verify-only** (Option A):
-no hot wallet / seed in-process.
+Stripe test-mode Checkout / Payment Links is the supported payment path. Offline
+demos use simulated Stripe payments. Live Stripe keys remain refused.
 
-| Env | Effect |
-|---|---|
-| unset (default) | Stripe path unchanged; zero Nano config |
-| `SOLVENT_NANO=sim` | Checkout creates `nano_sim_…` invoices; verify with `block_sim_…` (no RPC) |
-| `SOLVENT_NANO=live` | Live verify-only — **requires** RPC + receive address + rate (fail closed if partial) |
-| `SOLVENT_NANO_RPC` | Nano node HTTP RPC URL (live only; must not be set with sim) |
-| `SOLVENT_NANO_ADDRESS` | Operator receive `nano_…` address (live only; watch/verify, no seed) |
-| `SOLVENT_NANO_RATE_USD` | USD per XNO. Optional for sim (default `0.85`); **required** for live |
-| `SOLVENT_NANO_INVOICE_TTL` | Invoice lifetime seconds (default 48h); checkout chase may expire earlier |
-| `SOLVENT_NANO_RPC_TIMEOUT` | Live RPC timeout seconds (default `10`) |
-| `SOLVENT_NANO_CUSTODY` | `off` (default) \| `sim` \| `live` — M3 custody / sweep to cold address; see [NANO_SETTLE.md](NANO_SETTLE.md#m3-custody-feature-flag-off-by-default) |
-| `SOLVENT_NANO_CUSTODY_KEY_REF` | Live custody only: `env:VAR_NAME` or `keyring:service/user`. Never a raw seed (refused) |
-| `SOLVENT_NANO_COLD_ADDRESS` | Sweep destination. Sim: `nano_sim_cold_…` only (default derived). Live: real `nano_…`, ≠ receive address |
-| `SOLVENT_NANO_SWEEP_MIN_RAW` | Smallest sweep in raw (default `10^27` = 0.001 XNO) |
-| `SOLVENT_NANO_SWEEP_DAILY_CAP_RAW` | Rolling-24h sweep cap in raw (default 100 XNO) |
-
-`solvent doctor` reports `nano_rail` as sim / live (RPC probe) / unset / misconfigured
-(fail closed). Sim and live must never be mixed. Verify-on-submit is
-`POST /payments/nano/verify` (dashboard token). `POST /webhooks/nano` returns `501`.
-Unpaid Nano invoices are chased and expired by `solvent checkouts --sweep` /
-the worker the same way as Stripe checkouts (also honouring invoice `expires_at`).
-
-### Live Nano quick start (verify-only)
-
-```bash
-export SOLVENT_NANO=live
-export SOLVENT_NANO_RPC=https://your-node.example/rpc
-export SOLVENT_NANO_ADDRESS=nano_…
-export SOLVENT_NANO_RATE_USD=0.85
-solvent doctor   # nano_rail must be OK before serving
-```
-
-After checkout, submit the send block hash:
-
-```bash
-curl -X POST "$SOLVENT_BASE_URL/payments/nano/verify" \
-  -H "Content-Type: application/json" \
-  -H "X-Solvent-Dashboard-Token: $SOLVENT_DASHBOARD_TOKEN" \
-  -d '{"job_id":"J99","block_hash":"<64-hex>"}'
-```
+The former Nano payment and custody integration has been removed. Before upgrading
+an installation with historical Nano jobs, follow [the retirement and migration
+guide](NANO_SETTLE.md). Retain its records and reconcile outstanding obligations;
+there are no automated Nano payouts or refunds.
 
 ## Stripe setup (test mode)
 
@@ -132,8 +94,6 @@ metrics, including the customer email and costs.
 | `GET /health` | Public: `{status, version}`. With the dashboard token it also reports `balance_cents`. |
 | `POST /jobs`, `GET /jobs/{id}` | Public intake and minimal status, as above. |
 | `POST /webhooks/stripe` | Public, but the Stripe signature is verified first. |
-| `POST /webhooks/nano` | Public stub: always `501` (use verify-on-submit instead). |
-| `POST /payments/nano/verify` | Dashboard token. Body: `{job_id, block_hash}`. |
 | `POST /api/pair/verify` | Public, but only a valid, unexpired, single-use pairing token succeeds. After 5 failed attempts from one peer (or 60 overall) it answers `429` for a few minutes. |
 | `GET /briefs/{id}`, `GET /api/briefs/{id}`, `GET /api/receipt/{id}` | Delivery token (`?token=`), or a genuinely local request. |
 | `GET /api/briefs` | Genuinely local requests only. |
@@ -239,10 +199,6 @@ attempted when the provider's outcome cannot be established.
 | `SOLVENT_ALLOW_POLL` | Legacy payment polling |
 | `SOLVENT_LOG_JSON` | JSON lines to stderr + `data/solvent.log` |
 | `NVIDIA_API_KEY` | Live Nemotron (optional) |
-| `SOLVENT_NANO` | `sim` or `live` Nano earn rail (unset = Stripe only) |
-| `SOLVENT_NANO_RPC` | Live Nano RPC URL (required with `live`) |
-| `SOLVENT_NANO_ADDRESS` | Live receive `nano_…` address (required with `live`) |
-| `SOLVENT_NANO_RATE_USD` | USD/XNO rate (required for live; optional sim default 0.85) |
 | `SMTP_*` | Email delivery |
 
 ## Architecture

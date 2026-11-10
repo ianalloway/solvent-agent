@@ -103,7 +103,7 @@ const DEMO_HEADERS = ["Job", "Topic", "Verdict", "Price", "Est. cost", "Proj. ma
 
 tabs();
 wire("#run", () => {
-  const [rows, declinedHtml, pnl, log] = call("on_run_demo", Number($("#seed").value), $("#nano").checked);
+  const [rows, declinedHtml, pnl, log] = call("on_run_demo", Number($("#seed").value));
   $("#jobs").innerHTML = table(DEMO_HEADERS, rows);
   $("#declined").innerHTML = declinedHtml; // built by space.py with html.escape on every value
   $("#pnl").innerHTML = md(pnl);
