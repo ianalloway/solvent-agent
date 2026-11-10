@@ -37,6 +37,7 @@ def _authorize(amount, vendor, memo):
 
 def metered_model(fn):
     """Wrap one request, not its retry loop (each attempt can incur a charge)."""
+
     @wraps(fn)
     def wrapped(system, user):
         budget = current_budget()
@@ -48,7 +49,9 @@ def metered_model(fn):
         # Both adapters send the same hard completion cap used here.
         max_tokens = len(system.encode("utf-8")) + len(user.encode("utf-8")) + 256
         max_tokens += MAX_COMPLETION_TOKENS
-        rate = budget.contract.token_rate if budget else get_resource_costs()["nemotron_tokens_per_1k"]
+        rate = (
+            budget.contract.token_rate if budget else get_resource_costs()["nemotron_tokens_per_1k"]
+        )
         ceiling = (max_tokens * rate + 999) // 1000
         treasury, reservation = _authorize(ceiling, "nvidia-nemotron", "Live inference")
         actual = ceiling
@@ -56,9 +59,9 @@ def metered_model(fn):
             result = fn(system, user)
             usage = result.get("usage") if isinstance(result, dict) else result[1]
             if usage:
-                counts = [usage.get(k) for k in (
-                    "prompt_tokens", "completion_tokens", "total_tokens"
-                )]
+                counts = [
+                    usage.get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens")
+                ]
                 if (
                     any(type(n) is not int or n < 0 for n in counts)
                     or counts[2] < counts[0] + counts[1]
@@ -73,6 +76,7 @@ def metered_model(fn):
             # release its headroom merely because the caller falls back/retries.
             if reservation:
                 treasury.settle_spend(reservation, actual)
+
     return wrapped
 
 
@@ -82,7 +86,9 @@ def metered_tool(vendor, cost_key):
         def wrapped(*args, **kwargs):
             budget = current_budget()
             if budget:
-                field = {"web_search_call": "search_rate", "market_data_call": "data_rate"}[cost_key]
+                field = {"web_search_call": "search_rate", "market_data_call": "data_rate"}[
+                    cost_key
+                ]
                 amount = getattr(budget.contract, field)
             else:
                 amount = get_resource_costs()[cost_key]
@@ -92,5 +98,7 @@ def metered_tool(vendor, cost_key):
             finally:
                 if reservation:
                     treasury.settle_spend(reservation, amount)
+
         return wrapped
+
     return decorate

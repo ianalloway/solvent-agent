@@ -11,7 +11,11 @@ from solvent.server import create_app
 
 class TestHostedBriefs(unittest.TestCase):
     def setUp(self):
-        self._env = mock.patch.dict(os.environ, {"SOLVENT_DELIVERY_SECRET": "x" * 32, "SOLVENT_DASHBOARD_TOKEN": "d" * 32}, clear=False)
+        self._env = mock.patch.dict(
+            os.environ,
+            {"SOLVENT_DELIVERY_SECRET": "x" * 32, "SOLVENT_DASHBOARD_TOKEN": "d" * 32},
+            clear=False,
+        )
         self._env.start()
         self.reports_dir = Path(__file__).resolve().parent.parent / "data" / "reports"
         self.reports_dir.mkdir(parents=True, exist_ok=True)
@@ -115,7 +119,11 @@ class TestHostedBriefs(unittest.TestCase):
 
         client = TestClient(create_app(fresh=True))
         self.assertEqual(client.post("/api/chat", json={"message": "/status"}).status_code, 403)
-        response = client.post("/api/chat", json={"message": "/status"}, headers={"X-Solvent-Dashboard-Token": "d" * 32})
+        response = client.post(
+            "/api/chat",
+            json={"message": "/status"},
+            headers={"X-Solvent-Dashboard-Token": "d" * 32},
+        )
         self.assertEqual(response.status_code, 200)
         self.assertIn("Balance", response.json()["reply"])
 

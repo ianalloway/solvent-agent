@@ -53,11 +53,7 @@ def test_rejected_jobs_keep_demand_and_latent_costs_aligned(decline_path):
 
     loose = PricingPolicy(margin_floor_pct=0, min_price_cents=0)
     accepted_jobs, accepted_costs, accepted = run(loose, SpendPolicy())
-    strict = (
-        PricingPolicy(min_price_cents=100_000)
-        if decline_path == "pricing"
-        else loose
-    )
+    strict = PricingPolicy(min_price_cents=100_000) if decline_path == "pricing" else loose
     guard = (
         SpendPolicy(min_reserve_cents=1_000_000)
         if decline_path == "cash_reserve"
@@ -95,5 +91,5 @@ def test_sweep_cells_share_actual_demand_and_cost_draws(monkeypatch):
     per_cell = 16
     assert len(jobs) == len(costs) == per_cell * 4
     for start in range(per_cell, len(jobs), per_cell):
-        assert jobs[start:start + per_cell] == jobs[:per_cell]
-        assert costs[start:start + per_cell] == costs[:per_cell]
+        assert jobs[start : start + per_cell] == jobs[:per_cell]
+        assert costs[start : start + per_cell] == costs[:per_cell]

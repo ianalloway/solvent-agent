@@ -207,7 +207,15 @@ def test_worker_sweeps_before_taking_work():
     mock_sweep.assert_called_once_with(agent.t, stripe=agent.stripe, nano=agent.nano)
 
 
-def _awaiting_nano(treasury, job_id="JN1", *, email="buyer@x.example", budget=4_900, topic="nano brief", expires_at=None):
+def _awaiting_nano(
+    treasury,
+    job_id="JN1",
+    *,
+    email="buyer@x.example",
+    budget=4_900,
+    topic="nano brief",
+    expires_at=None,
+):
     treasury.upsert_job(
         job_id,
         "awaiting_payment",

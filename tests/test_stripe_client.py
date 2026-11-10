@@ -282,7 +282,9 @@ class TestStripeClientLive(unittest.TestCase):
             client.refund_payment("pi_real123", 1000)
 
     def test_refund_live_success(self):
-        self._mock_stripe.Refund.create.return_value = mock.Mock(id="re_123", status="succeeded", amount=1000, payment_intent="pi_real123")
+        self._mock_stripe.Refund.create.return_value = mock.Mock(
+            id="re_123", status="succeeded", amount=1000, payment_intent="pi_real123"
+        )
         client = StripeClient()
         refund = client.refund_payment("pi_real123", 1000)
         self.assertFalse(refund["simulated"])

@@ -44,7 +44,6 @@ class TestPaths(unittest.TestCase):
                 self.assertEqual(paths.config_dir(), Path(home) / ".solvent" / ".solvent")
                 self.assertTrue((Path(home) / ".solvent").is_dir())
 
-
     def test_msys_to_windows_drive_prefix(self):
         """MSYS ``/c/Users/...`` → ``C:/Users/...`` without touching Path/os.name."""
         self.assertEqual(

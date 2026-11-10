@@ -235,8 +235,6 @@ class TestReconcileStripeIntegration(unittest.TestCase):
         self.assertIn("cs_dup", report["duplicates"])
         self.assertTrue(report["drift"])
 
-
-
     def test_old_ledger_pi_outside_window_is_not_unmatched(self):
         """Revenue older than --since must not count as unmatched_ledger vs Stripe."""
         import time

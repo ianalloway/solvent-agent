@@ -47,9 +47,7 @@ class TestBuildReceipt(unittest.TestCase):
         from solvent.receipt import build_receipt
 
         job = self._make_job(revenue_cents=5000)
-        receipt = build_receipt(
-            job, pnl_cents=2000, balance_cents=12000, internal=True
-        )
+        receipt = build_receipt(job, pnl_cents=2000, balance_cents=12000, internal=True)
         # Revenue
         self.assertIn("$50.00", receipt)
         # P&L
@@ -86,9 +84,7 @@ class TestBuildReceipt(unittest.TestCase):
         from solvent.receipt import build_receipt
 
         job = self._make_job(revenue_cents=1000)
-        receipt = build_receipt(
-            job, pnl_cents=-200, balance_cents=5000, internal=True
-        )
+        receipt = build_receipt(job, pnl_cents=-200, balance_cents=5000, internal=True)
         self.assertIn("$-2.00", receipt)
 
 
@@ -154,9 +150,7 @@ class TestBuildHtmlReceipt(unittest.TestCase):
             "status": "completed",
             "revenue_cents": 4000,
         }
-        html = build_html_receipt(
-            job, pnl_cents=1500, balance_cents=9000, internal=True
-        )
+        html = build_html_receipt(job, pnl_cents=1500, balance_cents=9000, internal=True)
         self.assertIn("$40.00", html)
         self.assertIn("$15.00", html)
         self.assertIn("$90.00", html)

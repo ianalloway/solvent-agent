@@ -82,7 +82,6 @@ def test_ledger_rows_carry_every_column(treasury):
     assert row["iso_time"]
 
 
-
 def test_ledger_rows_include_running_balance(treasury):
     rows = ledger_rows(treasury.entries)
     running = 0
@@ -90,6 +89,7 @@ def test_ledger_rows_include_running_balance(treasury):
         running += row["signed_cents"]
         assert row["balance_after_cents"] == running
     assert rows[-1]["balance_after_cents"] == treasury.balance_cents()
+
 
 def test_signed_cents_carries_direction(treasury):
     rows = {r["kind"]: r for r in ledger_rows(treasury.entries)}
@@ -194,7 +194,7 @@ def test_format_summary_reports_the_close_and_the_files(treasury, tmp_path):
 @pytest.mark.parametrize(
     "raw",
     [
-        "=HYPERLINK(\"http://evil.example\",\"x\")",
+        '=HYPERLINK("http://evil.example","x")',
         "+1+cmd|' /C calc'!A0",
         "-2+3",
         "@SUM(A1:A9)",

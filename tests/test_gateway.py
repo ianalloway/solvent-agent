@@ -64,9 +64,10 @@ class TestGateway(unittest.TestCase):
 
     def test_quote_counts_against_the_rate_limit_but_cheap_commands_do_not(self):
         limiter = RateLimiter(db_path=":memory:", burst_limit=2)
-        with patch.object(gateway, "_rate_limiter", limiter), patch(
-            "solvent.gateway.handle_message", return_value="quoted"
-        ) as model:
+        with (
+            patch.object(gateway, "_rate_limiter", limiter),
+            patch("solvent.gateway.handle_message", return_value="quoted") as model,
+        ):
             replies = [self.gw.handle_inbound("cli", "u2", "/quote chips | 50") for _ in range(4)]
             self.assertEqual(replies[:2], ["quoted", "quoted"])
             self.assertTrue(all("Rate limit" in r for r in replies[2:]))

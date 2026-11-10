@@ -36,8 +36,12 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
                 ref_counts[e.stripe_ref] += 1
             if e.stripe_session_id:
                 session_counts[e.stripe_session_id] += 1
-        if (e.kind == "expense" and e.vendor == REFUND_VENDOR and e.stripe_ref
-                and e.stripe_ref.startswith("re_")):
+        if (
+            e.kind == "expense"
+            and e.vendor == REFUND_VENDOR
+            and e.stripe_ref
+            and e.stripe_ref.startswith("re_")
+        ):
             ledger_refunds[e.stripe_ref] += e.amount_cents
             refund_counts[e.stripe_ref] += 1
 
@@ -87,9 +91,15 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
         and e.ts >= since
     }
     stripe_pis: set[str] = set()
-    window_refund_refs = {e.stripe_ref for e in entries if e.ts >= since
-                          and e.kind == "expense" and e.vendor == REFUND_VENDOR
-                          and e.stripe_ref and e.stripe_ref.startswith("re_")}
+    window_refund_refs = {
+        e.stripe_ref
+        for e in entries
+        if e.ts >= since
+        and e.kind == "expense"
+        and e.vendor == REFUND_VENDOR
+        and e.stripe_ref
+        and e.stripe_ref.startswith("re_")
+    }
     stripe_refunds: dict[str, int] = {}
     seen_refunds: set[str] = set()
 
@@ -108,9 +118,7 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
                 stripe_pis.add(pi.id)
         # PaymentIntents remain succeeded after a refund. Comparing only their
         # IDs cannot detect money that left Stripe without a ledger refund.
-        for refund in stripe_sdk.Refund.list(
-            created={"gte": since}, limit=100
-        ).auto_paging_iter():
+        for refund in stripe_sdk.Refund.list(created={"gte": since}, limit=100).auto_paging_iter():
             observe_refund(refund)
         # Recovery can book today a refund created before the lookback. Fetch
         # those exact ledger IDs rather than misreporting historical success as
@@ -134,15 +142,20 @@ def reconcile(treasury: Treasury | None = None, since_days: int = 7) -> dict:
     report["unmatched_stripe_refunds"] = sorted(stripe_refunds.keys() - ledger_refunds.keys())
     report["unmatched_ledger_refunds"] = sorted(window_refund_refs - stripe_refunds.keys())
     report["refund_amount_mismatches"] = sorted(
-        key for key in stripe_refunds.keys() & ledger_refunds.keys()
+        key
+        for key in stripe_refunds.keys() & ledger_refunds.keys()
         if stripe_refunds[key] != ledger_refunds[key]
     )
     report["pending_stripe_refunds"].sort()
-    report["drift"] = bool(report["drift"] or unmatched_stripe or unmatched_ledger
-                           or report["unmatched_stripe_refunds"]
-                           or report["unmatched_ledger_refunds"]
-                           or report["refund_amount_mismatches"]
-                           or report["pending_stripe_refunds"])
+    report["drift"] = bool(
+        report["drift"]
+        or unmatched_stripe
+        or unmatched_ledger
+        or report["unmatched_stripe_refunds"]
+        or report["unmatched_ledger_refunds"]
+        or report["refund_amount_mismatches"]
+        or report["pending_stripe_refunds"]
+    )
     report["mode"] = "full"
     return report
 
@@ -152,8 +165,12 @@ def main():
 
     parser = argparse.ArgumentParser(description="SOLVENT Stripe reconciliation")
     parser.add_argument("--since", default="7d", help="lookback e.g. 7d")
-    parser.add_argument("--resolve-refund", nargs=2, metavar=("JOB_ID", "REFUND_ID"),
-                        help="verify an existing Stripe refund and settle its local pending record")
+    parser.add_argument(
+        "--resolve-refund",
+        nargs=2,
+        metavar=("JOB_ID", "REFUND_ID"),
+        help="verify an existing Stripe refund and settle its local pending record",
+    )
     args = parser.parse_args()
     if args.resolve_refund:
         try:
@@ -185,13 +202,21 @@ def resolve_refund(treasury: Treasury, job_id: str, refund_id: str) -> dict:
     stripe_sdk.api_key = key
     refund = stripe_sdk.Refund.retrieve(refund_id)
     intent = pending[0]
-    if (refund.id != refund_id or refund.status != "succeeded"
-            or refund.payment_intent != intent["payment_ref"]
-            or refund.amount != intent["amount_cents"] or refund.currency != "usd"):
+    if (
+        refund.id != refund_id
+        or refund.status != "succeeded"
+        or refund.payment_intent != intent["payment_ref"]
+        or refund.amount != intent["amount_cents"]
+        or refund.currency != "usd"
+    ):
         raise ValueError("provider has not confirmed this job's exact full USD refund")
     treasury.complete_refund(job_id, intent["payment_ref"], refund_id)
-    return {"job_id": job_id, "refund_id": refund_id, "status": "refunded",
-            "amount_cents": intent["amount_cents"]}
+    return {
+        "job_id": job_id,
+        "refund_id": refund_id,
+        "status": "refunded",
+        "amount_cents": intent["amount_cents"],
+    }
 
 
 if __name__ == "__main__":

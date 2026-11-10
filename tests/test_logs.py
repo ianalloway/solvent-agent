@@ -291,27 +291,27 @@ def test_main_default_runs(tmp_path):
 
 
 def test_tail_lines_nonpositive_limit(tmp_path):
-    path = tmp_path / 'log'
-    path.write_text('one\ntwo\n')
+    path = tmp_path / "log"
+    path.write_text("one\ntwo\n")
     assert _tail_lines(path, 0) == []
     assert _tail_lines(path, -1) == []
 
 
 def test_tail_lines_preserves_utf8_across_read_blocks(tmp_path):
-    path = tmp_path / 'log'
-    records = [f'{i}-' + '\u00e9\U0001f642' * 2000 for i in range(4)]
-    path.write_text('\n'.join(records) + '\n', encoding='utf-8')
+    path = tmp_path / "log"
+    records = [f"{i}-" + "\u00e9\U0001f642" * 2000 for i in range(4)]
+    path.write_text("\n".join(records) + "\n", encoding="utf-8")
     assert _tail_lines(path, 2) == records[-2:]
 
 
 def test_tail_lines_handles_exact_block_boundary_and_crlf(tmp_path):
-    path = tmp_path / 'log'
-    records = ['x' * 8190, 'last']
-    path.write_bytes(('\r\n'.join(records) + '\r\n').encode())
+    path = tmp_path / "log"
+    records = ["x" * 8190, "last"]
+    path.write_bytes(("\r\n".join(records) + "\r\n").encode())
     assert _tail_lines(path, 2) == records
 
 
 def test_tail_lines_preserves_unterminated_last_record(tmp_path):
-    path = tmp_path / 'log'
-    path.write_text('first\nlast')
-    assert _tail_lines(path, 1) == ['last']
+    path = tmp_path / "log"
+    path.write_text("first\nlast")
+    assert _tail_lines(path, 1) == ["last"]

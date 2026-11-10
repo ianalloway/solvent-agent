@@ -178,21 +178,33 @@ class TestFulfillmentRefundRails(unittest.TestCase):
                 stripe_ref="B" * 64,
                 payment_ref="B" * 64,
             )
-            agent.t.upsert_job("J-nano-fail", "paid_pending_fulfill", **{
-                k: job[k] for k in ("topic", "budget_cents", "customer_email", "est_tokens",
-                                     "market_data_calls", "web_search_calls")
-            })
+            agent.t.upsert_job(
+                "J-nano-fail",
+                "paid_pending_fulfill",
+                **{
+                    k: job[k]
+                    for k in (
+                        "topic",
+                        "budget_cents",
+                        "customer_email",
+                        "est_tokens",
+                        "market_data_calls",
+                        "web_search_calls",
+                    )
+                },
+            )
 
             with mock.patch("solvent.service.fulfill", side_effect=RuntimeError("fulfill boom")):
-                with mock.patch.dict("os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False):
+                with mock.patch.dict(
+                    "os.environ", {"SOLVENT_DELIVERY_SECRET": "x" * 32}, clear=False
+                ):
                     event = agent._runner._stage_fulfill_and_book(job, q, paid)
 
             self.assertEqual(event.get("status"), "failed")
             row = agent.t.get_job("J-nano-fail")
             self.assertEqual(row["status"], "failed")
             refunds = [
-                e for e in agent.t.entries
-                if e.kind == "expense" and e.job_id == "J-nano-fail"
+                e for e in agent.t.entries if e.kind == "expense" and e.job_id == "J-nano-fail"
             ]
             self.assertTrue(refunds, "ledger refund must still be booked for Nano")
             self.assertTrue(any(e.stripe_ref.startswith("ref_ledger_") for e in refunds))
@@ -351,9 +363,6 @@ class TestFulfillmentRefundRails(unittest.TestCase):
             self.assertEqual(event.get("status"), "completed")
             pay.assert_not_called()
             openai_spends = [
-                e
-                for e in agent.t.entries
-                if e.job_id == "J-spend-crash" and e.vendor == "openai"
+                e for e in agent.t.entries if e.job_id == "J-spend-crash" and e.vendor == "openai"
             ]
             self.assertEqual(len(openai_spends), 1)
-

@@ -222,8 +222,10 @@ class StageRunner:
 
     def run_job(self, job: dict) -> dict:
         if isinstance(job, dict) and isinstance(job.get("id"), str):
-            if (self.t.pending_refunds(job["id"])
-                    or (self.t.get_job(job["id"]) or {}).get("status") == "refund_pending"):
+            if (
+                self.t.pending_refunds(job["id"])
+                or (self.t.get_job(job["id"]) or {}).get("status") == "refund_pending"
+            ):
                 return self._refund_pending(job["id"])
         validated, err = validate_and_coerce_job(job, self.t)
         if err:
@@ -315,7 +317,9 @@ class StageRunner:
             from .pricing import Quote
 
             quote_obj = Quote(**{k: q_data[k] for k in q_data if k in Quote.__dataclass_fields__})
-            paid = self._stage_paid(job, checkout, quote_obj, verified_nano_payment=verified_nano_payment)
+            paid = self._stage_paid(
+                job, checkout, quote_obj, verified_nano_payment=verified_nano_payment
+            )
             if paid.get("stage") == "payment_pending":
                 return paid
             return self._stage_fulfill_and_book(job, quote_obj, paid)
@@ -421,9 +425,7 @@ class StageRunner:
             }
             self.t.complete_stage(job_id, "checkout", key, result)
             self.t.upsert_nano_invoice(job_id, invoice)
-            self.t.upsert_checkout(
-                job_id, invoice["id"], invoice["url"], "open", rail="nano"
-            )
+            self.t.upsert_checkout(job_id, invoice["id"], invoice["url"], "open", rail="nano")
             self.t.upsert_job(
                 job_id,
                 "awaiting_payment",
@@ -484,7 +486,11 @@ class StageRunner:
     def _persist_paid_state(self, job_id: str, checkout: dict, key: str, result: dict) -> None:
         """Repair payment projections from committed revenue, under the treasury lock."""
         rail = result["rail"]
-        session_id = result.get("checkout_session_id") or checkout.get("session_id") or checkout.get("id", "")
+        session_id = (
+            result.get("checkout_session_id")
+            or checkout.get("session_id")
+            or checkout.get("id", "")
+        )
         if rail == "nano":
             self.t.mark_nano_invoice(job_id, status="paid", block_hash=result.get("payment_ref"))
         self.t.complete_stage(job_id, "paid", key, result)
@@ -504,9 +510,7 @@ class StageRunner:
         rail = checkout.get("rail")
         if not rail:
             stored = self.t.get_checkout(job_id) or {}
-            rail = stored.get("rail") or (
-                "nano" if self.t.get_nano_invoice(job_id) else "stripe"
-            )
+            rail = stored.get("rail") or ("nano" if self.t.get_nano_invoice(job_id) else "stripe")
 
         with self.t.lock():
             if self.t.job_has_revenue(job_id):
@@ -530,9 +534,7 @@ class StageRunner:
                     "id": session_id,
                     "job_id": job_id,
                     "destination": checkout.get("destination"),
-                    "amount_cents": checkout.get(
-                        "amount_cents", getattr(q, "price_cents", 0)
-                    ),
+                    "amount_cents": checkout.get("amount_cents", getattr(q, "price_cents", 0)),
                     "amount_raw": checkout.get("amount_raw"),
                     "xno_rate_usd": checkout.get("xno_rate_usd"),
                     "expires_at": checkout.get("expires_at"),
@@ -569,9 +571,7 @@ class StageRunner:
             link = {
                 "id": session_id,
                 "url": checkout.get("url"),
-                "amount_cents": checkout.get(
-                    "amount_cents", getattr(q, "price_cents", 0)
-                ),
+                "amount_cents": checkout.get("amount_cents", getattr(q, "price_cents", 0)),
                 "simulated": checkout.get("simulated", False),
                 "job_id": job_id,
             }
@@ -647,7 +647,8 @@ class StageRunner:
                     payment["block_hash"], payment, resume_invoice=True
                 ):
                     return self._emit(
-                        stage="payment_pending", job_id=job_id,
+                        stage="payment_pending",
+                        job_id=job_id,
                         reason="Nano payment does not match an open invoice or is already booked",
                         rail=rail,
                     )
@@ -706,8 +707,9 @@ class StageRunner:
             if not self.t.pending_refunds(job_id) and self.t.job_refund_cents(job_id):
                 return self._emit(stage="booked", job_id=job_id, status="failed")
             self.t.upsert_job(job_id, "refund_pending", current_stage="refund", error_reason=reason)
-        return self._emit(stage="refund_pending", job_id=job_id, status="refund_pending",
-                          reason=reason)
+        return self._emit(
+            stage="refund_pending", job_id=job_id, status="refund_pending", reason=reason
+        )
 
     def _fulfill_and_book_locked(self, job: dict, q, paid: dict) -> dict:
         job_id = job["id"]
@@ -723,10 +725,14 @@ class StageRunner:
             if fulfill_stage and fulfill_stage["status"] == "completed":
                 result = json.loads(fulfill_stage["result_json"] or "{}")
                 if "resources_used" not in result:
-                    raise GuardrailError("cached fulfillment lacks resource accounting; review required")
+                    raise GuardrailError(
+                        "cached fulfillment lacks resource accounting; review required"
+                    )
             else:
                 if not q.resource_contract:
-                    raise ValueError("legacy quote lacks a resource contract; requote before fulfilment")
+                    raise ValueError(
+                        "legacy quote lacks a resource contract; requote before fulfilment"
+                    )
                 contract = ResourceContract(**q.resource_contract)
                 budget = ResourceBudget(
                     contract,
@@ -799,7 +805,8 @@ class StageRunner:
                     # for the remainder (offline/simulated resources), never
                     # use the existence of one charge to skip an entire vendor.
                     charges = [
-                        e for e in self.t.entries
+                        e
+                        for e in self.t.entries
                         if e.kind == "expense" and e.job_id == job_id and e.vendor == vendor
                     ]
                     booked = sum(e.amount_cents for e in charges)
@@ -818,32 +825,59 @@ class StageRunner:
                                 job_id, block_rule=decision.rule, block_reason=decision.reason
                             )
                             self._emit(
-                                stage="spend_held" if decision.pending_approval else "spend_blocked",
-                                job_id=job_id, vendor=vendor, amount=amount, memo=memo,
-                                rule=decision.rule, reason=decision.reason,
+                                stage="spend_held"
+                                if decision.pending_approval
+                                else "spend_blocked",
+                                job_id=job_id,
+                                vendor=vendor,
+                                amount=amount,
+                                memo=memo,
+                                rule=decision.rule,
+                                reason=decision.reason,
                             )
                             raise GuardrailError(
                                 f"spend to {vendor} of {amount}c rejected by guardrails: "
                                 f"{decision.reason}"
                             )
                         pay = self.stripe.pay_vendor(vendor, amount, memo, job_id=job_id)
-                        self.t.spend(amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"])
-                        self._emit(stage="spend", job_id=job_id, vendor=vendor, amount=amount, memo=memo)
+                        self.t.spend(
+                            amount, memo, job_id=job_id, vendor=vendor, stripe_ref=pay["id"]
+                        )
+                        self._emit(
+                            stage="spend", job_id=job_id, vendor=vendor, amount=amount, memo=memo
+                        )
                     self.t.complete_stage(
-                        job_id, "spend", spend_key, {"vendor": vendor, "amount": max(booked, expected)}
+                        job_id,
+                        "spend",
+                        spend_key,
+                        {"vendor": vendor, "amount": max(booked, expected)},
                     )
 
             # Include conservative charges for failed/unknown live attempts,
             # which may not appear in the successful completion's usage report.
             result["actual_cost_cents"] = sum(
-                e.amount_cents for e in self.t.entries
+                e.amount_cents
+                for e in self.t.entries
                 if e.kind == "expense" and e.job_id == job_id and e.vendor != REFUND_VENDOR
             )
             cogs = service.reconcile_cogs(q, result)
-            self.t.upsert_metrics(job_id, **{k: v for k, v in cogs.items() if k in (
-                "est_cost_cents", "actual_cost_cents", "est_margin_pct", "actual_margin_pct",
-                "margin_drift_cents", "fulfillment_seconds", "tool_calls"
-            )})
+            self.t.upsert_metrics(
+                job_id,
+                **{
+                    k: v
+                    for k, v in cogs.items()
+                    if k
+                    in (
+                        "est_cost_cents",
+                        "actual_cost_cents",
+                        "est_margin_pct",
+                        "actual_margin_pct",
+                        "margin_drift_cents",
+                        "fulfillment_seconds",
+                        "tool_calls",
+                    )
+                },
+            )
             self.t.upsert_metrics(job_id, refunded=0)
             self._emit(stage="cogs_reconciled", job_id=job_id, **cogs)
             if any(e.job_id == job_id for e in self.t.reserved_spends()):
@@ -906,9 +940,7 @@ class StageRunner:
                     # Fast path: already refunded (stage or ledger).
                     with self.t.lock():
                         refund_stage = self.t.get_stage(refund_key)
-                        already = bool(
-                            refund_stage and refund_stage["status"] == "completed"
-                        )
+                        already = bool(refund_stage and refund_stage["status"] == "completed")
                         if already or self.t.job_refund_cents(job_id) > 0:
                             if not already:
                                 self.t.complete_stage(
@@ -929,10 +961,12 @@ class StageRunner:
                             refund = self.stripe.refund_payment(
                                 payment_intent_id, paid_amount, job_id=job_id
                             )
-                            if (refund.get("status") != "succeeded"
-                                    or refund.get("amount_cents") != paid_amount
-                                    or refund.get("stripe_ref") != payment_intent_id
-                                    or not refund.get("id")):
+                            if (
+                                refund.get("status") != "succeeded"
+                                or refund.get("amount_cents") != paid_amount
+                                or refund.get("stripe_ref") != payment_intent_id
+                                or not refund.get("id")
+                            ):
                                 raise ValueError("refund response does not confirm the full refund")
                             refund_id = refund["id"]
                         else:

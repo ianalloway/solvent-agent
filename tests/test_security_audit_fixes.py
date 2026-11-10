@@ -35,9 +35,7 @@ class TestExpireDoesNotDowngradePaid(unittest.TestCase):
             )
             t.earn(5000, "paid", job_id="J1", stripe_ref="pi_1")
             t.upsert_checkout("J1", "cs_1", "http://x", "open", rail="stripe")
-            policy = CheckoutPolicy(
-                reminder_after_hours=999, max_reminders=0, expire_after_hours=0
-            )
+            policy = CheckoutPolicy(reminder_after_hours=999, max_reminders=0, expire_after_hours=0)
             # Simulate open_checkouts listing the job after a stale snapshot
             # while payment already completed the job.
             stale_row = {

@@ -73,7 +73,9 @@ class TestWebhookLog(unittest.TestCase):
                 "received_at REAL NOT NULL DEFAULT 0.0, status TEXT NOT NULL DEFAULT 'received', "
                 "error TEXT NOT NULL DEFAULT '')"
             )
-            conn.execute("INSERT INTO webhook_events (event_id, payload) VALUES ('evt_old', x'7b7d')")
+            conn.execute(
+                "INSERT INTO webhook_events (event_id, payload) VALUES ('evt_old', x'7b7d')"
+            )
             conn.commit()
             conn.close()
             wl = WebhookLog(db_path=db)

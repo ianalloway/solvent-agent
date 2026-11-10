@@ -173,7 +173,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     dashboard_token = os.environ.get("SOLVENT_DASHBOARD_TOKEN", "").strip()
 
     def _has_dashboard_auth(req: Request) -> bool:
-        token = req.headers.get("X-Solvent-Dashboard-Token", "") or req.query_params.get("token", "")
+        token = req.headers.get("X-Solvent-Dashboard-Token", "") or req.query_params.get(
+            "token", ""
+        )
         # Compare as bytes: compare_digest raises TypeError on non-ASCII str.
         return bool(dashboard_token) and secrets.compare_digest(
             token.encode("utf-8"), dashboard_token.encode("utf-8")
@@ -356,7 +358,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         """Redeem a single-use pairing token (no login: the token is the credential)."""
         peer = peer_host(req) or "unknown"
         if pair_fail_peer.blocked(peer) or pair_fail_global.blocked("*"):
-            raise HTTPException(429, "too many failed attempts; try again later", headers={"Retry-After": "300"})
+            raise HTTPException(
+                429, "too many failed attempts; try again later", headers={"Retry-After": "300"}
+            )
         body = await _read_limited_json(req, MAX_PAIR_BODY_BYTES)
         token = body.get("token") if isinstance(body, dict) else None
         if not isinstance(token, str) or not token.strip():
@@ -604,12 +608,15 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             )
         result = agent.advance_job(job_id, verified_nano_payment=payment)
         booked = any(
-            entry.kind == "revenue" and entry.job_id == job_id
+            entry.kind == "revenue"
+            and entry.job_id == job_id
             and entry.resolved_payment_ref() == payment.get("payment_ref")
             for entry in agent.t.entries
         )
         if not booked:
-            raise HTTPException(409, "payment was not booked; job or invoice changed during verification")
+            raise HTTPException(
+                409, "payment was not booked; job or invoice changed during verification"
+            )
         _publish_status()
         return {
             "paid": True,
@@ -752,9 +759,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                 _publish_status()
             webhook_log.mark_processed(event_id)
         except Exception as exc:
-            logging.getLogger(__name__).exception(
-                "webhook replay failed for event_id=%s", event_id
-            )
+            logging.getLogger(__name__).exception("webhook replay failed for event_id=%s", event_id)
             webhook_log.mark_error(event_id, type(exc).__name__)
             raise HTTPException(500, "webhook replay failed") from None
         return {"replayed": True, "event_id": event_id}

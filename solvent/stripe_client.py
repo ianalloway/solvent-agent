@@ -39,6 +39,7 @@ except Exception:
     stripe = None  # type: ignore
     _HAS_STRIPE = False
 
+
 def _event_to_dict(event) -> dict:
     """Plain-dict view of a Stripe event.
 

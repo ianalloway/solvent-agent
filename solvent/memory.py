@@ -7,9 +7,7 @@ import json
 from .treasury import Treasury
 
 
-def telegram_session_key(
-    user_id: str, chat_id: str, chat_type: str, *, operator: bool
-) -> str:
+def telegram_session_key(user_id: str, chat_id: str, chat_type: str, *, operator: bool) -> str:
     """Versioned scope avoids reusing histories populated with private memory.
 
     Include trust so revoking operator access cannot expose an old private reply.

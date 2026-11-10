@@ -314,10 +314,13 @@ def format_report(report: dict) -> str:
             lines.append(f"    - {vendor:<22} {fmt(amt)}")
 
     if report.get("pending_refunds"):
-        lines += ["", "WARNING: unresolved refunds require reconciliation.",
-                  "  Booked revenue/profit above are not confirmed retained funds.",
-                  f"  Pending refunds    {fmt(report['pending_refund_cents'])}",
-                  f"  Available balance  {fmt(report['available_balance_cents'])}"]
+        lines += [
+            "",
+            "WARNING: unresolved refunds require reconciliation.",
+            "  Booked revenue/profit above are not confirmed retained funds.",
+            f"  Pending refunds    {fmt(report['pending_refund_cents'])}",
+            f"  Available balance  {fmt(report['available_balance_cents'])}",
+        ]
 
     lines += [
         "",

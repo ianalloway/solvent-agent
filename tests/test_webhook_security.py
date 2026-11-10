@@ -109,7 +109,8 @@ def _post_chunks(app, headers, chunks):
         assert index < len(chunks), "read past the supplied body"
         consumed.append(index)
         return {
-            "type": "http.request", "body": chunks[index],
+            "type": "http.request",
+            "body": chunks[index],
             "more_body": index + 1 < len(chunks),
         }
 
@@ -117,10 +118,16 @@ def _post_chunks(app, headers, chunks):
         messages.append(message)
 
     scope = {
-        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
-        "method": "POST", "scheme": "http", "path": "/webhooks/stripe",
-        "query_string": b"", "headers": headers,
-        "client": ("203.0.113.1", 12345), "server": ("testserver", 80),
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/webhooks/stripe",
+        "query_string": b"",
+        "headers": headers,
+        "client": ("203.0.113.1", 12345),
+        "server": ("testserver", 80),
     }
     asyncio.run(app(scope, receive, send))
     return messages[0]["status"], len(consumed)
@@ -167,9 +174,12 @@ def test_webhook_rejects_bad_length_before_reading(make_client, monkeypatch, hea
 def test_signed_webhook_at_or_below_limit_preserves_bytes(make_client, monkeypatch, padding):
     client, log = make_client()
     payload = _event("evt_bounded") + b" \n\t"
-    monkeypatch.setattr(server, "MAX_STRIPE_WEBHOOK_BODY_BYTES", len(payload) + padding, raising=False)
+    monkeypatch.setattr(
+        server, "MAX_STRIPE_WEBHOOK_BODY_BYTES", len(payload) + padding, raising=False
+    )
     response = client.post(
-        "/webhooks/stripe", content=payload,
+        "/webhooks/stripe",
+        content=payload,
         headers={"Stripe-Signature": _sign(payload)},
     )
     assert response.status_code == 200
@@ -374,7 +384,9 @@ def test_webhook_admin_routes_denied_when_no_token_configured(make_client, monke
         ("post", "/api/webhooks/evt_x/replay"),
     ):
         assert getattr(client, method)(path).status_code in (401, 403)
-        assert getattr(client, method)(path, headers={"X-Solvent-Dashboard-Token": ""}).status_code in (
+        assert getattr(client, method)(
+            path, headers={"X-Solvent-Dashboard-Token": ""}
+        ).status_code in (
             401,
             403,
         )

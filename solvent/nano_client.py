@@ -47,9 +47,7 @@ DEFAULT_INVOICE_TTL_SECONDS = 48 * 3600
 DEFAULT_RPC_TIMEOUT_SECONDS = 10.0
 
 #: Nano / legacy xrb account address (base32 alphabet excludes 0, l, v, 2).
-_NANO_ADDRESS_RE = re.compile(
-    r"^(?:nano|xrb)_[13456789abcdefghijkmnopqrstuwxyz]{60}$"
-)
+_NANO_ADDRESS_RE = re.compile(r"^(?:nano|xrb)_[13456789abcdefghijkmnopqrstuwxyz]{60}$")
 
 #: 64-char hex block hash (Nano).
 _BLOCK_HASH_RE = re.compile(r"^[0-9A-Fa-f]{64}$")
@@ -177,9 +175,7 @@ class NanoClient:
                 self.mode = "misconfigured"
                 self.enabled = False
                 self.simulate = False
-                self.misconfig_reason = (
-                    "incomplete live Nano config: set " + ", ".join(missing)
-                )
+                self.misconfig_reason = "incomplete live Nano config: set " + ", ".join(missing)
             else:
                 self.mode = "live"
                 self.enabled = True
@@ -211,13 +207,9 @@ class NanoClient:
             if self.mode == "live":
                 self.rate_usd = _parse_rate(rate_env, required=True, default=None)
             elif self.mode == "sim":
-                self.rate_usd = _parse_rate(
-                    rate_env, required=False, default=DEFAULT_SIM_RATE_USD
-                )
+                self.rate_usd = _parse_rate(rate_env, required=False, default=DEFAULT_SIM_RATE_USD)
             else:
-                self.rate_usd = _parse_rate(
-                    rate_env, required=False, default=DEFAULT_SIM_RATE_USD
-                )
+                self.rate_usd = _parse_rate(rate_env, required=False, default=DEFAULT_SIM_RATE_USD)
         except NanoClientError as exc:
             self.rate_usd = DEFAULT_SIM_RATE_USD
             self.mode = "misconfigured"
@@ -252,14 +244,20 @@ class NanoClient:
                 canonical = {}
                 for key, value in data.items():
                     key = _canonical_hash(key)
-                    if not isinstance(value, dict) or (key in canonical and canonical[key] != value):
-                        raise NanoClientError("conflicting Nano payment journal; operator review required")
+                    if not isinstance(value, dict) or (
+                        key in canonical and canonical[key] != value
+                    ):
+                        raise NanoClientError(
+                            "conflicting Nano payment journal; operator review required"
+                        )
                     canonical[key] = value
                 self._booked_blocks = canonical
             else:
                 raise NanoClientError("invalid Nano payment journal; operator review required")
         except (json.JSONDecodeError, OSError):
-            raise NanoClientError("unreadable Nano payment journal; operator review required") from None
+            raise NanoClientError(
+                "unreadable Nano payment journal; operator review required"
+            ) from None
 
     def _save_booked(self) -> None:
         path = self._booked_path()
@@ -325,8 +323,10 @@ class NanoClient:
                             resume_invoice
                             and payment.get("job_id")
                             and payment.get("invoice_id")
-                            and all(previous.get(key) == payment.get(key)
-                                    for key in ("job_id", "invoice_id", "amount_raw"))
+                            and all(
+                                previous.get(key) == payment.get(key)
+                                for key in ("job_id", "invoice_id", "amount_raw")
+                            )
                         )
                     self._remember_block(block_hash, payment)
                     return True
@@ -451,9 +451,7 @@ class NanoClient:
     ) -> dict:
         """Create a Nano invoice from an already profit-gated quote."""
         if self.mode == "misconfigured":
-            raise NanoClientError(
-                self.misconfig_reason or "Nano settle rail is misconfigured"
-            )
+            raise NanoClientError(self.misconfig_reason or "Nano settle rail is misconfigured")
         if not self.enabled:
             raise NanoClientError(
                 "Nano settle rail is not enabled "
