@@ -297,7 +297,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
                             },
                         )
                 except Exception:
-                    pass
+                    # Runs every 2s: debug, so a stuck file cannot flood the log.
+                    logging.getLogger(__name__).debug("dashboard status poll failed", exc_info=True)
                 await asyncio.sleep(2.0)
 
         task = asyncio.create_task(_poll_external_status())

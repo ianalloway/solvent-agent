@@ -116,6 +116,26 @@ def test_a_failing_stripe_expiry_does_not_stop_the_sweep(treasury, policy):
     ] == ["J1"]
 
 
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        {"side_effect": RuntimeError("stripe down")},
+        # StripeClient reports API errors in its return value, not by raising.
+        {"return_value": {"id": "cs_J1", "status": "error", "error": "stripe down"}},
+    ],
+)
+def test_a_failed_stripe_expiry_is_recorded(treasury, policy, outcome):
+    """A link Stripe would not close may still be paid; the operator must see it."""
+    _awaiting(treasury)
+    stripe = mock.MagicMock()
+    stripe.expire_checkout_session.configure_mock(**outcome)
+    sweep(treasury, stripe=stripe, policy=policy, now=time.time() + 49 * HOUR)
+    failures = [
+        e for e in treasury.list_events(job_id="J1") if e["stage"] == "checkout_expire_failed"
+    ]
+    assert len(failures) == 1
+
+
 def test_a_failing_mailbox_does_not_stop_the_sweep(treasury, policy):
     _awaiting(treasury, "J1")
     _awaiting(treasury, "J2")
