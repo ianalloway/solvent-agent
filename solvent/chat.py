@@ -71,7 +71,9 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool, *, operat
                     "topic": row.get("topic"),
                     "budget_cents": row.get("budget_cents"),
                     "customer_email": row.get("customer_email"),
-                    "checkout_url": row.get("checkout_url"),
+                    "checkout_url": None
+                    if agent.t.is_legacy_nano_job(row["id"])
+                    else row.get("checkout_url"),
                     "deliverable_url": row.get("deliverable_url"),
                     "error_reason": "Contact the operator for help with this job."
                     if row.get("error_reason")

@@ -203,7 +203,7 @@ infinity) keep the built-in price. Valid entries in the same file still apply.
 | [Commercial judgement](docs/COMMERCIAL_JUDGEMENT.md) | counter-offers, spend policy, per-job envelopes, backlog, win rate, selling |
 | [Configuration](docs/CONFIGURATION.md) | live Stripe / Nemotron / local OpenAI-compatible models, environment variables, Telegram |
 | [Development](docs/DEVELOPMENT.md) | running the tests, repository layout |
-| [Production](docs/PRODUCTION.md) · [Telegram](docs/TELEGRAM.md) · [Nano settlement](docs/NANO_SETTLE.md) · [Releasing](docs/RELEASING.md) | deeper operator guides |
+| [Production](docs/PRODUCTION.md) · [Telegram](docs/TELEGRAM.md) · [Retired Nano migration](docs/NANO_SETTLE.md) · [Releasing](docs/RELEASING.md) | deeper operator guides |
 
 ## 🔑 Make It Real
 

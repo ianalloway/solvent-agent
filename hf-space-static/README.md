@@ -31,7 +31,6 @@ via Pyodide, so this is a free static Space with no server.
 - **Try your own job**: a dry run of the margin gate, same logic as `solvent quote` on the CLI.
 
 Stripe checkout and the analyst brief are deterministic stubs, so the numbers are illustrative. Not financial advice.
-Tick **Use Nano sim settle rail** to run the same jobs through the simulated Nano rail (`nano_sim_…` invoices, `block_sim_…` proofs; still offline).
 
 ## How it works
 

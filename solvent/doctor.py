@@ -84,57 +84,29 @@ def run_checks() -> list[dict]:
     else:
         add("stripe_key", True, "simulate mode (no key)")
 
-    from .nano_client import NanoClient
-
-    nano = NanoClient()
-    st = nano.status()
-    if st["mode"] == "sim":
-        rate = st.get("rate_usd") or "?"
-        detail = f"SOLVENT_NANO=sim (verify-only, no hot wallet; rate ${rate}/XNO)"
-        if st.get("receive_address_configured"):
-            detail += "; SOLVENT_NANO_ADDRESS set (unused in sim)"
-        add("nano_rail", True, detail)
-    elif st["mode"] == "live":
-        probe = nano.probe_rpc()
-        rate = st.get("rate_usd") or "?"
-        addr_ok = st.get("receive_address_valid")
-        detail = (
-            f"SOLVENT_NANO=live (verify-only, no hot wallet; rate ${rate}/XNO; "
-            f"address {'ok' if addr_ok else 'invalid'}; rpc {probe.get('detail')})"
-        )
-        add("nano_rail", bool(probe.get("ok")) and bool(addr_ok), detail)
-    elif st["mode"] == "misconfigured":
-        add(
-            "nano_rail",
-            False,
-            st.get("misconfig_reason") or "incomplete or mixed Nano live/sim config",
-        )
-    else:
-        add(
-            "nano_rail",
-            True,
-            "unset (Stripe default earn rail; export SOLVENT_NANO=sim or =live)",
-        )
-
-    from .nano_custody import NanoCustody
-
-    cust = NanoCustody.from_env().status()
-    if cust["mode"] == "off":
-        add("nano_custody", True, "off (verify-only; SOLVENT_NANO_CUSTODY unset)")
-    elif cust["mode"] == "sim":
-        add("nano_custody", True, f"sim (no keys read; sweeps to {cust['cold_address']})")
-    elif cust["mode"] == "live":
-        if cust.get("signer"):
-            add("nano_custody", True, f"live via {cust['signer']} (unvalidated)")
-        else:
-            add(
-                "nano_custody",
-                False,
-                f"live configured (key ref {cust['key_ref_kind']}:…) but no external "
-                "signer; sweeps refuse — live custody is unvalidated with real funds",
-            )
-    else:
-        add("nano_custody", False, cust.get("misconfig_reason") or "misconfigured")
+    # Diagnose stale configuration without reading keys or contacting a Nano node.
+    retired = sorted(
+        name
+        for name, value in os.environ.items()
+        if value and (name.startswith("SOLVENT_NANO") or name == "SOLVENT_FORCE_NANO_SIMULATE")
+    )
+    add(
+        "retired_payment_config",
+        not retired,
+        "Nano rail removed; unset: " + ", ".join(retired) if retired else "none",
+    )
+    historical = [
+        job
+        for job in t.list_jobs()
+        if job.get("status") not in ("completed", "expired") and t.is_legacy_nano_job(job["id"])
+    ]
+    add(
+        "retired_payment_jobs",
+        not historical,
+        f"{len(historical)} historical Nano jobs require manual reconciliation"
+        if historical
+        else "none",
+    )
 
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
@@ -173,8 +145,6 @@ Enable live features:
   pip install -e ".[all]"            Stripe · server · Telegram · QR pairing
   export NVIDIA_API_KEY=nvapi-...    live Nemotron inference
   export STRIPE_API_KEY=sk_test_...  real test-mode payment links
-  export SOLVENT_NANO=sim            optional Nano (XNO) simulate settle rail
-  export SOLVENT_NANO=live           live verify-only (needs RPC + address + rate)
 """
 
 

@@ -10,14 +10,13 @@ Two moves, both time-based and both idempotent:
 
 * **Remind.** After `reminder_after_hours` the customer gets the link again, at
   most `max_reminders` times, spaced by the same interval.
-* **Expire.** After `expire_after_hours` (or sooner, when a Nano invoice's own
-  ``expires_at`` has passed) the link is closed, the job is marked `expired`,
-  and the worker stops polling it. Expiry never touches money: an unpaid job
+* **Expire.** After `expire_after_hours` the Stripe link is closed, the job is
+  marked `expired`, and the worker stops polling it. Expiry never touches money: an unpaid job
   has no revenue to refund.
 
 Both thresholds are operator-tunable in `.solvent/checkout_policy.json`,
-alongside the pricing and spend policy files. Stripe and Nano rails share this
-chase path.
+alongside the pricing and spend policy files. Retired Nano checkouts are shown
+for manual review only; they are never chased, expired or rerouted to Stripe.
 """
 
 from __future__ import annotations
@@ -96,18 +95,24 @@ def open_checkouts(
     policy: CheckoutPolicy | None = None,
     now: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Unpaid checkouts with their age and what happens to them next.
-
-    Rail-agnostic: Stripe sessions and Nano invoices both appear here. A Nano
-    invoice whose own ``expires_at`` has passed is treated as due to expire even
-    when the chase-policy window has not elapsed yet.
-    """
+    """Unpaid Stripe links and retired checkouts awaiting manual review."""
     t = treasury or Treasury()
     rules = policy or load_policy()
     stamp = now if now is not None else time.time()
 
     rows = []
-    for checkout in t.list_checkouts(status="open"):
+    checkouts = t.list_checkouts(status="open")
+    listed = {row["job_id"] for row in checkouts}
+    # Interrupted historical writes may have left only a job or cached stage.
+    # Keep those visible for review without inventing a replacement checkout.
+    for job in t.list_jobs():
+        if (
+            job["id"] not in listed
+            and job.get("status") == "awaiting_payment"
+            and t.is_legacy_nano_job(job["id"])
+        ):
+            checkouts.append({"job_id": job["id"], "rail": "nano", "ts": job.get("ts")})
+    for checkout in checkouts:
         job = t.get_job(checkout["job_id"]) or {}
         if job.get("status") != "awaiting_payment":
             continue  # paid, cancelled, or already expired elsewhere
@@ -115,31 +120,11 @@ def open_checkouts(
         sent = checkout.get("reminders_sent") or 0
         due_at = rules.reminder_after_hours * (sent + 1)
         rail = checkout.get("rail") or "stripe"
-        nano_inv = t.get_nano_invoice(checkout["job_id"]) if rail == "nano" else None
-        if rail != "nano" and nano_inv is None:
-            nano_inv = t.get_nano_invoice(checkout["job_id"])
-            if nano_inv:
-                rail = "nano"
-
-        invoice_expired = False
-        expires_at = None
-        if nano_inv:
-            expires_at = nano_inv.get("expires_at")
-            if isinstance(expires_at, (int, float)) and stamp > float(expires_at):
-                invoice_expired = True
-            if nano_inv.get("status") == EXPIRED_STATUS:
-                invoice_expired = True
-
-        policy_expired = age >= rules.expire_after_hours
-        should_expire = policy_expired or invoice_expired
-        if should_expire:
-            expires_in_hours = 0.0
-        elif isinstance(expires_at, (int, float)):
-            invoice_left = max(float(expires_at) - stamp, 0) / 3_600
-            policy_left = max(rules.expire_after_hours - age, 0)
-            expires_in_hours = round(min(invoice_left, policy_left), 2)
-        else:
-            expires_in_hours = round(max(rules.expire_after_hours - age, 0), 2)
+        retired = t.is_legacy_nano_job(checkout["job_id"])
+        if retired:
+            rail = "nano"
+        should_expire = age >= rules.expire_after_hours
+        expires_in_hours = round(max(rules.expire_after_hours - age, 0), 2)
 
         rows.append(
             {
@@ -147,14 +132,15 @@ def open_checkouts(
                 "topic": job.get("topic") or "",
                 "customer_email": job.get("customer_email") or "",
                 "amount_cents": job.get("budget_cents") or 0,
-                "checkout_url": checkout.get("checkout_url") or "",
+                "checkout_url": "" if retired else checkout.get("checkout_url") or "",
                 "rail": rail,
                 "age_hours": round(age, 2),
                 "reminders_sent": sent,
                 "expires_in_hours": expires_in_hours,
-                "invoice_expired": invoice_expired,
                 "next_action": (
-                    "expire"
+                    "review"
+                    if retired
+                    else "expire"
                     if should_expire
                     else "remind"
                     if sent < rules.max_reminders and age >= due_at
@@ -169,7 +155,6 @@ def sweep(
     treasury: Treasury | None = None,
     *,
     stripe: Any | None = None,
-    nano: Any | None = None,
     policy: CheckoutPolicy | None = None,
     now: float | None = None,
     on_event: Callable[[dict], None] | None = None,
@@ -194,7 +179,7 @@ def sweep(
         job_id = row["job_id"]
         rail = row.get("rail") or "stripe"
         if row["next_action"] == "expire":
-            if rail != "nano" and stripe is not None:
+            if stripe is not None:
                 # Best effort: a live Stripe session should not outlive the job.
                 try:
                     stored = t.get_checkout(job_id) or {}
@@ -208,12 +193,6 @@ def sweep(
                     # say so, so a late payment can be refunded rather than lost.
                     logger.warning("could not expire Stripe checkout for %s: %s", job_id, exc)
                     emit({"stage": "checkout_expire_failed", "job_id": job_id, "reason": str(exc)})
-            nano_inv = t.get_nano_invoice(job_id)
-            if nano_inv and nano is not None and hasattr(nano, "expire_invoice"):
-                try:
-                    nano.expire_invoice(nano_inv)
-                except Exception:
-                    logger.warning("could not expire Nano invoice for %s", job_id, exc_info=True)
             # Re-check under the lock: a webhook/worker may have paid between
             # open_checkouts() and here. Never downgrade a paid/terminal job.
             with t.lock():
@@ -221,13 +200,7 @@ def sweep(
                 if current.get("status") != "awaiting_payment" or t.job_has_revenue(job_id):
                     continue
                 t.upsert_checkout(job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail)
-                if t.get_nano_invoice(job_id):
-                    t.mark_nano_invoice(job_id, status=EXPIRED_STATUS)
-                reason = (
-                    "nano invoice expired"
-                    if row.get("invoice_expired")
-                    else f"checkout unpaid after {rules.expire_after_hours}h"
-                )
+                reason = f"checkout unpaid after {rules.expire_after_hours}h"
                 t.upsert_job(
                     job_id,
                     EXPIRED_STATUS,
@@ -242,7 +215,6 @@ def sweep(
                     "rail": rail,
                     "age_hours": row["age_hours"],
                     "reminders_sent": row["reminders_sent"],
-                    "invoice_expired": bool(row.get("invoice_expired")),
                 }
             )
         elif row["next_action"] == "remind":
@@ -321,10 +293,9 @@ def main() -> None:
     policy = load_policy()
 
     if args.sweep:
-        from .nano_client import NanoClient
         from .stripe_client import StripeClient
 
-        result = sweep(treasury, stripe=StripeClient(), nano=NanoClient(), policy=policy)
+        result = sweep(treasury, stripe=StripeClient(), policy=policy)
         if args.as_json:
             print(json.dumps(result, indent=2, default=str))
         else:

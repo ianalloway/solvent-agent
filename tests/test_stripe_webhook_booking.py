@@ -3,8 +3,7 @@
 ``test_webhook_security`` covers authentication (signatures, size limits,
 duplicate ids). These tests cover the money: a signed webhook for an open
 checkout books revenue once, while an underpaid, mismatched or replayed event
-books nothing extra. They drive the real endpoint, like
-``test_nano_verify_endpoint`` does for the Nano rail.
+books nothing extra. They drive the real Stripe endpoint.
 """
 
 import hashlib

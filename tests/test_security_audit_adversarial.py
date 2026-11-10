@@ -11,9 +11,7 @@ from solvent import nemotron
 from solvent.agent import Solvent
 from solvent.chat import _make_executor
 from solvent.checkout import CheckoutPolicy, sweep
-from solvent.nano_client import NanoClient
 from solvent.pricing import quote
-from solvent.server import create_app
 
 
 @pytest.fixture(autouse=True)
@@ -35,56 +33,6 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("SOLVENT_DELIVERY_SECRET", "x" * 32)
     monkeypatch.setenv("SOLVENT_DASHBOARD_TOKEN", "d" * 32)
     yield
-
-
-def test_verified_nano_payment_reaches_ledger(monkeypatch):
-    try:
-        from fastapi.testclient import TestClient
-    except (ImportError, RuntimeError):
-        pytest.skip("FastAPI TestClient optional dependencies are not installed")
-
-    monkeypatch.setenv("SOLVENT_NANO", "sim")
-    client = TestClient(create_app(fresh=True))
-    agent = client.app.state.agent
-    result = agent.enqueue_job(
-        {
-            "id": "audit-nano",
-            "topic": "Battery markets",
-            "budget_cents": 5000,
-            "customer_email": "buyer@example.com",
-            "est_tokens": 8000,
-            "market_data_calls": 2,
-            "web_search_calls": 6,
-        }
-    )
-    assert result.get("rail") == "nano", result
-    inv = agent.t.get_nano_invoice("audit-nano")
-    block = agent.nano.mint_sim_block(inv)
-    response = client.post(
-        "/payments/nano/verify",
-        headers={"X-Solvent-Dashboard-Token": "d" * 32},
-        json={"job_id": "audit-nano", "block_hash": block},
-    )
-    retry = client.post(
-        "/payments/nano/verify",
-        headers={"X-Solvent-Dashboard-Token": "d" * 32},
-        json={"job_id": "audit-nano", "block_hash": block},
-    )
-    print(
-        "first",
-        response.status_code,
-        response.json(),
-        "retry",
-        retry.status_code,
-        retry.json(),
-        "job",
-        agent.t.get_job("audit-nano")["status"],
-        "invoice",
-        agent.t.get_nano_invoice("audit-nano")["status"],
-    )
-    assert agent.t.job_has_revenue("audit-nano"), (
-        "Verified block is consumed but revenue is never booked"
-    )
 
 
 def test_force_offline_is_request_local_and_restored():
@@ -211,35 +159,6 @@ def test_earned_payment_is_not_expired_before_paid_state_update():
     )
 
 
-def test_nano_hash_case_variants_cannot_replay(monkeypatch):
-    address = "nano_1qato4k7z3spc8gq1zyd8xeqfbzsoxwo36a45ozbrxcatut7up8ohyardu1z"
-    monkeypatch.setenv("SOLVENT_NANO", "live")
-    monkeypatch.setenv("SOLVENT_NANO_RPC", "https://example.invalid/rpc")
-    monkeypatch.setenv("SOLVENT_NANO_ADDRESS", address)
-    monkeypatch.setenv("SOLVENT_NANO_RATE_USD", "1")
-
-    def rpc(_url, payload):
-        assert payload["action"] == "block_info"
-        return {
-            "amount": str(10 * 10**30),
-            "confirmed": "true",
-            "subtype": "send",
-            "contents": {"link_as_account": address, "type": "state"},
-        }
-
-    nano = NanoClient(rpc_post=rpc)
-    p1 = nano.verify_nano_block(nano.create_nano_invoice("first", 1000), "AB" * 32)
-    p2 = nano.verify_nano_block(nano.create_nano_invoice("second", 1000), "ab" * 32)
-    print(
-        "same 256-bit hash accepted",
-        p1["paid"],
-        p2["paid"],
-        "booked entries",
-        len(nano._booked_blocks),
-    )
-    assert p1["paid"] and not p2["paid"], "Case variants bypass the new atomic-booking check"
-
-
 def test_customer_quote_reason_contains_no_margin():
     agent = Solvent(fresh=True, sync_payment=False)
     execute = _make_executor(agent, "customer", False, operator=False)
@@ -255,149 +174,6 @@ def test_customer_quote_reason_contains_no_margin():
             break
     print("customer-visible quote", found)
     assert found is None, "Removed numeric fields still leak through the quote reason string"
-
-
-def _nano_http(monkeypatch, *, raise_server_exceptions=True):
-    try:
-        from fastapi.testclient import TestClient
-    except (ImportError, RuntimeError):
-        pytest.skip("FastAPI TestClient optional dependencies are not installed")
-
-    monkeypatch.setenv("SOLVENT_NANO", "sim")
-    client = TestClient(create_app(fresh=True), raise_server_exceptions=raise_server_exceptions)
-    agent = client.app.state.agent
-    agent.enqueue_job(
-        {
-            "id": "nano-recovery",
-            "topic": "Battery markets",
-            "budget_cents": 5000,
-            "customer_email": "buyer@example.com",
-            "est_tokens": 8000,
-            "market_data_calls": 2,
-            "web_search_calls": 6,
-        }
-    )
-    invoice = agent.t.get_nano_invoice("nano-recovery")
-    block = agent.nano.mint_sim_block(invoice)
-
-    def submit():
-        return client.post(
-            "/payments/nano/verify",
-            headers={"X-Solvent-Dashboard-Token": "d" * 32},
-            json={"job_id": "nano-recovery", "block_hash": block},
-        )
-
-    return agent, block, submit
-
-
-def test_expiry_during_nano_verification_does_not_consume_proof(monkeypatch):
-    agent, block, submit = _nano_http(monkeypatch)
-    original = agent.nano.verify_nano_block
-
-    def expire_during_verification(*args, **kwargs):
-        payment = original(*args, **kwargs)
-        agent.t.upsert_job("nano-recovery", "expired")
-        agent.t.mark_nano_invoice("nano-recovery", status="expired")
-        return payment
-
-    with patch.object(agent.nano, "verify_nano_block", side_effect=expire_during_verification):
-        response = submit()
-    assert response.status_code == 409
-    assert not agent.nano.is_block_booked(block)
-    assert not agent.t.job_has_revenue("nano-recovery")
-    assert agent.t.get_job("nano-recovery")["status"] == "expired"
-
-
-def test_nano_proof_reservation_recovers_after_earn_failure(monkeypatch):
-    agent, block, submit = _nano_http(monkeypatch, raise_server_exceptions=False)
-    with patch.object(
-        agent.t, "earn", side_effect=RuntimeError("interrupted before ledger commit")
-    ):
-        assert submit().status_code == 500
-    assert agent.nano.is_block_booked(block)
-    assert not agent.t.job_has_revenue("nano-recovery")
-    # A new process loads the durable reservation rather than relying on memory.
-    agent.nano = agent._runner.nano = NanoClient()
-    response = submit()
-    assert response.status_code == 200, response.text
-    assert response.json()["paid"]
-    assert sum(e.kind == "revenue" and e.job_id == "nano-recovery" for e in agent.t.entries) == 1
-    assert agent.t.get_nano_invoice("nano-recovery")["status"] == "paid"
-
-
-def test_nano_recovery_repairs_invoice_and_checkout_after_earn(monkeypatch):
-    agent, block, submit = _nano_http(monkeypatch, raise_server_exceptions=False)
-    with patch.object(agent.t, "mark_nano_invoice", side_effect=RuntimeError("crash after earn")):
-        assert submit().status_code == 500
-    assert agent.t.job_has_revenue("nano-recovery")
-    assert agent.t.get_nano_invoice("nano-recovery")["status"] == "open"
-    assert submit().status_code == 200
-    assert agent.t.get_nano_invoice("nano-recovery")["status"] == "paid"
-    assert agent.t.get_checkout("nano-recovery")["status"] == "paid"
-    assert agent.t.get_job("nano-recovery")["status"] == "completed"
-    assert sum(e.kind == "revenue" and e.job_id == "nano-recovery" for e in agent.t.entries) == 1
-
-
-def test_nano_deadline_is_rechecked_after_network_verification(monkeypatch):
-    agent, block, submit = _nano_http(monkeypatch)
-    original = agent.nano.verify_nano_block
-
-    def cross_expiry(*args, **kwargs):
-        payment = original(*args, **kwargs)
-        invoice = agent.t.get_nano_invoice("nano-recovery")
-        invoice["expires_at"] = 1
-        agent.t.upsert_nano_invoice("nano-recovery", invoice)
-        return payment
-
-    with patch.object(agent.nano, "verify_nano_block", side_effect=cross_expiry):
-        response = submit()
-    assert response.status_code == 409
-    assert not agent.nano.is_block_booked(block)
-    assert not agent.t.job_has_revenue("nano-recovery")
-
-
-def test_failed_first_journal_write_cannot_create_memory_only_reservation(monkeypatch):
-    monkeypatch.setenv("SOLVENT_NANO", "sim")
-    nano = NanoClient()
-    payment = {"job_id": "first", "invoice_id": "inv-first", "amount_raw": "100"}
-    with patch.object(nano, "_save_booked", side_effect=OSError("disk full")):
-        with pytest.raises(OSError):
-            nano._try_book_block("block_sim_fail", payment, resume_invoice=True)
-    assert not nano.is_block_booked("block_sim_fail")
-    assert nano._try_book_block("block_sim_fail", payment, resume_invoice=True)
-    assert nano._booked_path().is_file()
-    assert not NanoClient()._try_book_block(
-        "block_sim_fail",
-        {**payment, "job_id": "second", "invoice_id": "inv-second"},
-        resume_invoice=True,
-    )
-
-
-def test_corrupt_journal_fails_closed(monkeypatch):
-    from solvent.nano_client import NanoClientError
-
-    monkeypatch.setenv("SOLVENT_NANO", "sim")
-    nano = NanoClient()
-    path = nano._booked_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{partial-write")
-    with pytest.raises(NanoClientError):
-        NanoClient()
-    with pytest.raises(NanoClientError):
-        nano._try_book_block("block_sim_any", {"job_id": "new"})
-    assert path.read_text() == "{partial-write"
-
-
-def test_nano_resume_cannot_change_invoice_binding(monkeypatch):
-    monkeypatch.setenv("SOLVENT_NANO", "sim")
-    nano = NanoClient()
-    payment = {"job_id": "first", "invoice_id": "inv-first", "amount_raw": "100"}
-    assert nano._try_book_block("block_sim_bound", payment)
-    for change in ({"job_id": "other"}, {"invoice_id": "other"}, {"amount_raw": "101"}):
-        assert not nano._try_book_block(
-            "block_sim_bound", {**payment, **change}, resume_invoice=True
-        )
-    assert nano._try_book_block("block_sim_bound", payment, resume_invoice=True)
 
 
 def test_customer_error_channels_hide_internal_margin():

@@ -33,6 +33,7 @@ _LIVE_KEYS = (
     "SOLVENT_LIVE_SEARCH",
     "SOLVENT_ASYNC",
     "SOLVENT_ALLOW_POLL",
+    # Clear retired rail settings too when running an older published wheel.
     "SOLVENT_NANO",
     "SOLVENT_NANO_RPC",
     "SOLVENT_NANO_ADDRESS",
@@ -42,7 +43,7 @@ _LIVE_KEYS = (
 
 
 @contextmanager
-def offline_sandbox(*, nano_sim: bool = False):
+def offline_sandbox():
     """Temporary SOLVENT_HOME + simulation-only environment (restored on exit)."""
     with _LOCK, tempfile.TemporaryDirectory(prefix="solvent-space-") as home:
         saved = {k: os.environ.get(k) for k in (*_LIVE_KEYS, "SOLVENT_HOME",
@@ -53,8 +54,6 @@ def offline_sandbox(*, nano_sim: bool = False):
             os.environ["SOLVENT_HOME"] = home
             os.environ["SOLVENT_FORCE_STRIPE_SIMULATE"] = "1"
             os.environ["SOLVENT_DELIVERY_SECRET"] = secrets.token_urlsafe(48)
-            if nano_sim:
-                os.environ["SOLVENT_NANO"] = "sim"
             yield home
         finally:
             for k, v in saved.items():
@@ -74,9 +73,9 @@ def usd(cents: int | float) -> str:
 DEMO_HEADERS = ["Job", "Topic", "Verdict", "Price", "Est. cost", "Proj. margin", "Realized P&L", "Cash after"]
 
 
-def run_demo(seed_dollars: float = 100.0, *, nano_sim: bool = False) -> dict[str, Any]:
+def run_demo(seed_dollars: float = 100.0) -> dict[str, Any]:
     """Run solvent's five SAMPLE_JOBS end to end (simulated) and collect results."""
-    with offline_sandbox(nano_sim=nano_sim):
+    with offline_sandbox():
         from solvent.agent import Solvent
         from solvent.jobs import SAMPLE_JOBS
         from solvent.money import dollars_to_cents
@@ -115,7 +114,6 @@ def run_demo(seed_dollars: float = 100.0, *, nano_sim: bool = False) -> dict[str
         "snapshot": snap,
         "events": events,
         "seed": seed_dollars,
-        "nano_sim": nano_sim,
     }
 
 
@@ -195,24 +193,9 @@ def timeline_text(result: dict[str, Any]) -> str:
         elif st == "counter_offer":
             lines.append(f"[{jid}] counter-offer: {e.get('message')} ({e.get('margin_pct')}% margin)")
         elif st == "invoice":
-            rail = e.get("rail") or "stripe"
-            if rail == "nano":
-                dest = e.get("destination") or e.get("url") or "nano_sim_…"
-                lines.append(
-                    f"[{jid}] Nano invoice issued (sim): {usd(e['amount'])} → {dest}"
-                )
-            else:
-                lines.append(f"[{jid}] checkout link issued (simulated): {usd(e['amount'])}")
+            lines.append(f"[{jid}] checkout link issued (simulated): {usd(e['amount'])}")
         elif st == "paid":
-            rail = e.get("rail") or "stripe"
-            ref = e.get("payment_ref") or e.get("stripe_ref") or ""
-            if rail == "nano":
-                lines.append(
-                    f"[{jid}] Nano payment confirmed (sim block_sim_…): +{usd(e['amount'])}"
-                    + (f" ref={ref}" if ref else "")
-                )
-            else:
-                lines.append(f"[{jid}] payment confirmed (simulated): +{usd(e['amount'])}")
+            lines.append(f"[{jid}] payment confirmed (simulated): +{usd(e['amount'])}")
         elif st == "fulfilled":
             lines.append(f"[{jid}] brief written by deterministic stub ({e.get('tokens')} tokens)")
         elif st == "spend":
@@ -222,14 +205,14 @@ def timeline_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def on_run_demo(seed: float, nano_sim: bool = False):
+def on_run_demo(seed: float):
     try:
         seed = float(seed)
         if not 15 <= seed <= 100_000:
             raise ValueError
     except (TypeError, ValueError):
         raise gr.Error("Seed capital must be a number between 15 and 100000 (USD).")
-    r = run_demo(seed, nano_sim=bool(nano_sim))
+    r = run_demo(seed)
     return jobs_table(r), declined_card(r), pnl_markdown(r), timeline_text(r)
 
 
@@ -294,7 +277,7 @@ INTRO = """
 SOLVENT quotes research jobs against its **own costs**, **declines the unprofitable ones**
 (offering a counter-offer instead), and books every job into a treasury P&L.
 This Space runs the **real [`solvent-agent`](https://pypi.org/project/solvent-agent/) package** in an
-**offline demo mode**: simulated Stripe **or** Nano (`nano_sim_…` / `block_sim_…`) checkout,
+**offline demo mode**: simulated Stripe checkout,
 deterministic stub analyst, **no API keys, no network**.
 [GitHub](https://github.com/ianalloway/solvent-agent) · `pip install solvent-agent`
 """
@@ -306,19 +289,13 @@ with gr.Blocks(title="SOLVENT: AI agent that declines unprofitable work") as dem
                     "underpriced, so watch the margin gate decline it and counter-offer.")
         with gr.Row():
             seed = gr.Number(value=100, label="Seed capital (USD)", minimum=15, maximum=100000, scale=1)
-            nano_toggle = gr.Checkbox(
-                value=False,
-                label="Use Nano sim settle rail (SOLVENT_NANO=sim)",
-                info="Invoices become nano_sim_… destinations; proofs are block_sim_… (still offline).",
-                scale=2,
-            )
             run_btn = gr.Button("Run the demo", variant="primary", scale=1)
         table = gr.Dataframe(headers=DEMO_HEADERS, interactive=False, wrap=True, label="Per-job results")
         declined = gr.HTML(label="Declined job + counter-offer")
         pnl = gr.Markdown()
         with gr.Accordion("Event timeline", open=False):
             log = gr.Textbox(lines=18, interactive=False, show_label=False)
-        run_btn.click(on_run_demo, [seed, nano_toggle], [table, declined, pnl, log], api_name="run_demo")
+        run_btn.click(on_run_demo, [seed], [table, declined, pnl, log], api_name="run_demo")
     with gr.Tab("🧮 Try your own job"):
         gr.Markdown("A **dry run of the margin gate**, same logic as `solvent quote` on the CLI. "
                     "Nothing is stored and no payment is made. Try a $6 budget to see a decline.")
@@ -340,13 +317,12 @@ with gr.Blocks(title="SOLVENT: AI agent that declines unprofitable work") as dem
                     [verdict, cost_tbl, cli_out], api_name="quote")
     with gr.Tab("ℹ About"):
         gr.Markdown(
-            "- **What is simulated?** Stripe checkout/payments (default) or Nano sim "
-            "(`nano_sim_…` / `block_sim_…` when the toggle is on), and the analyst's brief. "
+            "- **What is simulated?** Stripe checkout/payments and the analyst's brief. "
             "They are deterministic stubs, so numbers here are illustrative, not real revenue.\n"
             "- **Run it yourself:** `pip install solvent-agent && solvent` (demo), "
-            "`export SOLVENT_NANO=sim && solvent`, or `solvent quote \"topic\" --budget 49`.\n"
-            "- **Live mode** (real Stripe test mode, live Nano RPC, real Nemotron) needs your "
-            "own keys/node and is not part of this Space.\n"
+            "or `solvent quote \"topic\" --budget 49`.\n"
+            "- **Live mode** (real Stripe test mode, real Nemotron) needs your "
+            "own keys and is not part of this Space.\n"
             "- Not financial or investment advice; the sample jobs are fictional.\n\n"
             "Code: [github.com/ianalloway/solvent-agent](https://github.com/ianalloway/solvent-agent) · "
             "PyPI: [solvent-agent](https://pypi.org/project/solvent-agent/) · MIT licensed."

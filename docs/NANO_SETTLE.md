@@ -1,183 +1,65 @@
-# Nano (XNO) settle leg — design note (issue #83)
+# Nano retirement and migration
 
-Status: **simulate + live verify-only landed** (Option A custody — no hot wallet).
-Enable with `SOLVENT_NANO=sim` or `SOLVENT_NANO=live` (RPC + address + rate).
-Hot seed / outbound spend remain non-goals until Option B/C is accepted.
-This document maps
-[issue #83](https://github.com/ianalloway/solvent-agent/issues/83) onto the
-shapes SOLVENT already uses; see `solvent/nano_client.py`.
+The Nano (XNO) payment and custody rail is retired in the unreleased code.
+Stripe test-mode checkout and offline Stripe simulation are the supported paths.
+This guide replaces the former design and setup instructions for issue #83;
+it does not imply that a release, deployment or migration has already happened.
 
-## Why it fits
+## What was removed
 
-SOLVENT's loop is: **quote (profit-gated) → get paid → fulfil → spend under
-guardrails → book**. Today the earn side is Stripe test-mode Checkout /
-Payment Links (`solvent/stripe_client.py`) with webhook verification before
-fulfilment (`POST /webhooks/stripe` in `solvent/server.py`).
+- Nano invoice creation and payment verification, including the verification and
+  webhook HTTP routes.
+- Nano client and custody modules, custody commands and tool registrations.
+- Nano selection in the Gradio and static demos.
+- Active use of `SOLVENT_NANO` and its related RPC, address, rate, custody and
+  signing settings. They must not be used to enable payment processing.
 
-Issue #83 proposes the same trust shape with a public Nano block as the
-receipt: create an invoice from the existing quote, verify a send block
-against the ledger, then fulfil. Unprofitable or declined work never touches
-either rail.
+New jobs use Stripe even if retired Nano settings remain in the environment.
+Doctor reports stale Nano settings without connecting to RPC or reading keys.
+The demos clear legacy rail settings when using older published package versions.
 
-## Non-goals (v1 / current)
+## Reconcile existing installations before upgrading
 
-- Replacing Stripe, Issuing spend, or reconcile-against-Stripe.
-- Hot seed / in-process custody (Option B/C) or outbound Nano spend.
-- x402 HTTP challenge/response (may come later; see paypercall reference).
-- Auto-converting treasury balances between USD cents and XNO.
-- FX oracle beyond an explicit `SOLVENT_NANO_RATE_USD` (required for live).
+1. Stop accepting new Nano payments and pause the old worker. Identify outstanding
+   invoices, jobs, customer obligations and any payments sent to old destinations.
+2. Back up the complete SOLVENT data directory, including the SQLite database,
+   ledger, checkout and invoice records, and any historical JSON files. Preserve
+   `nano_payments.json`, `nano_custody_sim.json`, `nano_custody_live.json` and other
+   custody records if present.
+   Retain original amounts, rates, destinations, timestamps and block references.
+   **Startup warning:** existing `solvent serve` and `solvent worker` CLI defaults
+   reset data. Use `--keep-balance` with either command on an existing installation
+   until safe startup defaults are fixed. Never run a fresh demo or reset against
+   the production data directory.
+3. Reconcile every outstanding old job and payment with the operator's records and,
+   where applicable, the public ledger. Simulated proofs are not real payments.
+   Resolve delivery, cancellation or refund obligations through a separately
+   authorized operator process before deleting anything.
+4. After reconciliation, remove obsolete Nano settings from deployment configuration
+   and review any external signing or credential integrations separately. Do not
+   delete records or credentials merely because this code no longer uses them.
+5. Validate Stripe test-mode configuration and run `solvent doctor` before resuming
+   new work. Do not convert old Nano invoices into Stripe charges or replay them
+   as new orders without resolving the original obligation first.
 
-## Proposed surface (additive)
+There are **no automated Nano payouts or refunds** in this version. Historical
+ledger-only refund entries do not prove that an on-chain refund occurred. The old
+live custody integration shipped without a live signer and was not validated with
+real funds; no balance transfer is implied by retirement.
 
-Mirror the Stripe client so stages / server / checkout chase stay rail-agnostic
-at the call sites.
+## Historical records and held jobs
 
-| Stripe today | Nano (proposed) | Notes |
-|---|---|---|
-| `create_checkout_session(job_id, amount_cents, …)` | `create_nano_invoice(job_id, amount_cents, …)` | Returns destination `nano_…` + exact **raw** amount derived from the profit-gated quote. |
-| `confirm_payment` / webhook `checkout.session.completed` | `verify_nano_block(invoice, block_hash)` | RPC `block_info`: `subtype=send`, `amount >= invoice.raw`, `destination == SOLVENT address`. |
-| `POST /webhooks/stripe` | `POST /webhooks/nano` **or** worker poll | Prefer poll/verify-on-submit first (no shared webhook secret from a public ledger). Optional later: push notify from a trusted watcher. |
-| `expire_checkout_session` | mark invoice expired in treasury | Checkout chase (`checkout.py`) expires unpaid Stripe **and** Nano rows; also honours invoice `expires_at`. |
-| `reconcile.py` vs PaymentIntents | optional: list account history vs booked refs | Keep Stripe reconcile unchanged; add a separate nano drift report. |
+Existing SQLite ledger, invoice and checkout rows and historical JSON files are
+preserved, not dropped or rewritten as part of this removal. Generic payment
+references, including old block hashes, remain audit evidence. Stripe reconciliation
+must not treat those hashes as Stripe PaymentIntent identifiers.
 
-### Invoice record (treasury)
+Historical Nano jobs are held for manual reconciliation before retry or fulfilment.
+Advancement returns a payment-pending result with a retired-rail reason without
+changing the saved job status or silently sending the job down Stripe. Historical
+Nano checkouts require review: active checkout listings omit their old payment
+URLs, and automated reminders and expiry
+are skipped. Retaining a record does not mean that its payment rail is supported.
 
-Suggested fields on a checkout-like row (names indicative):
-
-- `rail`: `"stripe"` \| `"nano"`
-- `job_id`, `amount_cents` (quote still USD-denominated for pricing/P&L)
-- `nano_destination`, `amount_raw` (string integer; Nano raw is large)
-- `xno_rate_usd` + `rate_ts` (how cents mapped to raw at quote time)
-- `block_hash` (once verified), `status`: open \| paid \| expired
-
-Revenue ledger entries should grow a generic `payment_ref` (Stripe `pi_…` or
-Nano block hash) rather than overloading `stripe_ref` forever — a thin alias
-keeps old rows readable.
-
-### Quote → raw amount
-
-Pricing stays in integer USD cents. Conversion happens only inside the Nano
-invoice helper:
-
-1. Read `amount_cents` from the already-accepted quote (margin gate has passed).
-2. Apply an explicit rate source (config or oracle); refuse invoice creation if
-   rate missing/stale.
-3. Compute `amount_raw` with integer/Decimal math (no binary float); document
-   the rounding mode next to `solvent.money.dollars_to_cents`.
-4. Persist rate + raw on the invoice so verify can re-check without re-quoting.
-
-### Verify before fulfil (hard rule)
-
-Same invariant as Stripe:
-
-1. Margin gate already accepted the job.
-2. Payment proof verified (`verify_nano_block` or Stripe webhook/`confirm_payment`).
-3. Only then may the worker leave `awaiting_payment` and fulfil.
-
-Reject: wrong destination, amount below invoice raw, non-send subtype,
-replayed block hash already booked, expired invoice.
-
-### Simulate mode (recommended first code PR)
-
-Match Stripe's offline demo:
-
-- No RPC, no seed, no network: `create_nano_invoice` returns `nano_sim_…` and a
-  deterministic raw amount; `verify_nano_block` accepts a `block_sim_…` token
-  instantly when `SOLVENT_NANO=sim` / no live endpoint configured.
-- Live RPC behind `SOLVENT_NANO=live` plus `SOLVENT_NANO_RPC` and
-  `SOLVENT_NANO_ADDRESS` — never mixed with sim proofs; doctor fails closed on
-  partial config.
-- Unit tests: amount math, reject underpay / wrong destination / replay;
-  stages still decline unprofitable work without opening an invoice.
-
-## Key custody (open decision)
-
-Issue #83 points at ~100 lines of key derivation and a signed-out onramp that
-mints a fresh keypair. For SOLVENT as a *business* agent:
-
-| Option | Pros | Cons |
-|---|---|---|
-| **A. Operator-provided receive address only** (watch / verify, no hot seed in-process) | Smallest blast radius; matches “verify public block” | Agent cannot auto-sweep or self-custody spend without a later wallet module |
-| **B. Hot seed in env / locked file** | True self-custody of earnings | Key management, backup, malware surface — needs SECURITY.md treatment |
-| **C. External signer (OS keychain / HSM / separate process)** | Better ops hygiene | More moving parts for v1 |
-
-**Recommendation for v1:** Option A (verify-only) + simulate mode. Custody and
-outbound Nano spend are a separate design.
-
-## Config / doctor
-
-- Document env vars in `docs/PRODUCTION.md` only after acceptance.
-- `solvent doctor` should report: rail enabled?, RPC reachable?, receive
-  address configured?, rate source fresh?, simulate vs live.
-- Dashboard checkout list should show rail + destination / block hash without
-  exposing seeds.
-
-## Acceptance criteria (for a first implementation PR)
-
-- [x] Opt-in only; default demo path unchanged with zero Nano config.
-- [x] Profit gate runs before any invoice is created.
-- [x] `verify_nano_block` (or sim) required before fulfilment.
-- [x] Underpay / wrong destination / replay / expired invoice never fulfil.
-- [x] Treasury records rail + payment ref; Stripe paths untouched.
-- [x] Tests cover sim verify + rejection cases; no network in unit tests.
-- [x] SECURITY.md notes: verify-only, no hot wallet, public block ≠ privacy.
-- [x] Live RPC `block_info` verify with hard sim/live separation.
-- [x] Doctor / PRODUCTION fail-closed for partial live config.
-- [x] Checkout chase expires unpaid nano invoices (policy + `expires_at`).
-
-## References
-
-- Issue: https://github.com/ianalloway/solvent-agent/issues/83
-- Nano signing / key derivation: https://docs.nano.org/protocol-design/signing-hashing-and-key-derivation/
-- Example onramp address API cited in #83: `https://getunstuck.space/unstuck/api/v1/onramp/address`
-- x402 reference cited in #83: `https://extract.paypercall.dev/.well-known/x402`
-
-## Implementation status
-
-| Piece | Location |
-|---|---|
-| Client | `solvent/nano_client.py` — sim + live `create_nano_invoice` / `verify_nano_block` |
-| Stages | `solvent/stages.py` — nano branch; sync auto-confirm **sim only** |
-| Treasury | `nano_invoices` + ledger `payment_ref` |
-| Checkout chase | `solvent/checkout.py` — rail-agnostic expire + invoice `expires_at` |
-| HTTP | `POST /payments/nano/verify`; `POST /webhooks/nano` → 501 |
-| Doctor | `nano_rail`: sim / live (RPC probe) / unset / misconfigured |
-| Tests | `tests/test_nano_client.py`, nano cases in `tests/test_checkout.py` |
-
-Still deferred: FX oracle, x402, outbound Nano spend beyond cold-address sweeps,
-a shipped live signer.
-
-## M3 custody (feature flag, off by default)
-
-Decision implemented: **Option C (external signer)** with a sim-first
-accounting + sweep layer. Option B (hot seed in env / file) is *not* adopted:
-keys are only ever named by reference.
-
-| Piece | Behaviour |
-|---|---|
-| Flag | `SOLVENT_NANO_CUSTODY=off` (default) \| `sim` \| `live` |
-| Rail pairing | custody `sim` requires `SOLVENT_NANO=sim`; custody `live` requires `SOLVENT_NANO=live` |
-| Keys | `SOLVENT_NANO_CUSTODY_KEY_REF=env:VAR` or `keyring:service/user`; inline seeds / file refs refused; sim refuses any key ref |
-| Balance | sum of booked, verified payments in `nano_payments.json` for the same mode (sim blocks never count in live, and vice versa) minus sweeps |
-| Sweep | only to `SOLVENT_NANO_COLD_ADDRESS`; min `SOLVENT_NANO_SWEEP_MIN_RAW`; rolling-24h cap `SOLVENT_NANO_SWEEP_DAILY_CAP_RAW`; explicit approval |
-| Sim sweep | writes `block_sim_sweep_…` to `.solvent/nano_custody_sim.json` |
-| Live sweep | needs an injected `Signer` (`send(key, source, destination, amount_raw) -> block hash`); none shipped, so it refuses |
-| CLI | `solvent custody status`, `solvent custody plan`, `solvent custody sweep --yes` |
-| Doctor | `nano_custody`: off / sim OK; live without signer and any misconfig fail |
-| Tests | `tests/test_nano_custody.py` (sim + fake signer; no keys, no network) |
-
-### Needs live funds to validate (not done)
-
-- A real `Signer`: state-block construction, ed25519-blake2b signing, PoW
-  (`work_generate` or local), `process` RPC publish, and confirmation tracking.
-- Receiving pending blocks into the hot account (`receivable` + receive blocks):
-  verify-only today means funds stay *pending* until the operator's wallet
-  receives them; custody accounting assumes received balance.
-- Reconciling custody balance against `account_balance` RPC rather than the
-  booked-payment ledger.
-- Key backup / rotation drills on the chosen secret store.
-
-Do not use third-party "fresh keypair" endpoints (such as the onramp cited in
-the original issue) for custody keys: a key minted by someone else's server is
-not self-custody.
-
+Archived changelog and release notes describe earlier versions only. Public Nano
+block hashes, amounts and addresses remain public after integration removal.
