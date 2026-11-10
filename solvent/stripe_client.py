@@ -40,6 +40,8 @@ except Exception:
     stripe = None  # type: ignore
     _HAS_STRIPE = False
 
+logger = logging.getLogger(__name__)
+
 
 def _event_to_dict(event) -> dict:
     """Plain-dict view of a Stripe event.

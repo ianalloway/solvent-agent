@@ -927,9 +927,7 @@ class StageRunner:
                 receipt_text = build_receipt(_full_job, pnl, self.t.balance_cents())
                 self._emit(stage="receipt_ready", job_id=job_id, receipt=receipt_text)
             except Exception:
-                logging.getLogger(__name__).warning(
-                    "receipt failed for %s", job_id, exc_info=True
-                )
+                logging.getLogger(__name__).warning("receipt failed for %s", job_id, exc_info=True)
             return booked_event
         except Exception as e:
             reason = str(e)
