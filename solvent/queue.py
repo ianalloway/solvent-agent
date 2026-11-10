@@ -23,21 +23,30 @@ def list_claimable(treasury: Treasury) -> list[dict]:
 def resume_incomplete_jobs(treasury: Treasury) -> list[str]:
     """Find jobs with revenue but no completed fulfill stage."""
     resumed: list[str] = []
-    for job in treasury.list_jobs():
-        jid = job["id"]
-        if treasury.is_legacy_nano_job(jid):
-            continue
-        status = job.get("status", "")
-        if status in ("completed", "failed", "refund_pending") or treasury.pending_refunds(jid):
-            continue
-        if treasury.job_has_revenue(jid) and not treasury.stage_completed(jid, "fulfill"):
-            treasury.upsert_job(jid, "paid_pending_fulfill")
-            resumed.append(jid)
-        elif (
-            status == "in_progress"
-            and not treasury.stage_completed(jid, "fulfill")
-            or status == "awaiting_payment"
-            and treasury.get_checkout(jid)
-        ):
-            resumed.append(jid)
+    for candidate in treasury.list_jobs():
+        jid = candidate["id"]
+        # Re-read under the lock: cancellation may have happened after the scan.
+        with treasury.lock():
+            job = treasury.get_job(jid)
+            if not job or treasury.is_legacy_nano_job(jid):
+                continue
+            status = job.get("status", "")
+            if status in (
+                "completed",
+                "failed",
+                "cancelled",
+                "expired",
+                "refund_pending",
+            ) or treasury.pending_refunds(jid):
+                continue
+            if treasury.job_has_revenue(jid) and not treasury.stage_completed(jid, "fulfill"):
+                treasury.upsert_job(jid, "paid_pending_fulfill")
+                resumed.append(jid)
+            elif (
+                status == "in_progress"
+                and not treasury.stage_completed(jid, "fulfill")
+                or status == "awaiting_payment"
+                and treasury.get_checkout(jid)
+            ):
+                resumed.append(jid)
     return resumed

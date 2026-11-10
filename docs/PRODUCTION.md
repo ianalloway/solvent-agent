@@ -91,7 +91,7 @@ there are no automated Nano payouts or refunds.
 
 1. Set `STRIPE_API_KEY=sk_test_...` or restricted `rk_test_...`
 2. Create webhook endpoint: `POST {SOLVENT_BASE_URL}/webhooks/stripe`
-3. Subscribe to `checkout.session.completed`
+3. Subscribe to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.async_payment_failed`
 4. Set `STRIPE_WEBHOOK_SECRET=whsec_...` (required: with no secret `/webhooks/stripe` rejects every request, and requests with a bad signature are rejected without being stored)
 5. Submit jobs via `POST /jobs` — response includes `checkout_url` (also as `url`)
 
@@ -99,6 +99,12 @@ Webhook bodies are limited to 1 MiB (1,048,576 bytes), enforced while streaming
 before signature verification. Larger requests receive `413`; invalid or
 conflicting `Content-Length` headers receive `400` before the body is read.
 Rejected requests are not stored in the webhook log.
+
+Unpaid completed sessions remain `processing` until a delayed-payment success
+or failure arrives. Processing sessions are not chased or expired. A failed
+delayed payment stops fulfillment. Local expiry of a real Stripe session
+requires an explicit provider confirmation; an API error, missing credentials,
+or an already-completed session keeps the job open for retry and late webhooks.
 
 Polling is disabled by default. For CLI-only test flows:
 
@@ -197,6 +203,14 @@ reservation reduces spendable cash without claiming a successful refund.
 Finance and dashboard reports flag the unresolved amount alongside the booked
 ledger figures. Older `refund_failed` events without a booked refund are
 quarantined the same way when the treasury opens.
+
+Verified payments arriving after a job is cancelled, expired, or failed are
+booked together with a full refund reservation in one transaction. The terminal
+job status is preserved and fulfillment remains blocked. These late-payment
+holds do **not** submit a refund automatically: inspect the payment in the
+Stripe test dashboard, arrange the refund if none exists, then reconcile its
+exact refund ID using the command below. Redelivery cannot book or reserve the
+same payment twice.
 
 Before resuming workers on an older treasury, audit previously interrupted
 paid jobs against Stripe. A pre-upgrade crash after provider acceptance but

@@ -20,7 +20,7 @@ With both keys set:
 - Briefs are written by **NVIDIA Nemotron** (Llama-3.1-Nemotron-Ultra).
 - Each job creates a real **Stripe Payment Link**. Pay with test card `4242 4242 4242 4242`.
 - SOLVENT **polls** the Checkout Session (`cs_...`) until `payment_status == paid` before fulfilling — no instant confirm.
-- Optional: set `STRIPE_WEBHOOK_SECRET` and forward `checkout.session.completed` events via `StripeClient.process_webhook()`.
+- Optional: set `STRIPE_WEBHOOK_SECRET` and forward `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.async_payment_failed` events via `StripeClient.process_webhook()`.
 - Optional: enable **Stripe Issuing** on your test account to provision capped single-use virtual debit cards for each vendor payment.
 
 ### Local or OpenAI-compatible model (Ollama, LM Studio, vLLM)

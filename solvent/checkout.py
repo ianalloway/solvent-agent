@@ -10,9 +10,9 @@ Two moves, both time-based and both idempotent:
 
 * **Remind.** After `reminder_after_hours` the customer gets the link again, at
   most `max_reminders` times, spaced by the same interval.
-* **Expire.** After `expire_after_hours` the Stripe link is closed, the job is
-  marked `expired`, and the worker stops polling it. Expiry never touches money: an unpaid job
-  has no revenue to refund.
+* **Expire.** After `expire_after_hours` the Stripe link is closed and the job
+  is marked `expired`. Local expiry requires provider confirmation; an
+  uncertain response remains retryable for the next sweep or a paid webhook.
 
 Both thresholds are operator-tunable in `.solvent/checkout_policy.json`,
 alongside the pricing and spend policy files. Retired Nano checkouts are shown
@@ -179,27 +179,46 @@ def sweep(
         job_id = row["job_id"]
         rail = row.get("rail") or "stripe"
         if row["next_action"] == "expire":
-            if stripe is not None:
-                # Best effort: a live Stripe session should not outlive the job.
+            if rail != "nano":
+                # Do not abandon a session that may have completed while its
+                # paid webhook is in flight, or may still accept payment.
                 try:
                     stored = t.get_checkout(job_id) or {}
                     session_id = stored.get("session_id")
-                    if session_id:
+                    if not session_id:
+                        raise RuntimeError("checkout session missing")
+                    if stripe is None:
+                        if not session_id.startswith("cs_sim_"):
+                            raise RuntimeError("Stripe expiry unavailable")
+                        result = {"status": "expired"}
+                    else:
                         result = stripe.expire_checkout_session(session_id) or {}
-                        if result.get("status") == "error":
-                            raise RuntimeError(result.get("error") or "expire failed")
+                    if result.get("status") != "expired":
+                        raise RuntimeError(result.get("error") or "expiry not confirmed")
                 except Exception as exc:
-                    # The job still expires, but the live link may stay payable:
-                    # say so, so a late payment can be refunded rather than lost.
+                    # Keep the job open for a delayed webhook or the next sweep.
+                    # An error is not proof that the customer did not pay.
                     logger.warning("could not expire Stripe checkout for %s: %s", job_id, exc)
                     emit({"stage": "checkout_expire_failed", "job_id": job_id, "reason": str(exc)})
+                    continue
             # Re-check under the lock: a webhook/worker may have paid between
             # open_checkouts() and here. Never downgrade a paid/terminal job.
             with t.lock():
                 current = t.get_job(job_id) or {}
-                if current.get("status") != "awaiting_payment" or t.job_has_revenue(job_id):
+                stored = t.get_checkout(job_id) or {}
+                if (
+                    current.get("status") != "awaiting_payment"
+                    or t.job_has_revenue(job_id)
+                    or stored.get("status") != "open"
+                ):
                     continue
-                t.upsert_checkout(job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail)
+                t.upsert_checkout(
+                    job_id,
+                    stored.get("session_id", ""),
+                    row["checkout_url"],
+                    EXPIRED_STATUS,
+                    rail=rail,
+                )
                 reason = f"checkout unpaid after {rules.expire_after_hours}h"
                 t.upsert_job(
                     job_id,

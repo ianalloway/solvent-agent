@@ -60,6 +60,30 @@ def job_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_held_before_payment(treasury: Treasury, row: dict[str, Any]) -> bool:
+    """Review only owns intake holds, never jobs already admitted to payment."""
+    job_id = row["id"]
+    return (
+        row.get("status") == "failed"
+        and str(row.get("error_reason") or "").startswith(f"{REASON_PREFIX}:")
+        and not treasury.get_checkout(job_id)
+        and not treasury.job_has_revenue(job_id)
+        and not treasury.pending_refunds(job_id)
+        and not any(
+            treasury.stage_completed(job_id, stage) for stage in ("fulfill", "publish", "deliver")
+        )
+    )
+
+
+def _require_held(treasury: Treasury, job_id: str) -> dict[str, Any]:
+    row = treasury.get_job(job_id)
+    if not row:
+        raise ValueError(f"job {job_id!r} not found")
+    if not _is_held_before_payment(treasury, row):
+        raise ValueError(f"job {job_id!r} is not waiting on review (status {row.get('status')!r})")
+    return row
+
+
 def pending(treasury: Treasury | None = None) -> list[dict[str, Any]]:
     """Jobs waiting on an operator, newest first."""
     t = treasury or Treasury()
@@ -74,8 +98,7 @@ def pending(treasury: Treasury | None = None) -> list[dict[str, Any]]:
             "ts": job.get("updated_at") or job.get("created_at"),
         }
         for job in t.list_jobs()
-        if job.get("status") == "failed"
-        and str(job.get("error_reason") or "").startswith(f"{REASON_PREFIX}:")
+        if _is_held_before_payment(t, job)
     ]
     rows.sort(key=lambda row: row["ts"] or 0, reverse=True)
     return rows
@@ -94,34 +117,33 @@ def approve(
     and nothing else. Without a `runner` the job is left queued for the worker.
     """
     t = treasury or Treasury()
-    row = t.get_job(job_id)
-    if not row:
-        raise ValueError(f"job {job_id!r} not found")
-    previous = row.get("error_reason") or ""
-    if not previous.startswith(f"{REASON_PREFIX}:"):
-        raise ValueError(f"job {job_id!r} is not waiting on review (status {row.get('status')!r})")
-
-    job = job_payload(row)
-    job[APPROVAL_FLAG] = True
-    t.upsert_job(
-        job_id,
-        "pending_quote",
-        job_payload_json=job,
-        error_reason="",
-        current_stage="approved",
-    )
-    t.record_event(
-        job_id,
-        "intake_approved",
-        {
-            "stage": "intake_approved",
-            "job_id": job_id,
-            "operator": operator,
-            "overrode": _rule_of(previous),
-            "reason": previous,
-            "ts": time.time(),
-        },
-    )
+    # Refuse active/paid work immediately, then recheck after serialization:
+    # a queued review decision may be stale by the time it acquires the lock.
+    _require_held(t, job_id)
+    with t.fulfillment_lock(job_id), t.lock():
+        row = _require_held(t, job_id)
+        previous = row.get("error_reason") or ""
+        job = job_payload(row)
+        job[APPROVAL_FLAG] = True
+        t.upsert_job(
+            job_id,
+            "pending_quote",
+            job_payload_json=job,
+            error_reason="",
+            current_stage="approved",
+        )
+        t.record_event(
+            job_id,
+            "intake_approved",
+            {
+                "stage": "intake_approved",
+                "job_id": job_id,
+                "operator": operator,
+                "overrode": _rule_of(previous),
+                "reason": previous,
+                "ts": time.time(),
+            },
+        )
 
     result = runner(job) if runner else None
     return {
@@ -139,29 +161,33 @@ def reject(
     reason: str = "",
     operator: str = "operator",
 ) -> dict[str, Any]:
-    """Decline a job for good, with the operator's reason recorded on it."""
+    """Reject a prepayment intake hold, recording the operator's reason.
+
+    This is not a general cancellation endpoint. Use ``solvent jobs cancel``
+    for an admitted job; review must never interrupt fulfillment or refunds.
+    """
     t = treasury or Treasury()
-    row = t.get_job(job_id)
-    if not row:
-        raise ValueError(f"job {job_id!r} not found")
+    _require_held(t, job_id)
     note = reason.strip() or "no reason given"
-    t.upsert_job(
-        job_id,
-        "cancelled",
-        error_reason=f"rejected by {operator}: {note}",
-        current_stage="rejected",
-    )
-    t.record_event(
-        job_id,
-        "intake_rejected",
-        {
-            "stage": "intake_rejected",
-            "job_id": job_id,
-            "operator": operator,
-            "reason": note,
-            "ts": time.time(),
-        },
-    )
+    with t.fulfillment_lock(job_id), t.lock():
+        _require_held(t, job_id)
+        t.upsert_job(
+            job_id,
+            "cancelled",
+            error_reason=f"rejected by {operator}: {note}",
+            current_stage="rejected",
+        )
+        t.record_event(
+            job_id,
+            "intake_rejected",
+            {
+                "stage": "intake_rejected",
+                "job_id": job_id,
+                "operator": operator,
+                "reason": note,
+                "ts": time.time(),
+            },
+        )
     return {"job_id": job_id, "reason": note}
 
 
