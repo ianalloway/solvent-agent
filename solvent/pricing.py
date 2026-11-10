@@ -248,8 +248,10 @@ def _describe_scope(changes: dict[str, int]) -> str:
 
 
 def calibrated_cost(
-    job: dict[str, Any], policy: PricingPolicy | None = None,
-    *, contract: ResourceContract | None = None,
+    job: dict[str, Any],
+    policy: PricingPolicy | None = None,
+    *,
+    contract: ResourceContract | None = None,
 ) -> tuple[int, dict[str, int]]:
     """Estimated cost with the policy's calibration applied, itemised.
 
@@ -317,6 +319,12 @@ def quote(
             f"projected margin {margin_pct}% below floor {applied_policy.margin_floor_pct}%"
         )
     return Quote(
-        price, est_cost, margin, margin_pct, True, "accepted", breakdown,
+        price,
+        est_cost,
+        margin,
+        margin_pct,
+        True,
+        "accepted",
+        breakdown,
         resource_contract=contract.to_dict(),
     )

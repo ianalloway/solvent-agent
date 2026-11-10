@@ -110,7 +110,9 @@ def _open_checkout(client, job_id: str) -> int:
 
 
 def _post(client, payload: bytes):
-    return client.post("/webhooks/stripe", content=payload, headers={"Stripe-Signature": _sign(payload)})
+    return client.post(
+        "/webhooks/stripe", content=payload, headers={"Stripe-Signature": _sign(payload)}
+    )
 
 
 def _revenue(client, job_id: str) -> list[int]:

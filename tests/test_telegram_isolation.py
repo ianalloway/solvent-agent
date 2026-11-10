@@ -46,14 +46,23 @@ def test_telegram_channel_alone_does_not_authorize_private_memory(isolated_gatew
 @pytest.mark.parametrize("text", ["hello", "/quote chips | 50"])
 @pytest.mark.parametrize(
     "user_id,chat_id,chat_type,allowed",
-    [("100", "100", "private", True), ("200", "200", "private", False),
-     ("100", "-10", "group", False), ("100", "-10", "supergroup", False),
-     ("200", "-10", "group", False), ("100", None, None, False)],
+    [
+        ("100", "100", "private", True),
+        ("200", "200", "private", False),
+        ("100", "-10", "group", False),
+        ("100", "-10", "supergroup", False),
+        ("200", "-10", "group", False),
+        ("100", None, None, False),
+    ],
 )
 def test_prompt_authorization(isolated_gateway, text, user_id, chat_id, chat_type, allowed):
     with patch("solvent.nemotron.complete", return_value=("ok", {})) as model:
         isolated_gateway.handle_inbound(
-            "telegram", user_id, text, chat_id=chat_id, chat_type=chat_type,
+            "telegram",
+            user_id,
+            text,
+            chat_id=chat_id,
+            chat_type=chat_type,
             user_label="100",  # A username is not an operator identity.
         )
     assert_private(model.call_args.args[0], allowed)
@@ -63,13 +72,23 @@ def test_histories_and_pending_commissions_are_isolated(isolated_gateway):
     gw = isolated_gateway
     old = gw.memory.get_or_create("telegram", "200")
     gw.memory.append(old["id"], "assistant", "LEGACY_PRIVATE_CONTEXT")
-    contexts = [("100", "100", "private"), ("200", "200", "private"),
-                ("300", "300", "private"), ("200", "-10", "group"),
-                ("300", "-10", "group"), ("200", "-20", "supergroup")]
+    contexts = [
+        ("100", "100", "private"),
+        ("200", "200", "private"),
+        ("300", "300", "private"),
+        ("200", "-10", "group"),
+        ("300", "-10", "group"),
+        ("200", "-20", "supergroup"),
+    ]
     with patch("solvent.nemotron.complete", return_value=("ok", {})) as model:
         for index, (user, chat, kind) in enumerate(contexts):
-            gw.handle_inbound("telegram", user, f"Commission a brief topic: MARKER_{index}",
-                              chat_id=chat, chat_type=kind)
+            gw.handle_inbound(
+                "telegram",
+                user,
+                f"Commission a brief topic: MARKER_{index}",
+                chat_id=chat,
+                chat_type=kind,
+            )
         for index, (user, chat, kind) in enumerate(contexts):
             gw.handle_inbound("telegram", user, "continue", chat_id=chat, chat_type=kind)
             prompt = model.call_args.args[1]
@@ -78,8 +97,9 @@ def test_histories_and_pending_commissions_are_isolated(isolated_gateway):
             for other in range(len(contexts)):
                 if other != index:
                     assert f"MARKER_{other}" not in prompt
-    sessions = [s for s in gw.agent.t.list_chat_sessions_by_channel("telegram")
-                if s["id"] != old["id"]]
+    sessions = [
+        s for s in gw.agent.t.list_chat_sessions_by_channel("telegram") if s["id"] != old["id"]
+    ]
     assert len(sessions) == len(contexts)
     assert len({s["pending_job_json"] for s in sessions}) == len(contexts)
 
@@ -103,9 +123,10 @@ def test_operator_commands_are_not_exposed_to_groups(isolated_gateway):
 
 def test_pairing_checks_user_not_conversation_key(isolated_gateway, monkeypatch):
     monkeypatch.setenv("SOLVENT_TELEGRAM_DM_POLICY", "pairing")
-    with patch("solvent.pairing.is_allowed", return_value=False) as allowed, patch(
-        "solvent.nemotron.complete"
-    ) as model:
+    with (
+        patch("solvent.pairing.is_allowed", return_value=False) as allowed,
+        patch("solvent.nemotron.complete") as model,
+    ):
         reply = isolated_gateway.handle_inbound(
             "telegram", "200", "hello", chat_id="-10", chat_type="group"
         )
@@ -136,14 +157,20 @@ def test_adapter_passes_authenticated_user_and_chat():
     app = MagicMock()
     application = MagicMock()
     application.builder.return_value.token.return_value.build.return_value = app
+
     def command_handler(command, callback):
         return SimpleNamespace(callback=callback)
+
     gw = MagicMock()
     gw.handle_inbound.return_value = "ok"
-    with patch.object(telegram, "_require_ptb", return_value=(
-        application, command_handler, MagicMock(), MagicMock()
-    )), patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "test-token"}), patch.object(
-        telegram, "register_outbound"
+    with (
+        patch.object(
+            telegram,
+            "_require_ptb",
+            return_value=(application, command_handler, MagicMock(), MagicMock()),
+        ),
+        patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "test-token"}),
+        patch.object(telegram, "register_outbound"),
     ):
         telegram.build_application(gw)
     callback = app.add_handler.call_args_list[0].args[0].callback

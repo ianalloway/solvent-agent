@@ -204,7 +204,6 @@ class LLMBackendTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {"SOLVENT_LLM_TIMEOUT": "abc"}):
             self.assertEqual(llm_backend.timeout(), llm_backend.DEFAULT_TIMEOUT)
 
-
     def test_redirects_are_refused_and_key_never_forwarded(self):
         for code in (301, 302, 303, 307, 308):
             with self.subTest(code=code):

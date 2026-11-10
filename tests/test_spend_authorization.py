@@ -53,12 +53,15 @@ def response(usage=None, text="# Brief"):
     return result
 
 
-@pytest.mark.parametrize("sink", [
-    lambda: nemotron._live_request("system", "user"),
-    lambda: llm_backend.complete("system", "user"),
-    lambda: tools._live_web_search("chips"),
-    lambda: tools._live_market_data("NVDA"),
-])
+@pytest.mark.parametrize(
+    "sink",
+    [
+        lambda: nemotron._live_request("system", "user"),
+        lambda: llm_backend.complete("system", "user"),
+        lambda: tools._live_web_search("chips"),
+        lambda: tools._live_market_data("NVDA"),
+    ],
+)
 def test_denied_reservation_never_reaches_network(treasury, monkeypatch, sink):
     network = Mock(side_effect=AssertionError("network must not run"))
     monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
@@ -87,7 +90,9 @@ def test_denial_prevents_live_fulfillment_and_delivery(treasury, monkeypatch):
     assert treasury.get_stage("publish:job") is None
 
 
-@pytest.mark.parametrize("limit", ["job_budget_cents", "daily_budget_cents", "per_vendor_daily_cents"])
+@pytest.mark.parametrize(
+    "limit", ["job_budget_cents", "daily_budget_cents", "per_vendor_daily_cents"]
+)
 def test_concurrent_workers_cannot_overreserve(treasury, limit):
     barrier = Barrier(8)
 
@@ -140,9 +145,14 @@ def test_timeout_cost_is_retained_and_retry_needs_new_authorization(treasury, mo
     assert not treasury.reserved_spends()
 
 
-@pytest.mark.parametrize("usage", [None, {"total_tokens": -1}, {
-    "prompt_tokens": 1, "completion_tokens": 1201, "total_tokens": 1202
-}])
+@pytest.mark.parametrize(
+    "usage",
+    [
+        None,
+        {"total_tokens": -1},
+        {"prompt_tokens": 1, "completion_tokens": 1201, "total_tokens": 1202},
+    ],
+)
 def test_missing_or_invalid_usage_never_releases_unknown_cost(treasury, monkeypatch, usage):
     monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
     monkeypatch.setattr(nemotron.urllib.request, "urlopen", Mock(return_value=response(usage)))
@@ -172,12 +182,18 @@ def test_validated_usage_releases_only_unused_headroom(treasury, monkeypatch):
 def result_file(tmp_path, resources):
     path = tmp_path / "brief.md"
     path.write_text("# Brief")
-    return {"deliverable_path": str(path), "tokens": 100, "resources_used": resources,
-            "actual_cost_cents": sum(x[1] for x in resources)}
+    return {
+        "deliverable_path": str(path),
+        "tokens": 100,
+        "resources_used": resources,
+        "actual_cost_cents": sum(x[1] for x in resources),
+    }
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_resource_denial_precedes_publication_even_on_resume(treasury, tmp_path, monkeypatch, cached):
+def test_resource_denial_precedes_publication_even_on_resume(
+    treasury, tmp_path, monkeypatch, cached
+):
     r = runner(treasury, max_txn_cents=1)
     args = paid_job(treasury)
     result = result_file(tmp_path, [("pdf-render-saas", 40, "pdf")])
@@ -202,13 +218,20 @@ def test_partial_vendor_booking_does_not_skip_remaining_charge(treasury, tmp_pat
     r = runner(treasury)
     args = paid_job(treasury)
     treasury.spend(10, "live", vendor="nvidia-nemotron", job_id="job")
-    monkeypatch.setattr(service, "fulfill", Mock(return_value=result_file(
-        tmp_path, [("nvidia-nemotron", 30, "inference"), ("nvidia-nemotron", 20, "retry")]
-    )))
+    monkeypatch.setattr(
+        service,
+        "fulfill",
+        Mock(
+            return_value=result_file(
+                tmp_path, [("nvidia-nemotron", 30, "inference"), ("nvidia-nemotron", 20, "retry")]
+            )
+        ),
+    )
 
     def send(*a, **kw):
         assert treasury.expense_cents() == 50
         assert treasury.get_stage("publish:job")
+
     monkeypatch.setattr("solvent.delivery.send_brief_email", send)
     assert r._stage_fulfill_and_book(*args)["status"] == "completed"
     assert treasury.expense_cents() == 50
@@ -217,9 +240,11 @@ def test_partial_vendor_booking_does_not_skip_remaining_charge(treasury, tmp_pat
 def test_delivery_ambiguity_does_not_refund_published_value(treasury, tmp_path, monkeypatch):
     r = runner(treasury)
     args = paid_job(treasury)
-    monkeypatch.setattr(service, "fulfill", Mock(return_value=result_file(
-        tmp_path, [("email-delivery-saas", 5, "email")]
-    )))
+    monkeypatch.setattr(
+        service,
+        "fulfill",
+        Mock(return_value=result_file(tmp_path, [("email-delivery-saas", 5, "email")])),
+    )
     monkeypatch.setattr("solvent.delivery.send_brief_email", Mock(side_effect=OSError("lost ack")))
     assert r._stage_fulfill_and_book(*args)["status"] == "failed"
     assert treasury.get_stage("publish:job")
@@ -255,10 +280,14 @@ def test_nested_summary_and_quality_retry_share_job_budget(treasury, monkeypatch
     monkeypatch.setattr(nemotron, "_force_offline", False)
     usage = {"prompt_tokens": 20, "completion_tokens": 80, "total_tokens": 100}
     summary = '<tool_call>{"name":"summarize","arguments":{"text":"notes"}}</tool_call>'
-    network = Mock(side_effect=[
-        response(usage, summary), response(usage, "Summary"),
-        response(usage, "# Brief\nShort"), response(usage, "# Brief\nRetry"),
-    ])
+    network = Mock(
+        side_effect=[
+            response(usage, summary),
+            response(usage, "Summary"),
+            response(usage, "# Brief\nShort"),
+            response(usage, "# Brief\nRetry"),
+        ]
+    )
     monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
     with spending.scope(Guardrails(treasury), "job", 1000):
         result = service.fulfill({"id": "job", "topic": "AI chips", "est_tokens": 20_000})
@@ -283,8 +312,12 @@ def test_crashed_request_blocks_resume_before_more_provider_calls(treasury, monk
     assert not treasury.get_stage("publish:job")
 
 
-@pytest.mark.parametrize("status, expected", [("completed", 200), ("failed", 404), ("in_progress", 404)])
-def test_legacy_hosted_access_requires_successful_booking(treasury, tmp_path, monkeypatch, status, expected):
+@pytest.mark.parametrize(
+    "status, expected", [("completed", 200), ("failed", 404), ("in_progress", 404)]
+)
+def test_legacy_hosted_access_requires_successful_booking(
+    treasury, tmp_path, monkeypatch, status, expected
+):
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     from solvent.delivery import make_delivery_token
@@ -305,7 +338,12 @@ def test_legacy_hosted_access_requires_successful_booking(treasury, tmp_path, mo
 
 def test_quote_exhaustion_does_not_book_an_unmade_provider_request(treasury, monkeypatch):
     from solvent.pricing import get_resource_costs
-    from solvent.resource_budget import BudgetExceeded, ResourceBudget, ResourceContract, using_budget
+    from solvent.resource_budget import (
+        BudgetExceeded,
+        ResourceBudget,
+        ResourceContract,
+        using_budget,
+    )
 
     budget = ResourceBudget(ResourceContract.for_job({"est_tokens": 4000}, get_resource_costs()))
     budget.reserve(tokens=4000)

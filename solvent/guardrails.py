@@ -138,7 +138,9 @@ def _is_whole_cents(value: object) -> bool:
     ``int()`` truncation would turn ``job_budget_cents: 0.5`` into ``0``, which
     *disables* the per-job envelope.
     """
-    return _is_finite_number(value) and value >= 0 and (isinstance(value, int) or value.is_integer())
+    return (
+        _is_finite_number(value) and value >= 0 and (isinstance(value, int) or value.is_integer())
+    )
 
 
 def load_spend_policy(path: Path | None = None) -> SpendPolicy:

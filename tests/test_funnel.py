@@ -15,8 +15,18 @@ def treasury(tmp_path):
     return Treasury(path=tmp_path / "ledger.db")
 
 
-def _job(treasury, job_id, status, *, budget=4_900, reason="", product=None, paid=False,
-         checkout=False, refund=False):
+def _job(
+    treasury,
+    job_id,
+    status,
+    *,
+    budget=4_900,
+    reason="",
+    product=None,
+    paid=False,
+    checkout=False,
+    refund=False,
+):
     payload = {"id": job_id, "topic": f"topic {job_id}", "budget_cents": budget}
     if product:
         payload["product"] = product
@@ -82,7 +92,10 @@ def test_the_ledger_decides_whether_a_job_was_paid():
     ],
 )
 def test_each_exit_from_the_funnel_is_named(status, reason, expected):
-    assert classify({"status": status, "error_reason": reason}, paid=False, had_checkout=False) == expected
+    assert (
+        classify({"status": status, "error_reason": reason}, paid=False, had_checkout=False)
+        == expected
+    )
 
 
 # --- the funnel -------------------------------------------------------------
@@ -152,7 +165,9 @@ def test_counter_offer_outcomes_are_tracked(treasury):
     _job(treasury, "OFFERED", "completed", paid=True, checkout=True)
     _job(treasury, "IGNORED", "failed", reason="below floor")
     for job_id in ("OFFERED", "IGNORED"):
-        treasury.record_event(job_id, "counter_offer", {"stage": "counter_offer", "price_cents": 1_500})
+        treasury.record_event(
+            job_id, "counter_offer", {"stage": "counter_offer", "price_cents": 1_500}
+        )
 
     offers = analyse(treasury)["counter_offers"]
     assert offers["made"] == 2
@@ -177,7 +192,9 @@ def test_the_window_excludes_older_orders(treasury):
 
     _job(treasury, "OLD", "completed", paid=True, checkout=True)
     with treasury._conn() as conn, conn:
-        conn.execute("UPDATE jobs SET created_at = ? WHERE id = 'OLD'", (time.time() - 30 * 86_400,))
+        conn.execute(
+            "UPDATE jobs SET created_at = ? WHERE id = 'OLD'", (time.time() - 30 * 86_400,)
+        )
     _job(treasury, "NEW", "completed", paid=True, checkout=True)
 
     assert analyse(treasury, since=time.time() - 86_400)["jobs"] == 1

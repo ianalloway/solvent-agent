@@ -142,7 +142,9 @@ def check_stuck_jobs(t: Treasury, *, now: float | None = None) -> Alert:
     stamp = now if now is not None else time.time()
     measured = late_threshold_seconds(t)
     warn_hours = measured / 3_600 if measured else STUCK_JOB_WARN_HOURS
-    critical_hours = max(warn_hours * 6, STUCK_JOB_CRITICAL_HOURS) if measured else STUCK_JOB_CRITICAL_HOURS
+    critical_hours = (
+        max(warn_hours * 6, STUCK_JOB_CRITICAL_HOURS) if measured else STUCK_JOB_CRITICAL_HOURS
+    )
 
     stuck = []
     for job in t.list_jobs_by_status(["paid_pending_fulfill", "in_progress"]):

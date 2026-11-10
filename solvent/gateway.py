@@ -92,25 +92,41 @@ class Gateway:
         session_key = external_id
         if channel == "telegram":
             session_key = telegram_session_key(
-                external_id, str(chat_id) if chat_id is not None else external_id,
-                scope_type, operator=telegram_operator,
+                external_id,
+                str(chat_id) if chat_id is not None else external_id,
+                scope_type,
+                operator=telegram_operator,
             )
         session = self.memory.get_or_create(channel, session_key, user_label)
 
         if is_command:
             return self._handle_command(
-                channel, external_id, text.strip(), session, chat_type=scope_type,
+                channel,
+                external_id,
+                text.strip(),
+                session,
+                chat_type=scope_type,
                 telegram_operator=telegram_operator,
             )
 
         return handle_message(
-            session["id"], text, agent=self.agent, memory=self.memory, channel=channel,
+            session["id"],
+            text,
+            agent=self.agent,
+            memory=self.memory,
+            channel=channel,
             telegram_operator=telegram_operator,
         )
 
     def _handle_command(
-        self, channel: str, external_id: str, text: str, session: dict, *,
-        chat_type: str = "unknown", telegram_operator: bool = False,
+        self,
+        channel: str,
+        external_id: str,
+        text: str,
+        session: dict,
+        *,
+        chat_type: str = "unknown",
+        telegram_operator: bool = False,
     ) -> str:
         parts = text.split(maxsplit=1)
         cmd = parts[0].lower()
@@ -124,13 +140,20 @@ class Gateway:
             ]
             # The business's own numbers are only listed to whoever may read them.
             if ops.is_operator(channel, external_id, chat_type=chat_type):
-                lines += ["", "Operator:", "/status — treasury snapshot",
-                          "/pair qr — generate OpenClaw pairing QR code"] + ops.help_lines()
+                lines += [
+                    "",
+                    "Operator:",
+                    "/status — treasury snapshot",
+                    "/pair qr — generate OpenClaw pairing QR code",
+                ] + ops.help_lines()
             lines += ["", "Or chat naturally to commission a research brief."]
             return "\n".join(lines)
 
         ops_answer = ops.handle(
-            cmd, channel=channel, external_id=external_id, treasury=self.agent.t,
+            cmd,
+            channel=channel,
+            external_id=external_id,
+            treasury=self.agent.t,
             chat_type=chat_type,
         )
         if ops_answer is not None:

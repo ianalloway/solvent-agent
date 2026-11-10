@@ -14,9 +14,7 @@ def _margin_pct(revenue_cents: int, pnl_cents: int) -> float:
     return pnl_cents / revenue_cents * 100
 
 
-def build_receipt(
-    job: dict, pnl_cents: int, balance_cents: int, *, internal: bool = False
-) -> str:
+def build_receipt(job: dict, pnl_cents: int, balance_cents: int, *, internal: bool = False) -> str:
     """Build a plaintext/markdown receipt string for a completed or failed job.
 
     Args:

@@ -196,7 +196,7 @@ def test_the_quote_quotes_the_measured_turnaround(treasury, monkeypatch, capsys)
 # integration coverage above is preserved; this does not copy PR #134's
 # corrupted test file.
 @pytest.mark.parametrize(
-    'values,fraction,expected',
+    "values,fraction,expected",
     [
         ([], 0.5, 0.0),
         ([42.0], 0.0, 42.0),
@@ -217,9 +217,17 @@ def test_percentile_helper(values, fraction, expected):
 
 
 @pytest.mark.parametrize(
-    'seconds,expected',
-    [(None, '\u2014'), (89.9, '89.9s'), (90, '1.5m'), (5399, '90.0m'),
-     (5400, '1.5h'), (7200, '2.0h'), (0, '0.0s'), (60, '60.0s')],
+    "seconds,expected",
+    [
+        (None, "\u2014"),
+        (89.9, "89.9s"),
+        (90, "1.5m"),
+        (5399, "90.0m"),
+        (5400, "1.5h"),
+        (7200, "2.0h"),
+        (0, "0.0s"),
+        (60, "60.0s"),
+    ],
 )
 def test_duration_helper(seconds, expected):
     from solvent.turnaround import _duration

@@ -20,9 +20,7 @@ from .workspace import build_chat_system_prompt, ensure_workspace
 
 # Bounded character classes and limited whitespace avoid polynomial backtracking
 # on long attacker-controlled chat input (CodeQL py/polynomial-redos).
-_EMAIL_RE = re.compile(
-    r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}"
-)
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}")
 _BUDGET_RE = re.compile(
     r"(?:budget|pay|spend)(?:[ \t]{0,8})[:\\$]?(?:[ \t]{0,8})\$?(\d{1,9}(?:\.\d{1,2})?)",
     re.IGNORECASE,
@@ -39,9 +37,7 @@ def _new_chat_job_id(agent: Solvent) -> str:
     return "T" + uuid.uuid4().hex
 
 
-def _make_executor(
-    agent: Solvent, session_id: str, live_search: bool, *, operator: bool = False
-):
+def _make_executor(agent: Solvent, session_id: str, live_search: bool, *, operator: bool = False):
     ctx = tools.ToolContext()
 
     def run(name: str, args: dict) -> str:
@@ -77,7 +73,9 @@ def _make_executor(
                     "customer_email": row.get("customer_email"),
                     "checkout_url": row.get("checkout_url"),
                     "deliverable_url": row.get("deliverable_url"),
-                    "error_reason": "Contact the operator for help with this job." if row.get("error_reason") else None,
+                    "error_reason": "Contact the operator for help with this job."
+                    if row.get("error_reason")
+                    else None,
                     "current_stage": row.get("current_stage"),
                 }
                 return json.dumps({"job": public_job})
@@ -96,7 +94,9 @@ def _make_executor(
             payload = {
                 "accept": q.accept,
                 "price_cents": q.price_cents,
-                "reason": q.reason if operator or q.accept else "This budget does not cover the requested brief.",
+                "reason": q.reason
+                if operator or q.accept
+                else "This budget does not cover the requested brief.",
             }
             if operator:
                 payload["est_cost_cents"] = q.est_cost_cents

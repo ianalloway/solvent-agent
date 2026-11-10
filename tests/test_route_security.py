@@ -33,7 +33,9 @@ PROXY = {"X-Forwarded-For": "203.0.113.50"}
 
 def _req(host: str | None = "127.0.0.1", headers: dict | None = None):
     client = SimpleNamespace(host=host) if host is not None else None
-    return SimpleNamespace(client=client, headers={k.lower(): v for k, v in (headers or {}).items()})
+    return SimpleNamespace(
+        client=client, headers={k.lower(): v for k, v in (headers or {}).items()}
+    )
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1", "127.0.0.2"])
@@ -150,7 +152,10 @@ def test_health_is_minimal_without_auth(make_client):
     client = make_client()
     body = client.get("/health").json()
     assert body == {"status": "ok", "version": __version__}
-    assert "balance_cents" not in client.get("/health", headers={"X-Solvent-Dashboard-Token": "wrong"}).json()
+    assert (
+        "balance_cents"
+        not in client.get("/health", headers={"X-Solvent-Dashboard-Token": "wrong"}).json()
+    )
 
 
 @pytestmark_http
@@ -166,7 +171,9 @@ def test_health_has_balance_with_dashboard_token(make_client):
 def test_non_ascii_token_is_rejected_not_a_500(make_client):
     client = make_client()
     # Raw latin-1 bytes on the wire; compare_digest raises TypeError on such a str.
-    resp = client.get("/api/status", headers={"X-Solvent-Dashboard-Token": ("é" * 32).encode("latin-1")})
+    resp = client.get(
+        "/api/status", headers={"X-Solvent-Dashboard-Token": ("é" * 32).encode("latin-1")}
+    )
     assert resp.status_code == 403
     assert client.get("/api/status", params={"token": "é"}).status_code == 403
 
@@ -178,7 +185,9 @@ def test_non_ascii_token_is_rejected_not_a_500(make_client):
 def test_pair_qr_requires_dashboard_token(make_client):
     client = make_client()
     assert client.get("/api/pair/qr").status_code == 403
-    assert client.get("/api/pair/qr", headers={"X-Solvent-Dashboard-Token": "nope"}).status_code == 403
+    assert (
+        client.get("/api/pair/qr", headers={"X-Solvent-Dashboard-Token": "nope"}).status_code == 403
+    )
     # Not even from loopback / behind a proxy header: the token is what matters.
     assert client.get("/api/pair/qr", headers=PROXY).status_code == 403
 
@@ -319,7 +328,9 @@ def test_public_job_generates_an_id_when_none_given(make_client):
 def test_public_job_cannot_set_internal_fields(make_client):
     client = make_client()
     t = client.app.state.agent.t
-    first = client.post("/jobs", json=_job(id="J-1", intake_approved=True, job_owner_session_id="victim"))
+    first = client.post(
+        "/jobs", json=_job(id="J-1", intake_approved=True, job_owner_session_id="victim")
+    )
     assert first.status_code == 200
     stored = t.get_job("J-1")
     assert "intake_approved" not in (stored.get("job_payload_json") or "")
@@ -340,7 +351,8 @@ def test_public_decline_does_not_leak_internal_reasons(make_client):
 
     # Pricing declines must not reveal the margin policy or treasury numbers.
     lowball = client.post(
-        "/jobs", json=_job(id="J-low", customer_email="other@example.test", budget_cents=1200, topic="x")
+        "/jobs",
+        json=_job(id="J-low", customer_email="other@example.test", budget_cents=1200, topic="x"),
     ).json()
     assert lowball["stage"] == "declined"
     assert "margin" not in lowball["reason"].lower() and "floor" not in lowball["reason"].lower()
@@ -351,7 +363,9 @@ def test_public_decline_does_not_leak_internal_reasons(make_client):
 def test_public_job_cannot_overwrite_an_existing_job_id(make_client):
     client = make_client()
     assert client.post("/jobs", json=_job(id="J-own")).status_code == 200
-    clash = client.post("/jobs", json=_job(id="J-own", customer_email="evil@example.test", topic="other"))
+    clash = client.post(
+        "/jobs", json=_job(id="J-own", customer_email="evil@example.test", topic="other")
+    )
     assert clash.status_code == 409
     row = client.app.state.agent.t.get_job("J-own")
     assert row["customer_email"] == "buyer@example.test"
@@ -372,6 +386,7 @@ def test_public_job_input_limits(make_client):
     assert client.post("/jobs", json=_job(budget_cents="lots")).status_code == 422
     assert client.post("/jobs", json=_job(context="x" * 5000)).status_code == 422
     assert client.post("/jobs", json=_job(topic="x" * 40_000)).status_code == 413
+
     # Oversize with no Content-Length (chunked) is cut off while streaming.
     def chunks():
         for _ in range(100):
@@ -402,7 +417,9 @@ def test_job_status_is_minimal_without_auth(make_client):
     assert "buyer@example.test" not in resp.text and "customer_email" not in resp.text
     assert "metrics" not in resp.json()
     # A wrong token is the same as no token.
-    assert client.get("/jobs/J-view", headers={"X-Solvent-Dashboard-Token": "x"}).json() == resp.json()
+    assert (
+        client.get("/jobs/J-view", headers={"X-Solvent-Dashboard-Token": "x"}).json() == resp.json()
+    )
 
 
 @pytestmark_http
@@ -451,7 +468,9 @@ def test_proxy_headers_close_the_local_only_routes(make_client, brief):
     for headers in (PROXY, {"Forwarded": "for=203.0.113.50"}, {"X-Real-IP": "203.0.113.50"}):
         assert client.get("/api/briefs", headers=headers).status_code == 403
         assert client.get(f"/api/briefs/{brief}", headers=headers).status_code == 403
-        assert client.get("/api/receipt/anything", headers=headers).status_code == 404  # no such job: not a leak
+        assert (
+            client.get("/api/receipt/anything", headers=headers).status_code == 404
+        )  # no such job: not a leak
     # A valid delivery token still works through the proxy.
     token = make_delivery_token(brief)
     assert client.get(f"/api/briefs/{brief}?token={token}", headers=PROXY).status_code == 404
@@ -523,4 +542,3 @@ def test_every_other_route_requires_the_dashboard_token(make_client):
             resp = client.request(method, url, json={"message": "x"} if method == "POST" else None)
             assert resp.status_code in (401, 403), f"{method} {path} is reachable without auth"
     assert set(PUBLIC_ROUTES) <= seen, "PUBLIC_ROUTES lists a route that no longer exists"
-

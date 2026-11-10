@@ -15,7 +15,11 @@ from . import nemotron, pdf, quality, tools
 from .paths import reports_dir
 from .pricing import get_resource_costs
 from .resource_budget import (
-    BudgetExceeded, ResourceBudget, ResourceContract, current_budget, using_budget,
+    BudgetExceeded,
+    ResourceBudget,
+    ResourceContract,
+    current_budget,
+    using_budget,
 )
 from .security import (
     InputValidationError,
@@ -204,5 +208,7 @@ def reconcile_cogs(quote, result: dict) -> dict:
         "cost_warning": warning,
         "cost_drift_direction": direction,
         "fulfillment_seconds": result.get("fulfillment_seconds", 0),
-        "tool_calls": (tc.total_calls if (tc := result.get("tool_ctx")) else result.get("tool_calls", 0)),
+        "tool_calls": (
+            tc.total_calls if (tc := result.get("tool_ctx")) else result.get("tool_calls", 0)
+        ),
     }

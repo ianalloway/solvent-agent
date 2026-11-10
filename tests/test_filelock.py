@@ -69,6 +69,5 @@ class TestFileLock(unittest.TestCase):
             _filelock.release(first)
 
 
-
 if __name__ == "__main__":
     unittest.main()

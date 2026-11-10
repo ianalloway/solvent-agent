@@ -243,7 +243,15 @@ _UNTRUSTED_TEXT_COLUMNS = {
         {"memo", "job_id", "vendor", "stripe_ref", "stripe_session_id", "stripe_link_id"}
     ),
     "jobs": frozenset(
-        {"id", "status", "topic", "customer_email", "current_stage", "error_reason", "deliverable_url"}
+        {
+            "id",
+            "status",
+            "topic",
+            "customer_email",
+            "current_stage",
+            "error_reason",
+            "deliverable_url",
+        }
     ),
     "metrics": frozenset({"job_id", "decline_reason", "block_rule"}),
     "customers": frozenset({"email"}),

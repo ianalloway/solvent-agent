@@ -8,3 +8,5 @@ certifi==2026.10.23
 anyio==4.16.0
 # GHSA-w889-685w-c8fh, GHSA-8g5g-8vmr-9782 (Pillow 13 needs Python >= 3.11)
 pillow==13.0.0; python_version >= "3.11"
+# Formatter: CI runs `ruff format --check`, whose output changes between ruff releases.
+ruff==0.17.4

@@ -220,9 +220,7 @@ def sweep(
                 current = t.get_job(job_id) or {}
                 if current.get("status") != "awaiting_payment" or t.job_has_revenue(job_id):
                     continue
-                t.upsert_checkout(
-                    job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail
-                )
+                t.upsert_checkout(job_id, "", row["checkout_url"], EXPIRED_STATUS, rail=rail)
                 if t.get_nano_invoice(job_id):
                     t.mark_nano_invoice(job_id, status=EXPIRED_STATUS)
                 reason = (
@@ -326,9 +324,7 @@ def main() -> None:
         from .nano_client import NanoClient
         from .stripe_client import StripeClient
 
-        result = sweep(
-            treasury, stripe=StripeClient(), nano=NanoClient(), policy=policy
-        )
+        result = sweep(treasury, stripe=StripeClient(), nano=NanoClient(), policy=policy)
         if args.as_json:
             print(json.dumps(result, indent=2, default=str))
         else:

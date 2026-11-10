@@ -310,10 +310,10 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
   </header>
 
   <div id="refund-warning" class="metric-card red-txt"
-       style="display: {'block' if status_data['pending_refund_cents'] else 'none'}">
-    Unresolved refunds: {fmt(status_data['pending_refund_cents'])}.
+       style="display: {"block" if status_data["pending_refund_cents"] else "none"}">
+    Unresolved refunds: {fmt(status_data["pending_refund_cents"])}.
     Booked revenue/profit are not confirmed retained funds.
-    Available cash: {fmt(status_data['available_balance_cents'])}. Run solvent reconcile.
+    Available cash: {fmt(status_data["available_balance_cents"])}. Run solvent reconcile.
   </div>
 
   <div class="metrics-grid">

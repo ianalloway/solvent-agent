@@ -197,7 +197,9 @@ class TestResourceCostsOverrides(unittest.TestCase):
                     encoding="utf-8",
                 )
                 costs = get_resource_costs()
-                self.assertEqual(costs["market_data_call"], RESOURCE_COSTS_CENTS["market_data_call"])
+                self.assertEqual(
+                    costs["market_data_call"], RESOURCE_COSTS_CENTS["market_data_call"]
+                )
                 self.assertEqual(costs["pdf_render"], 25)
 
     def test_invalid_utf8_falls_back_to_defaults(self) -> None:

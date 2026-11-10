@@ -30,6 +30,8 @@ jobs:
           pip install -e ".[dev,all]" -c constraints.txt
       - name: Lint
         run: ruff check solvent tests run_demo.py
+      - name: Format
+        run: ruff format --check solvent tests run_demo.py
       - name: Run tests with coverage
         run: |
           pip install pytest-cov

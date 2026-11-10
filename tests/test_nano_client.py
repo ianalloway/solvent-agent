@@ -27,9 +27,9 @@ class TestCentsToRaw(unittest.TestCase):
         raw = cents_to_raw(4900, Decimal("0.85"))
         with localcontext() as ctx:
             ctx.prec = 80
-            expected = (
-                Decimal("49") / Decimal("0.85") * (Decimal(10) ** 30)
-            ).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+            expected = (Decimal("49") / Decimal("0.85") * (Decimal(10) ** 30)).quantize(
+                Decimal(1), rounding=ROUND_HALF_UP
+            )
         self.assertEqual(raw, str(int(expected)))
         self.assertTrue(raw.isdigit())
 
@@ -147,9 +147,7 @@ class TestNanoClientSim(unittest.TestCase):
     def test_reject_expired(self):
         client = NanoClient()
         inv = client.create_nano_invoice("JOBE", 1000, ttl_seconds=10, now=1_000.0)
-        payment = client.verify_nano_block(
-            inv, "block_sim_expired", now=1_000.0 + 11
-        )
+        payment = client.verify_nano_block(inv, "block_sim_expired", now=1_000.0 + 11)
         self.assertFalse(payment["paid"])
         self.assertEqual(payment["reason"], "invoice expired")
 

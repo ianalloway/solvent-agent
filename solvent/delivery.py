@@ -54,7 +54,6 @@ def resolve_brief_path(reports_dir: Path, job_id: str, suffix: str) -> Path:
     return candidate
 
 
-
 def _delivery_secret() -> str:
     secret = os.environ.get("SOLVENT_DELIVERY_SECRET", "").strip()
     if len(secret) < 32 or secret in _PLACEHOLDER_DELIVERY_SECRETS:

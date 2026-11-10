@@ -107,7 +107,8 @@ class Treasury:
                 "AND EXISTS (SELECT 1 FROM events e WHERE e.job_id = l.job_id "
                 "AND e.stage = 'refund_failed') "
                 "AND NOT EXISTS (SELECT 1 FROM ledger r WHERE r.job_id = l.job_id "
-                "AND r.kind = 'expense' AND r.vendor = ?)", (REFUND_VENDOR,),
+                "AND r.kind = 'expense' AND r.vendor = ?)",
+                (REFUND_VENDOR,),
             ).fetchall()
             for row in rows:
                 self.begin_refund(row["job_id"], row["stripe_ref"], row["amount_cents"])
@@ -448,9 +449,12 @@ class Treasury:
         automatically would authorize the same money twice.
         """
         with self.lock(), self._conn() as conn:
-            return [LedgerEntry(kind="expense", **dict(row)) for row in conn.execute(
-                "SELECT id, job_id, vendor, amount_cents, memo FROM spend_reservations"
-            )]
+            return [
+                LedgerEntry(kind="expense", **dict(row))
+                for row in conn.execute(
+                    "SELECT id, job_id, vendor, amount_cents, memo FROM spend_reservations"
+                )
+            ]
 
     def reserve_spend(self, amount: int, vendor: str, memo: str, job_id: str | None) -> str:
         """Insert a liability; callers must hold lock() across policy evaluation."""
@@ -476,7 +480,14 @@ class Treasury:
                 conn.execute(
                     "INSERT INTO ledger (id, kind, amount_cents, memo, job_id, vendor, ts) "
                     "VALUES (?, 'expense', ?, ?, ?, ?, ?)",
-                    (reservation_id, actual, row["memo"], row["job_id"], row["vendor"], time.time()),
+                    (
+                        reservation_id,
+                        actual,
+                        row["memo"],
+                        row["job_id"],
+                        row["vendor"],
+                        time.time(),
+                    ),
                 )
             conn.execute("DELETE FROM spend_reservations WHERE id = ?", (reservation_id,))
 
@@ -553,9 +564,8 @@ class Treasury:
             return {
                 "balance_cents": balance,
                 "pending_refunds": self.pending_refunds(),
-                "available_balance_cents": balance - sum(
-                    e.amount_cents for e in self.reserved_spends()
-                ),
+                "available_balance_cents": balance
+                - sum(e.amount_cents for e in self.reserved_spends()),
                 "capital_cents": capital,
                 "revenue_cents": revenue,
                 "expense_cents": expense,
@@ -605,7 +615,14 @@ class Treasury:
                 self._insert_job_row(conn, job_id, status, ts, kwargs, verb="INSERT")
 
     def _insert_job_row(
-        self, conn: sqlite3.Connection, job_id: str, status: str, ts: float, kwargs: dict, *, verb: str
+        self,
+        conn: sqlite3.Connection,
+        job_id: str,
+        status: str,
+        ts: float,
+        kwargs: dict,
+        *,
+        verb: str,
     ) -> int:
         cols = ["id", "status", "created_at", "updated_at"]
         vals = [job_id, status, ts, ts]
@@ -712,8 +729,11 @@ class Treasury:
         if type(amount_cents) is not int or amount_cents <= 0:
             raise ValueError("refund amount must be positive integer cents")
         key = f"refund:{job_id}:{payment_ref}"
-        payload = {"payment_ref": payment_ref, "amount_cents": amount_cents,
-                   "provider_idempotency_key": f"refund-{job_id}"}
+        payload = {
+            "payment_ref": payment_ref,
+            "amount_cents": amount_cents,
+            "provider_idempotency_key": f"refund-{job_id}",
+        }
         with self.lock(), self._conn() as conn, conn:
             if conn.execute(
                 "SELECT 1 FROM job_stages WHERE job_id = ? AND stage = 'refund'", (job_id,)
@@ -739,9 +759,15 @@ class Treasury:
                 "AND (? IS NULL OR job_id = ?) ORDER BY ts, id",
                 (job_id, job_id),
             ).fetchall()
-            return [{**json.loads(row["payload_json"] or "{}"),
-                     "job_id": row["job_id"], "status": row["status"],
-                     "idempotency_key": row["idempotency_key"]} for row in rows]
+            return [
+                {
+                    **json.loads(row["payload_json"] or "{}"),
+                    "job_id": row["job_id"],
+                    "status": row["status"],
+                    "idempotency_key": row["idempotency_key"],
+                }
+                for row in rows
+            ]
 
     def complete_refund(self, job_id: str, payment_ref: str, refund_id: str) -> None:
         """Atomically book a confirmed refund, release its reserve and finish its stage."""
@@ -759,13 +785,22 @@ class Treasury:
                 "INSERT INTO ledger "
                 "(id, kind, amount_cents, memo, job_id, vendor, stripe_ref, payment_ref, ts) "
                 "VALUES (?, 'expense', ?, ?, ?, ?, ?, ?, ?)",
-                (key, payload["amount_cents"], f"Confirmed refund for {job_id}", job_id,
-                 REFUND_VENDOR, refund_id, refund_id, time.time()),
+                (
+                    key,
+                    payload["amount_cents"],
+                    f"Confirmed refund for {job_id}",
+                    job_id,
+                    REFUND_VENDOR,
+                    refund_id,
+                    refund_id,
+                    time.time(),
+                ),
             )
             conn.execute("DELETE FROM spend_reservations WHERE id = ?", (key,))
             conn.execute(
                 "UPDATE job_stages SET status = 'completed', result_json = ? "
-                "WHERE idempotency_key = ?", (json.dumps({"refund_id": refund_id}), key),
+                "WHERE idempotency_key = ?",
+                (json.dumps({"refund_id": refund_id}), key),
             )
             conn.execute(
                 "UPDATE jobs SET status = 'failed', current_stage = 'failed', "
@@ -1016,9 +1051,7 @@ class Treasury:
 
     def get_nano_invoice(self, job_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM nano_invoices WHERE job_id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM nano_invoices WHERE job_id = ?", (job_id,)).fetchone()
             return dict(row) if row else None
 
     def mark_nano_invoice(
@@ -1052,9 +1085,7 @@ class Treasury:
                     (status,),
                 ).fetchall()
             else:
-                rows = conn.execute(
-                    "SELECT * FROM nano_invoices ORDER BY ts ASC"
-                ).fetchall()
+                rows = conn.execute("SELECT * FROM nano_invoices ORDER BY ts ASC").fetchall()
             return [dict(r) for r in rows]
 
     def job_has_revenue(self, job_id: str) -> bool:

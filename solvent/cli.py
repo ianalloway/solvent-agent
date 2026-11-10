@@ -162,7 +162,9 @@ def print_results(snap: dict, simulated: bool = False):
             f"   {C_GREEN}→ The agent grew its own{sim_word} treasury by {fmt(grew)} this session!{C_RESET}"
         )
     elif grew < 0:
-        print(f"   {C_RED}→ The agent ran at a{sim_word} loss of {fmt(abs(grew))} this session.{C_RESET}")
+        print(
+            f"   {C_RED}→ The agent ran at a{sim_word} loss of {fmt(abs(grew))} this session.{C_RESET}"
+        )
     else:
         print(f"   → The agent broke perfectly even{sim}.")
 

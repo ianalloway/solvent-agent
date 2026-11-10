@@ -10,18 +10,22 @@ import pytest
 
 from solvent import pdf
 
-BRIEF = """# Research Brief: AI inference chips, 2026
+BRIEF = (
+    """# Research Brief: AI inference chips, 2026
 
 ## Executive summary
 Demand is up 24% year on year.
 
 ## Key data points
 - Market growing 18-24% YoY.
-- A bullet long enough to need wrapping: """ + "detail " * 40 + """
+- A bullet long enough to need wrapping: """
+    + "detail " * 40
+    + """
 
 ## Recommendation
 Selective exposure.
 """
+)
 
 
 def _xref_offsets(data: bytes) -> list[int]:
@@ -172,7 +176,9 @@ def test_the_brief_email_links_and_attaches_the_pdf(tmp_path, monkeypatch):
     rendered = tmp_path / "J1.pdf"
     rendered.write_bytes(pdf.render(BRIEF))
 
-    result = delivery.send_brief_email("a@x.example", "J1", brief, "https://host/briefs/J1?token=t", rendered)
+    result = delivery.send_brief_email(
+        "a@x.example", "J1", brief, "https://host/briefs/J1?token=t", rendered
+    )
     body = Path(result["path"]).read_text(encoding="utf-8")
 
     assert result["attached"] is True
@@ -264,4 +270,7 @@ def test_the_hosted_route_serves_the_pdf(tmp_path, monkeypatch):
 
     # And the PDF is no less protected than the brief itself.
     assert client.get("/briefs/J1?format=pdf").status_code == 403
-    assert client.get(f"/briefs/MISSING?token={make_delivery_token('MISSING')}&format=pdf").status_code == 404
+    assert (
+        client.get(f"/briefs/MISSING?token={make_delivery_token('MISSING')}&format=pdf").status_code
+        == 404
+    )

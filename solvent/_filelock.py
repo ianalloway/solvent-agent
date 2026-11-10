@@ -54,9 +54,7 @@ def _rewind(handle: FileOrFd, fd: int) -> None:
             pass
 
 
-def acquire(
-    handle: FileOrFd, *, blocking: bool = True, timeout: float | None = None
-) -> None:
+def acquire(handle: FileOrFd, *, blocking: bool = True, timeout: float | None = None) -> None:
     """Take an exclusive advisory lock on ``handle``.
 
     Args:

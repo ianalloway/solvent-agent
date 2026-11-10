@@ -85,8 +85,12 @@ def build_application(gateway: Gateway | None = None) -> object:
         text = update.message.text or ""
         username = user.username
         reply = gw.handle_inbound(
-            "telegram", str(user.id), text, user_label=username,
-            chat_id=str(update.effective_chat.id), chat_type=update.effective_chat.type,
+            "telegram",
+            str(user.id),
+            text,
+            user_label=username,
+            chat_id=str(update.effective_chat.id),
+            chat_type=update.effective_chat.type,
         )
         await _reply(update, reply)
 

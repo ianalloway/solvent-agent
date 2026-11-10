@@ -83,7 +83,9 @@ class TestChatTools(unittest.TestCase):
 
     def test_gateway_jobs_command_is_scoped_to_session(self):
         other = self.memory.get_or_create("telegram", "other-user")["id"]
-        self.t.upsert_job("J-test", "completed", topic="Visible topic", job_owner_session_id=self.session["id"])
+        self.t.upsert_job(
+            "J-test", "completed", topic="Visible topic", job_owner_session_id=self.session["id"]
+        )
         self.t.upsert_job("J-other", "completed", topic="Hidden topic", job_owner_session_id=other)
         gateway = Gateway(agent=self.agent)
 
