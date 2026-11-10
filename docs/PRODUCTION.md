@@ -28,6 +28,46 @@ open "http://127.0.0.1:8787/?token=$SOLVENT_DASHBOARD_TOKEN"
 python3 -m solvent worker
 ```
 
+### Safe restarts and explicit resets
+
+`solvent serve` and `solvent worker` preserve the existing treasury by default.
+Starting either command, including repeated server/worker restarts, does not
+clear jobs, ledger entries, payment history, reservations or chat/pairing records.
+Both processes must use the same `SOLVENT_HOME` to share a queue. Existing service
+commands with `--keep-balance` still work; the flag is now a compatibility no-op.
+No schema or data migration is needed for this startup change.
+
+A new, empty home starts with zero recorded capital. `--seed` only applies with
+`--reset-state`; ordinary startup never books extra capital. Record operating
+capital explicitly through `Treasury.seed(cents)`, once per actual contribution.
+For example, in the same `SOLVENT_HOME`, the following books $200 without clearing
+existing history. This is an accounting entry, not a money transfer; repeating
+it would book another $200.
+
+```bash
+python3 -c 'from solvent.treasury import Treasury; Treasury().seed(20_000)'
+```
+
+**Destructive reset, for disposable test data only:** stop every server and
+worker sharing the home, verify the `SOLVENT_HOME` path, and back up the complete
+home before resetting. The reset clears the treasury ledger, jobs, stages,
+metrics, checkout/invoice history, reservations, events and chat/pairing records,
+then seeds the requested amount (default $100). It does not reverse provider
+payments, refunds or outstanding liabilities, and it does not remove generated
+reports, provider cache files or the separate webhook log. Do not reset an
+installation with unresolved payments or customer obligations.
+
+```bash
+# Deliberately erase this disposable test treasury, seed $200 and exit:
+SOLVENT_HOME=/path/to/disposable-test-home python3 -m solvent worker --once --reset-state --seed 200
+```
+
+The server also accepts `--reset-state`, but it must never be included in a
+service manager's normal restart command. `--reset-state` and `--keep-balance`
+are mutually exclusive. Demo/programmatic reset behavior is unchanged: use a
+separate disposable home for `run_demo.py`, and pass `fresh=False` when constructing
+`Solvent` against an existing treasury.
+
 ### Interactive dashboard + voice
 
 `python3 -m solvent serve` serves a live dashboard at `/` protected by `SOLVENT_DASHBOARD_TOKEN`. Prefer the `X-Solvent-Dashboard-Token` header for API clients; browsers may use `?token=...` (EventSource cannot set custom headers). Responses send `Referrer-Policy: no-referrer` so query tokens are less likely to leak to third parties. The protected dashboard includes:

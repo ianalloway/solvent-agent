@@ -7,7 +7,7 @@ import time
 
 from .agent import Solvent
 from .backlog import prioritise
-from .money import dollars_to_cents
+from .startup import add_treasury_arguments
 from .checkout import sweep as sweep_checkouts
 from .queue import list_claimable, resume_incomplete_jobs
 
@@ -51,17 +51,16 @@ def run_worker(
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="SOLVENT async job worker")
+    parser = argparse.ArgumentParser(description="SOLVENT async job worker", allow_abbrev=False)
     parser.add_argument("--once", action="store_true", help="process one pass then exit")
     parser.add_argument("--poll-interval", type=float, default=2.0)
-    parser.add_argument("--seed", type=float, default=100.0)
-    parser.add_argument("--keep-balance", action="store_true")
+    add_treasury_arguments(parser)
     args = parser.parse_args()
     run_worker(
         once=args.once,
         poll_interval=args.poll_interval,
-        seed_cents=dollars_to_cents(args.seed),
-        fresh=not args.keep_balance,
+        seed_cents=args.seed_cents,
+        fresh=args.reset_state,
     )
 
 

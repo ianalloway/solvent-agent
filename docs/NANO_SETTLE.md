@@ -27,10 +27,11 @@ The demos clear legacy rail settings when using older published package versions
    `nano_payments.json`, `nano_custody_sim.json`, `nano_custody_live.json` and other
    custody records if present.
    Retain original amounts, rates, destinations, timestamps and block references.
-   **Startup warning:** existing `solvent serve` and `solvent worker` CLI defaults
-   reset data. Use `--keep-balance` with either command on an existing installation
-   until safe startup defaults are fixed. Never run a fresh demo or reset against
-   the production data directory.
+   Upgraded `solvent serve` and `solvent worker` commands preserve existing data
+   by default. Older versions require `--keep-balance` with both commands; the
+   flag remains compatible after upgrading. Never use `--reset-state` or run a
+   fresh demo against the production data directory. See the
+   [startup and reset guidance](PRODUCTION.md#safe-restarts-and-explicit-resets).
 3. Reconcile every outstanding old job and payment with the operator's records and,
    where applicable, the public ledger. Simulated proofs are not real payments.
    Resolve delivery, cancellation or refund obligations through a separately
