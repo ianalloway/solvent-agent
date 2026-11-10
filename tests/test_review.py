@@ -182,3 +182,99 @@ def test_intake_approval_overrides_a_blocked_domain(treasury):
     policy = IntakePolicy(blocked_email_domains=("burner.example",))
     job = {**BIG_JOB, "customer_email": "a@burner.example", APPROVAL_FLAG: True}
     assert screen_job(job, treasury, policy).allowed
+
+
+@pytest.mark.parametrize("decision", [approve, reject])
+@pytest.mark.parametrize(
+    "status",
+    [
+        "pending_quote",
+        "awaiting_payment",
+        "in_progress",
+        "paid_pending_fulfill",
+        "completed",
+        "cancelled",
+        "expired",
+        "refund_pending",
+    ],
+)
+def test_review_refuses_nonheld_status_even_with_stale_intake_reason(treasury, decision, status):
+    _held(treasury)
+    treasury.upsert_job("BIG", status)
+    before = treasury.get_job("BIG")
+    with pytest.raises(ValueError, match="not waiting on review"):
+        decision(treasury, "BIG")
+    assert treasury.get_job("BIG") == before
+    assert not treasury.list_events(job_id="BIG")
+    assert pending(treasury) == []
+
+
+@pytest.mark.parametrize("decision", [approve, reject])
+@pytest.mark.parametrize(
+    "history", ["checkout", "revenue", "refund", "fulfill", "publish", "deliver"]
+)
+def test_review_refuses_paid_or_started_jobs_with_stale_intake_hold(treasury, decision, history):
+    _held(treasury)
+    if history == "checkout":
+        treasury.upsert_checkout("BIG", "cs_paid", "https://checkout.example", "open")
+    elif history == "revenue":
+        treasury.earn(500000, "Paid", job_id="BIG", stripe_ref="pi_paid")
+    elif history == "refund":
+        treasury.begin_refund("BIG", "pi_paid", 500000)
+    else:
+        treasury.complete_stage("BIG", history, f"{history}:BIG", {})
+    before = treasury.get_job("BIG")
+    with pytest.raises(ValueError, match="not waiting on review"):
+        decision(treasury, "BIG")
+    assert treasury.get_job("BIG") == before
+    assert not treasury.list_events(job_id="BIG")
+    assert pending(treasury) == []
+
+
+@pytest.mark.parametrize("decision", [approve, reject])
+def test_review_rechecks_hold_after_waiting_for_fulfillment_lock(treasury, monkeypatch, decision):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    _held(treasury)
+    attempting_lock = threading.Event()
+    original_lock = treasury.fulfillment_lock
+
+    def tracked_lock(job_id):
+        attempting_lock.set()
+        return original_lock(job_id)
+
+    monkeypatch.setattr(treasury, "fulfillment_lock", tracked_lock)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with original_lock("BIG"):
+            future = executor.submit(decision, treasury, "BIG")
+            assert attempting_lock.wait(2)
+            assert not future.done()
+            treasury.upsert_job("BIG", "completed")
+        with pytest.raises(ValueError, match="not waiting on review"):
+            future.result(timeout=5)
+    assert treasury.get_job("BIG")["status"] == "completed"
+    assert not treasury.list_events(job_id="BIG")
+
+
+def test_review_rejection_during_fulfillment_is_refused_without_waiting(treasury):
+    _held(treasury)
+    treasury.upsert_job("BIG", "in_progress")
+    treasury.earn(500000, "Paid", job_id="BIG", stripe_ref="pi_paid")
+    # Same-thread provider callback must reject immediately, not recursively
+    # wait for the lock that its caller is already holding.
+    with treasury.fulfillment_lock("BIG"):
+        with pytest.raises(ValueError, match="not waiting on review"):
+            reject(treasury, "BIG", reason="Stop this order")
+    assert treasury.get_job("BIG")["status"] == "in_progress"
+    assert not treasury.list_events(job_id="BIG")
+
+
+def test_approved_runner_executes_after_review_locks_are_released(treasury):
+    _held(treasury)
+
+    def runner(job):
+        with treasury.fulfillment_lock(job["id"]):
+            return "runner acquired lock"
+
+    assert approve(treasury, "BIG", runner=runner)["result"] == "runner acquired lock"

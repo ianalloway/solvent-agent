@@ -21,6 +21,7 @@ import os
 import time
 import uuid
 
+from . import _filelock
 from .money import require_cents
 from .paths import config_path
 from .security import (
@@ -149,54 +150,67 @@ class StripeClient:
 
     # ---- webhook cache ----------------------------------------------
     def _load_webhook_cache(self) -> None:
-        cache_path = config_path("stripe_payments.json")
-        if not cache_path.is_file():
-            return
-        try:
-            data = json.loads(cache_path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                self._webhook_payments = data
-        except (json.JSONDecodeError, OSError):
-            self._webhook_payments = {}
+        self._refresh_webhook_cache()
 
     def _refresh_webhook_cache(self) -> None:
-        """Merge in payments that other clients have persisted since we loaded.
+        """Read the current committed snapshot, including corrections and removals.
 
-        ``serve`` verifies webhooks on its own ``StripeClient`` while the job
-        runner (in the same process, or in ``solvent worker``) holds another,
-        so the file is the only channel between them. An unreadable file keeps
-        what is already in memory: a writer may be mid-replace.
+        The server and worker each hold a client. A cache hit must still refresh:
+        a different client may have corrected that payment since the last read.
+        An unreadable snapshot preserves the last known in-memory payments.
         """
         cache_path = config_path("stripe_payments.json")
         try:
             data = json.loads(cache_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             return
-        if isinstance(data, dict):
-            for key, payment in data.items():
-                self._webhook_payments.setdefault(key, payment)
+        if isinstance(data, dict) and all(isinstance(value, dict) for value in data.values()):
+            self._webhook_payments = data
 
     def _cached_webhook_payment(self, key: str) -> dict | None:
-        if key not in self._webhook_payments:
-            self._refresh_webhook_cache()
+        self._refresh_webhook_cache()
         return self._webhook_payments.get(key)
 
-    def _save_webhook_cache(self) -> None:
+    def _save_webhook_cache(self, updates: dict[str, dict]) -> None:
+        """Serialize the complete read/update/replace transaction across clients.
+
+        Only the supplied keys are written. Merging a client's entire snapshot
+        would resurrect removed entries or overwrite another client's correction.
+        The stable sidecar lock, rather than the replaceable JSON inode, protects
+        writers in both separate processes and separate threads.
+        """
         cache_path = config_path("stripe_payments.json")
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        # Keep entries another client wrote, and replace atomically so a reader
-        # never sees a half-written file.
-        self._refresh_webhook_cache()
-        temp = cache_path.with_name(f"{cache_path.name}.{uuid.uuid4().hex}.tmp")
-        try:
-            temp.write_text(json.dumps(self._webhook_payments, indent=2) + "\n", encoding="utf-8")
-            os.replace(temp, cache_path)
-        finally:
-            temp.unlink(missing_ok=True)
+        lock_path = cache_path.with_name(cache_path.name + ".lock")
+        with lock_path.open("a") as handle:
+            _filelock.acquire(handle, timeout=60.0)
+            try:
+                try:
+                    data = json.loads(cache_path.read_text(encoding="utf-8"))
+                except FileNotFoundError:
+                    data = {}
+                # Fail closed on damaged storage instead of replacing unknown
+                # verified payments with a partial in-memory cache.
+                if not isinstance(data, dict) or not all(
+                    isinstance(value, dict) for value in data.values()
+                ):
+                    raise ValueError("invalid Stripe payment cache")
+                data.update(updates)
+                temp = cache_path.with_name(f"{cache_path.name}.{uuid.uuid4().hex}.tmp")
+                try:
+                    with temp.open("w", encoding="utf-8") as output:
+                        output.write(json.dumps(data, indent=2) + "\n")
+                        output.flush()
+                        os.fsync(output.fileno())
+                    os.replace(temp, cache_path)
+                finally:
+                    temp.unlink(missing_ok=True)
+                self._webhook_payments = data
+            finally:
+                _filelock.release(handle)
 
     def _cache_webhook_payment(self, plink_id: str, payment: dict) -> None:
-        self._webhook_payments[plink_id] = payment
-        self._save_webhook_cache()
+        self._save_webhook_cache({plink_id: dict(payment)})
 
     def verify_webhook(self, payload: bytes, sig_header: str) -> dict:
         """Authenticate a raw webhook request and return the parsed event.
@@ -228,7 +242,7 @@ class StripeClient:
         return event
 
     def process_webhook(self, payload: bytes, sig_header: str, treasury=None) -> dict | None:
-        """Validate checkout.session.completed and cache verified payment.
+        """Validate checkout payment events and cache verified payment.
 
         AUTH: signature is verified with HMAC-SHA256 before any data is read.
         ACCOUNT TAKEOVER: duplicate event IDs are rejected (replay protection).
@@ -247,18 +261,30 @@ class StripeClient:
         given events from :meth:`verify_webhook` or from the webhook log's
         verified rows (operator replay).  Never expose it to request input.
         """
-        if event["type"] != "checkout.session.completed":
+        event_type = event.get("type")
+        if event_type not in (
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+            "checkout.session.async_payment_failed",
+        ):
             return None
         session = event["data"]["object"]
-        if session.get("payment_status") != "paid":
-            return None
-        payment = self._session_to_payment(session)
         job_id = None
         metadata = session.get("metadata") or {}
         if isinstance(metadata, dict):
             job_id = metadata.get("job_id")
         if not job_id:
             job_id = session.get("client_reference_id")
+        if job_id and treasury is not None and treasury.is_legacy_nano_job(job_id):
+            return None
+        if event_type == "checkout.session.async_payment_failed":
+            self._record_unpaid_checkout(session, job_id, treasury, failed=True)
+            return None
+        if session.get("payment_status") != "paid":
+            if event_type == "checkout.session.completed":
+                self._record_unpaid_checkout(session, job_id, treasury, failed=False)
+            return None
+        payment = self._session_to_payment(session)
         payment["job_id"] = job_id
 
         plink_id = session.get("payment_link")
@@ -271,19 +297,46 @@ class StripeClient:
             self._cache_webhook_payment(session_id, payment)
         if job_id:
             self._cache_webhook_payment(f"job:{job_id}", payment)
-            if treasury is not None:
-                try:
-                    treasury.upsert_checkout(
-                        job_id,
-                        payment.get("checkout_session_id", ""),
-                        "",
-                        "paid",
-                    )
-                except Exception:
-                    # The cached payment still books the job; only the
-                    # checkout row's status lags.
-                    logger.warning("could not mark checkout paid for %s", job_id, exc_info=True)
+            # Booking owns checkout state: cached events have not yet passed
+            # the amount/currency/session checks against the accepted quote.
         return payment
+
+    def _record_unpaid_checkout(self, session, job_id, treasury, *, failed: bool) -> None:
+        """Track delayed settlement without downgrading paid or terminal jobs."""
+        if not job_id or treasury is None:
+            return
+        with treasury.lock():
+            if treasury.is_legacy_nano_job(job_id):
+                return
+            row = treasury.get_job(job_id) or {}
+            checkout = treasury.get_checkout(job_id) or {}
+            if (
+                row.get("status") != "awaiting_payment"
+                or treasury.job_has_revenue(job_id)
+                or checkout.get("status") not in ("open", "processing")
+                or checkout.get("session_id") != session.get("id")
+                or row.get("checkout_session_id") != session.get("id")
+            ):
+                return
+            status = "failed" if failed else "processing"
+            treasury.upsert_checkout(
+                job_id, checkout["session_id"], checkout.get("checkout_url", ""), status
+            )
+            if failed:
+                treasury.upsert_job(
+                    job_id,
+                    "failed",
+                    current_stage="payment_failed",
+                    error_reason="Stripe delayed payment failed",
+                )
+            treasury.record_event(
+                job_id,
+                "payment_failed" if failed else "payment_processing",
+                {
+                    "job_id": job_id,
+                    "checkout_session_id": session.get("id"),
+                },
+            )
 
     def get_cached_payment(self, job_id: str) -> dict | None:
         cached = self._cached_webhook_payment(f"job:{job_id}")
@@ -349,14 +402,21 @@ class StripeClient:
     def expire_checkout_session(self, session_id: str) -> dict:
         """Close a checkout session so an abandoned link cannot be paid later.
 
-        A paid or already-expired session cannot be expired again, and that is
-        not an error worth failing a sweep over.
+        Only an explicit expired response confirms closure. A paid session or
+        API failure leaves the local checkout retryable for webhook recovery.
         """
-        if not session_id or not self.live or session_id.startswith("cs_sim_"):
+        if session_id and session_id.startswith("cs_sim_"):
             return {"id": session_id, "status": "expired", "simulated": True}
+        if not session_id or not self.live:
+            return {"id": session_id, "status": "error", "error": "Stripe expiry unavailable"}
         try:
             session = stripe.checkout.Session.expire(session_id)
-            return {"id": session_id, "status": self._session_value(session, "status", "expired")}
+            if (
+                self._session_value(session, "id") != session_id
+                or self._session_value(session, "status") != "expired"
+            ):
+                return {"id": session_id, "status": "error", "error": "Stripe expiry not confirmed"}
+            return {"id": session_id, "status": "expired"}
         except Exception as exc:
             return {"id": session_id, "status": "error", "error": str(exc)}
 

@@ -11,6 +11,7 @@ Storage is a SQLite database so it is thread-safe, concurrent, and survives rest
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -336,6 +337,23 @@ class Treasury:
                     f.close()
                     self._thread_local.lock_file = None
 
+    @contextmanager
+    def fulfillment_lock(self, job_id: str):
+        """Serialize fulfillment and cancellation without blocking other jobs.
+
+        Cancellation waits for an already-running fulfillment attempt to finish,
+        then rechecks its result. Once cancellation commits, no later fulfillment
+        attempt may start. Never acquire this while holding the treasury lock.
+        """
+        digest = hashlib.sha256(job_id.encode()).hexdigest()
+        path = self.path.with_name(self.path.name + "." + digest + ".fulfill.lock")
+        with path.open("a") as handle:
+            _filelock.acquire(handle, timeout=60.0)
+            try:
+                yield
+            finally:
+                _filelock.release(handle)
+
     # ---- persistence (legacy compatibility stubs) --------------------
     def _load(self) -> None:
         pass
@@ -598,9 +616,15 @@ class Treasury:
     def upsert_job(self, job_id: str, status: str, **kwargs) -> None:
         """Upsert a job's status and other fields in the persistent job queue table."""
         with self.lock(), self._conn() as conn, conn:
-            existing = conn.execute("SELECT id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            existing = conn.execute(
+                "SELECT id, status FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
             ts = time.time()
             if existing:
+                # Cancellation is terminal even for a stage that read an older
+                # status before the operator cancelled. Use a new job to restart.
+                if existing["status"] == "cancelled" and status != "cancelled":
+                    return
                 fields = ["status = ?", "updated_at = ?"]
                 params = [status, ts]
                 for col in self._JOB_COLS:
@@ -752,6 +776,98 @@ class Treasury:
             )
         return True
 
+    def hold_late_payment(self, job_id: str, payment: dict) -> None:
+        """Atomically book verified terminal-job revenue and its refund liability.
+
+        No provider request is made. The operator must arrange and reconcile
+        the refund; replay and a crash cannot free this money for spending.
+        Callers validate the payment against the original checkout and quote.
+        """
+        amount = payment["amount_cents"]
+        payment_ref = payment["stripe_ref"]
+        session_id = payment["checkout_session_id"]
+        if type(amount) is not int or amount <= 0:
+            raise ValueError("late payment amount must be positive integer cents")
+        key = f"refund:{job_id}:{payment_ref}"
+        payload = {
+            "payment_ref": payment_ref,
+            "amount_cents": amount,
+            "provider_idempotency_key": f"refund-{job_id}",
+        }
+        with self.lock(), self._conn() as conn, conn:
+            job = conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if not job or job["status"] not in ("expired", "cancelled", "failed"):
+                raise ValueError("late payment requires a terminal job")
+            existing = conn.execute(
+                "SELECT * FROM ledger WHERE kind = 'revenue' "
+                "AND (job_id = ? OR stripe_ref = ? OR stripe_session_id = ?)",
+                (job_id, payment_ref, session_id),
+            ).fetchall()
+            if any(
+                row["job_id"] != job_id
+                or row["stripe_ref"] != payment_ref
+                or row["amount_cents"] != amount
+                or row["stripe_session_id"] not in (None, session_id)
+                for row in existing
+            ):
+                raise ValueError("late payment conflicts with booked revenue")
+            refunds = conn.execute(
+                "SELECT * FROM job_stages WHERE job_id = ? AND stage = 'refund'", (job_id,)
+            ).fetchall()
+            published = conn.execute(
+                "SELECT 1 FROM job_stages WHERE job_id = ? AND stage IN ('publish', 'deliver')",
+                (job_id,),
+            ).fetchone()
+            if existing and (published or (job["status"] == "failed" and not refunds)):
+                # This is a replay of an earlier payment, not newly received
+                # terminal-job money. In particular, a published brief must
+                # remain accessible after a delivery error, without a refund.
+                return
+            if not existing:
+                conn.execute(
+                    "INSERT INTO ledger "
+                    "(id, kind, amount_cents, memo, job_id, stripe_ref, "
+                    "payment_ref, stripe_session_id, stripe_link_id, ts) "
+                    "VALUES (?, 'revenue', ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "le_" + uuid.uuid4().hex[:12],
+                        amount,
+                        f"Late payment for {job_id}",
+                        job_id,
+                        payment_ref,
+                        payment_ref,
+                        session_id,
+                        payment.get("payment_link_id"),
+                        time.time(),
+                    ),
+                )
+            if any(row["idempotency_key"] != key for row in refunds):
+                raise ValueError("late payment conflicts with an existing refund")
+            if not refunds:
+                conn.execute(
+                    "INSERT INTO job_stages "
+                    "(id, job_id, stage, idempotency_key, status, payload_json, result_json, ts) "
+                    "VALUES (?, ?, 'refund', ?, 'pending', ?, '{}', ?)",
+                    (key, job_id, key, json.dumps(payload), time.time()),
+                )
+                conn.execute(
+                    "INSERT INTO spend_reservations VALUES (?, ?, ?, ?, ?)",
+                    (key, job_id, REFUND_VENDOR, amount, f"Late payment refund for {job_id}"),
+                )
+            conn.execute(
+                "UPDATE stripe_checkout SET status = 'paid', ts = ? WHERE job_id = ?",
+                (time.time(), job_id),
+            )
+            if not refunds or refunds[0]["status"] != "completed":
+                conn.execute(
+                    "UPDATE jobs SET error_reason = ?, updated_at = ? WHERE id = ?",
+                    (
+                        f"payment received after {job['status']}; refund requires review",
+                        time.time(),
+                        job_id,
+                    ),
+                )
+
     def pending_refunds(self, job_id: str | None = None) -> list[dict]:
         """Unresolved refund intents, including requests interrupted by a crash."""
         with self.lock(), self._conn() as conn:
@@ -804,7 +920,9 @@ class Treasury:
                 (json.dumps({"refund_id": refund_id}), key),
             )
             conn.execute(
-                "UPDATE jobs SET status = 'failed', current_stage = 'failed', "
+                "UPDATE jobs SET status = CASE WHEN status IN ('cancelled', 'expired') "
+                "THEN status ELSE 'failed' END, current_stage = CASE "
+                "WHEN status IN ('cancelled', 'expired') THEN current_stage ELSE 'failed' END, "
                 "error_reason = 'refund confirmed', updated_at = ? WHERE id = ?",
                 (time.time(), job_id),
             )

@@ -188,18 +188,21 @@ def cmd_events(treasury, job_id: str, *, limit: int = 20, as_json: bool = False)
 
 
 def cmd_cancel(treasury, job_id: str):
-    job = treasury.get_job(job_id)
-    if not job:
-        print(f"Job not found: {job_id}", file=sys.stderr)
-        sys.exit(1)
+    # Do not race an already-running provider/delivery attempt. Recheck after
+    # acquiring the same per-job lock used by fulfillment.
+    with treasury.fulfillment_lock(job_id), treasury.lock():
+        job = treasury.get_job(job_id)
+        if not job:
+            print(f"Job not found: {job_id}", file=sys.stderr)
+            sys.exit(1)
 
-    current = job.get("status", "")
-    if current in ("completed", "cancelled"):
-        print(f"Job {job_id} is already {current} — nothing to do.")
-        return
+        current = job.get("status", "")
+        if current in ("completed", "cancelled"):
+            print(f"Job {job_id} is already {current} — nothing to do.")
+            return
 
-    treasury.upsert_job(job_id, "cancelled")
-    treasury.record_event(job_id, "cancelled", {"reason": "manual-cancel"})
+        treasury.upsert_job(job_id, "cancelled")
+        treasury.record_event(job_id, "cancelled", {"reason": "manual-cancel"})
     print(f"Job {job_id} cancelled (was: {current})")
 
 

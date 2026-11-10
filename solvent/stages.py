@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import json
 import os
@@ -11,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from . import _filelock, delivery, service, spending, tools
+from . import delivery, service, spending, tools
 from .guardrails import GuardrailError, Guardrails
 from .intake import decline_reason, screen_job
 from .products import UnknownProduct, apply_product
@@ -178,6 +177,10 @@ class StageRunner:
     def _emit(self, **event):
         if "ts" not in event:
             event["ts"] = time.time()
+        if event.get("stage") == "booked":
+            # Every early terminal return uses the same dashboard event schema.
+            event.setdefault("job_pnl", self.t.job_pnl_cents(event["job_id"]))
+            event.setdefault("balance", self.t.balance_cents())
         if self.on_event:
             self.on_event(event)
         try:
@@ -232,6 +235,8 @@ class StageRunner:
         if isinstance(job, dict) and isinstance(job.get("id"), str):
             if self.t.is_legacy_nano_job(job["id"]):
                 return self._retired_payment(job["id"])
+            if (self.t.get_job(job["id"]) or {}).get("status") == "cancelled":
+                return self._emit(stage="booked", job_id=job["id"], status="cancelled")
             if (
                 self.t.pending_refunds(job["id"])
                 or (self.t.get_job(job["id"]) or {}).get("status") == "refund_pending"
@@ -250,7 +255,7 @@ class StageRunner:
 
         quote_obj = q.get("_quote") or quote(validated, self.pricing)
         checkout = self._stage_checkout(validated, q)
-        if checkout.get("stage") == "payment_pending":
+        if checkout.get("stage") == "payment_pending" or checkout.get("status") == "cancelled":
             return checkout
 
         paid = self._stage_paid(validated, checkout, quote_obj)
@@ -268,6 +273,19 @@ class StageRunner:
         row = self.t.get_job(job_id)
         if not row:
             return self._emit(stage="declined", job_id=job_id, reason="job not found")
+        status = row.get("status", "")
+        # Closed jobs must never fall through to run_job() and reopen payment.
+        # Cancellation is terminal even when payment or a stale worker arrives.
+        if status == "refund_pending":
+            return self._refund_pending(job_id)
+        if status in ("completed", "failed", "expired", "cancelled"):
+            return self._emit(
+                stage="booked",
+                job_id=job_id,
+                status=status,
+                job_pnl=self.t.job_pnl_cents(job_id),
+                balance=self.t.balance_cents(),
+            )
         payload = row.get("job_payload_json")
         if isinstance(payload, str):
             job = json.loads(payload)
@@ -281,19 +299,6 @@ class StageRunner:
                 "market_data_calls": row.get("market_data_calls"),
                 "web_search_calls": row.get("web_search_calls"),
             }
-        status = row.get("status", "")
-        # `expired` is terminal: the checkout sweep closed the unpaid link.
-        # Falling through to run_job() would resurrect the job as awaiting_payment.
-        if status == "refund_pending":
-            return self._refund_pending(job_id)
-        if status in ("completed", "failed", "expired"):
-            return self._emit(
-                stage="booked",
-                job_id=job_id,
-                status=status,
-                job_pnl=self.t.job_pnl_cents(job_id),
-                balance=self.t.balance_cents(),
-            )
         if status == "pending_quote" or not row.get("quote_json"):
             return self.run_job(job)
         q_data = json.loads(row["quote_json"])
@@ -328,6 +333,8 @@ class StageRunner:
 
     def _stage_quote(self, job: dict) -> dict:
         job_id = job["id"]
+        if (self.t.get_job(job_id) or {}).get("status") == "cancelled":
+            return self._emit(stage="booked", job_id=job_id, status="cancelled")
         key = f"quote:{job_id}"
         cached = self.t.get_stage(key)
         if cached and cached["status"] == "completed":
@@ -386,6 +393,8 @@ class StageRunner:
         job_id = job["id"]
         if self.t.is_legacy_nano_job(job_id):
             return self._retired_payment(job_id)
+        if (self.t.get_job(job_id) or {}).get("status") == "cancelled":
+            return self._emit(stage="booked", job_id=job_id, status="cancelled")
         q = q_result.get("_quote") or quote(job, self.pricing)
         key = f"checkout:{job_id}"
         cached = self.t.get_stage(key)
@@ -445,7 +454,14 @@ class StageRunner:
         # Publish the new job state last. An interruption before this point can
         # be repaired by the revenue fast path without charging again.
         current = self.t.get_job(job_id) or {}
-        if current.get("status") not in ("expired", "failed", "completed", "in_progress"):
+        if current.get("status") not in (
+            "expired",
+            "failed",
+            "completed",
+            "in_progress",
+            "cancelled",
+            "refund_pending",
+        ):
             self.t.upsert_job(job_id, "paid_pending_fulfill", current_stage="paid")
 
     def _stage_paid(self, job: dict, checkout: dict, q) -> dict:
@@ -509,13 +525,16 @@ class StageRunner:
 
         payment_ref = payment.get("payment_ref") or payment.get("stripe_ref")
         with self.t.lock():
-            # Refuse earn on terminal jobs (expire race / late webhook).
+            # Terminal jobs never fulfill. Quarantine a verified late Stripe
+            # payment instead of silently discarding the customer's money.
             job_row = self.t.get_job(job_id) or {}
-            if job_row.get("status") in ("expired", "failed", "completed"):
+            if job_row.get("status") in ("expired", "cancelled", "failed", "completed"):
+                if rail == "stripe" and job_row.get("status") != "completed":
+                    self._hold_terminal_payment(job_id, payment)
                 return self._emit(
                     stage="payment_pending",
                     job_id=job_id,
-                    reason=f"job is {job_row.get('status')}; payment not booked",
+                    reason=f"job is {job_row.get('status')}; fulfillment prohibited",
                     url=checkout.get("url"),
                     rail=rail,
                     status=job_row.get("status"),
@@ -567,34 +586,36 @@ class StageRunner:
     def _stage_fulfill_and_book(self, job: dict, q, paid: dict) -> dict:
         if self.t.is_legacy_nano_job(job["id"]) or paid.get("rail") == "nano":
             return self._retired_payment(job["id"])
-        # Serialize duplicate advancers without holding the treasury lock over
-        # provider I/O. Different jobs still reserve shared budgets atomically.
-        digest = hashlib.sha256(job["id"].encode()).hexdigest()
-        lock_path = self.t.path.with_name(self.t.path.name + "." + digest + ".fulfill.lock")
-        with lock_path.open("a") as handle:
-            _filelock.acquire(handle, timeout=60.0)
-            try:
-                if self.t.pending_refunds(job["id"]):
-                    return self._refund_pending(job["id"])
-                row = self.t.get_job(job["id"]) or {}
-                if row.get("status") == "refund_pending":
-                    return self._refund_pending(job["id"])
-                if row.get("status") == "completed" or self.t.job_refund_cents(job["id"]):
-                    return self._emit(stage="booked", job_id=job["id"], status=row.get("status"))
-                return self._fulfill_and_book_locked(job, q, paid)
-            finally:
-                _filelock.release(handle)
+        # Cancellation shares this lock, so a cancelled job cannot start a
+        # provider request after a stale worker has already selected it.
+        with self.t.fulfillment_lock(job["id"]):
+            row = self.t.get_job(job["id"]) or {}
+            if row.get("status") in ("cancelled", "expired"):
+                return self._emit(stage="booked", job_id=job["id"], status=row["status"])
+            if self.t.pending_refunds(job["id"]):
+                return self._refund_pending(job["id"])
+            if row.get("status") == "refund_pending":
+                return self._refund_pending(job["id"])
+            if row.get("status") == "completed" or self.t.job_refund_cents(job["id"]):
+                return self._emit(stage="booked", job_id=job["id"], status=row.get("status"))
+            return self._fulfill_and_book_locked(job, q, paid)
 
     def _refund_pending(self, job_id: str, reason: str = "refund outcome requires review") -> dict:
         with self.t.lock():
+            row = self.t.get_job(job_id) or {}
+            status = row.get("status")
             # A resolver may have committed after the caller observed pending.
             # Never overwrite that terminal state with a stale hold.
             if not self.t.pending_refunds(job_id) and self.t.job_refund_cents(job_id):
-                return self._emit(stage="booked", job_id=job_id, status="failed")
-            self.t.upsert_job(job_id, "refund_pending", current_stage="refund", error_reason=reason)
-        return self._emit(
-            stage="refund_pending", job_id=job_id, status="refund_pending", reason=reason
-        )
+                return self._emit(
+                    stage="booked",
+                    job_id=job_id,
+                    status=status if status in ("cancelled", "expired") else "failed",
+                )
+            if status not in ("cancelled", "expired"):
+                status = "refund_pending"
+                self.t.upsert_job(job_id, status, current_stage="refund", error_reason=reason)
+        return self._emit(stage="refund_pending", job_id=job_id, status=status, reason=reason)
 
     def _fulfill_and_book_locked(self, job: dict, q, paid: dict) -> dict:
         job_id = job["id"]
@@ -897,19 +918,61 @@ class StageRunner:
                     )
             return booked_event
 
+    def _hold_terminal_payment(self, job_id: str, payment: dict) -> dict:
+        self.t.hold_late_payment(job_id, payment)
+        status = (self.t.get_job(job_id) or {}).get("status")
+        pending = bool(self.t.pending_refunds(job_id))
+        return self._emit(
+            stage="refund_pending" if pending else "booked",
+            job_id=job_id,
+            status=status,
+            reason=(
+                f"payment received after {status}; refund requires review"
+                if pending
+                else "refund already confirmed"
+                if self.t.job_refund_cents(job_id)
+                else "payment already booked; retain the existing recovery path"
+            ),
+            job_pnl=self.t.job_pnl_cents(job_id),
+            balance=self.t.balance_cents(),
+        )
+
     def handle_webhook_payment(self, payment: dict) -> dict | None:
-        """Apply a verified webhook payment and advance the job."""
+        """Apply a verified payment, or quarantine a late terminal-job payment."""
         job_id = payment.get("job_id")
         if not job_id:
             return None
-        session_id = payment.get("checkout_session_id", "")
-        key = f"paid:{job_id}:{session_id}"
-        paid_stage = self.t.get_stage(key)
-        if paid_stage and paid_stage["status"] == "completed":
-            return self.advance_job(job_id)
-        row = self.t.get_job(job_id)
-        if not row:
-            return None
+        if self.t.is_legacy_nano_job(job_id):
+            return self._retired_payment(job_id)
+        with self.t.lock():
+            row = self.t.get_job(job_id)
+            if not row:
+                return None
+            if row.get("status") in ("expired", "cancelled", "failed"):
+                # Validate before booking even when fulfillment is prohibited.
+                # Preserve the original session on expiry for this comparison.
+                checkout = self.t.get_checkout(job_id) or {}
+                q_data = json.loads(row.get("quote_json") or "{}")
+                session_id = row.get("checkout_session_id") or checkout.get("session_id")
+                amount = q_data.get("price_cents")
+                if not session_id or type(amount) is not int or amount <= 0:
+                    return None
+                verified = self.stripe.accept_cached_payment(
+                    payment,
+                    {
+                        "id": session_id,
+                        "amount_cents": amount,
+                        "job_id": job_id,
+                    },
+                )
+                if not verified.get("paid"):
+                    return self._emit(
+                        stage="payment_pending",
+                        job_id=job_id,
+                        reason=verified.get("reason"),
+                        status=row["status"],
+                    )
+                return self._hold_terminal_payment(job_id, verified)
         return self.advance_job(job_id)
 
     def retry_job(self, job_id: str) -> dict:

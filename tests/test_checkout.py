@@ -41,7 +41,7 @@ def _awaiting(treasury, job_id="J1", *, email="buyer@x.example", budget=4_900, t
         budget_cents=budget,
         customer_email=email,
     )
-    treasury.upsert_checkout(job_id, f"cs_{job_id}", f"https://pay.example/{job_id}", "open")
+    treasury.upsert_checkout(job_id, f"cs_sim_{job_id}", f"https://pay.example/{job_id}", "open")
 
 
 @pytest.fixture(autouse=True)
@@ -103,17 +103,26 @@ def test_expiry_is_idempotent(treasury, policy):
 def test_expiry_asks_stripe_to_close_the_session(treasury, policy):
     _awaiting(treasury)
     stripe = mock.MagicMock()
-    sweep(treasury, stripe=stripe, policy=policy, now=time.time() + 49 * HOUR)
-    stripe.expire_checkout_session.assert_called_once_with("cs_J1")
+    stripe.expire_checkout_session.return_value = {"id": "cs_sim_J1", "status": "expired"}
+    result = sweep(treasury, stripe=stripe, policy=policy, now=time.time() + 49 * HOUR)
+    stripe.expire_checkout_session.assert_called_once_with("cs_sim_J1")
+    assert result["expired"] == ["J1"]
+    assert treasury.get_checkout("J1")["session_id"] == "cs_sim_J1"
 
 
 def test_a_failing_stripe_expiry_does_not_stop_the_sweep(treasury, policy):
     _awaiting(treasury)
     stripe = mock.MagicMock()
-    stripe.expire_checkout_session.side_effect = RuntimeError("stripe down")
+    _awaiting(treasury, "J2")
+    stripe.expire_checkout_session.side_effect = [
+        RuntimeError("stripe down"),
+        {"id": "cs_sim_J2", "status": "expired"},
+    ]
     assert sweep(treasury, stripe=stripe, policy=policy, now=time.time() + 49 * HOUR)[
         "expired"
-    ] == ["J1"]
+    ] == ["J2"]
+    assert treasury.get_job("J1")["status"] == "awaiting_payment"
+    assert treasury.get_checkout("J1")["status"] == "open"
 
 
 @pytest.mark.parametrize(
@@ -121,7 +130,7 @@ def test_a_failing_stripe_expiry_does_not_stop_the_sweep(treasury, policy):
     [
         {"side_effect": RuntimeError("stripe down")},
         # StripeClient reports API errors in its return value, not by raising.
-        {"return_value": {"id": "cs_J1", "status": "error", "error": "stripe down"}},
+        {"return_value": {"id": "cs_sim_J1", "status": "error", "error": "stripe down"}},
     ],
 )
 def test_a_failed_stripe_expiry_is_recorded(treasury, policy, outcome):
@@ -166,14 +175,14 @@ def test_expiry_never_moves_money(treasury, policy):
 def test_checkout_age_survives_a_status_update(treasury):
     _awaiting(treasury)
     created = treasury.get_checkout("J1")["created_at"]
-    treasury.upsert_checkout("J1", "cs_J1", "https://pay.example/J1", "open")
+    treasury.upsert_checkout("J1", "cs_sim_J1", "https://pay.example/J1", "open")
     assert treasury.get_checkout("J1")["created_at"] == created
 
 
 def test_reminder_count_survives_a_status_update(treasury):
     _awaiting(treasury)
     treasury.record_checkout_reminder("J1")
-    treasury.upsert_checkout("J1", "cs_J1", "https://pay.example/J1", "open")
+    treasury.upsert_checkout("J1", "cs_sim_J1", "https://pay.example/J1", "open")
     assert treasury.get_checkout("J1")["reminders_sent"] == 1
 
 

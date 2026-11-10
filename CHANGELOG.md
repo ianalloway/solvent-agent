@@ -7,6 +7,9 @@ All notable changes to SOLVENT are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Checkout expiry requires confirmed Stripe closure and retains the original session; API errors and missing credentials no longer abandon payable jobs. Delayed payment success/failure events are handled, and valid terminal-job payments are atomically booked with a full refund hold without restarting fulfillment.
+- Cancelled jobs stay terminal across recovery, stale workers, payment-state repair and refund holds. Operator cancellation serializes with an active fulfillment attempt and rechecks its outcome before cancelling.
+- Verified Stripe payment-cache writes serialize the complete read/update/replace transaction across threads and processes; readers refresh corrected and removed entries. Corrupt cache storage fails closed instead of silently discarding verified payments.
 - Policy simulation draws a latent cost for every offered job, including declines, so same-seed optimizer cells see the same demand and cost draws. Previously admission decisions changed the random stream. Existing seeded simulation/optimization results with declined jobs should be regenerated.
 - CodeQL hardening: brief routes resolve paths with `resolve_brief_path` (reject escapes), chat/job APIs no longer echo exception text to clients, budget/email slot regexes are ReDoS-safe, and webhook replay returns a generic 500.
 - Spends fail closed: a missing/unreadable treasury state or spend-counter store denies with `state_unavailable`, and a present-but-unreadable or invalid `spend_policy.json` denies every spend with `policy_unavailable` instead of falling back to defaults. Fractional cents values (e.g. `job_budget_cents: 0.5`, which used to truncate to 0 and disable the envelope) are now invalid.
