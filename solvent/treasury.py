@@ -238,6 +238,7 @@ class Treasury:
                 ("rail", "TEXT"),
             ):
                 self._ensure_column(conn, "stripe_checkout", col, ctype)
+            # Retain the legacy schema and rows for audit/reconciliation. No active writer.
             conn.execute("""
                     CREATE TABLE IF NOT EXISTS nano_invoices (
                         job_id TEXT PRIMARY KEY,
@@ -1010,74 +1011,14 @@ class Treasury:
             ).fetchone()
             return dict(row) if row else None
 
-    def upsert_nano_invoice(self, job_id: str, invoice: dict) -> None:
-        """Persist a Nano invoice row (simulate or later live)."""
-        now = time.time()
-        with self.lock(), self._conn() as conn, conn:
-            conn.execute(
-                """
-                    INSERT INTO nano_invoices (
-                        job_id, invoice_id, destination, amount_cents, amount_raw,
-                        xno_rate_usd, rate_ts, block_hash, status, expires_at, pay_uri, ts
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(job_id) DO UPDATE SET
-                        invoice_id = excluded.invoice_id,
-                        destination = excluded.destination,
-                        amount_cents = excluded.amount_cents,
-                        amount_raw = excluded.amount_raw,
-                        xno_rate_usd = excluded.xno_rate_usd,
-                        rate_ts = excluded.rate_ts,
-                        block_hash = COALESCE(excluded.block_hash, nano_invoices.block_hash),
-                        status = excluded.status,
-                        expires_at = excluded.expires_at,
-                        pay_uri = excluded.pay_uri,
-                        ts = excluded.ts
-                """,
-                (
-                    job_id,
-                    invoice.get("id") or invoice.get("invoice_id") or "",
-                    invoice.get("destination") or "",
-                    invoice.get("amount_cents"),
-                    str(invoice.get("amount_raw") or ""),
-                    str(invoice.get("xno_rate_usd") or ""),
-                    invoice.get("rate_ts"),
-                    invoice.get("block_hash"),
-                    invoice.get("status") or "open",
-                    invoice.get("expires_at"),
-                    invoice.get("url") or invoice.get("pay_uri") or "",
-                    invoice.get("ts") or now,
-                ),
-            )
-
     def get_nano_invoice(self, job_id: str) -> dict | None:
+        """Read a retired invoice for manual reconciliation; never update it."""
         with self.lock(), self._conn() as conn:
             row = conn.execute("SELECT * FROM nano_invoices WHERE job_id = ?", (job_id,)).fetchone()
             return dict(row) if row else None
 
-    def mark_nano_invoice(
-        self,
-        job_id: str,
-        *,
-        status: str | None = None,
-        block_hash: str | None = None,
-    ) -> None:
-        """Update nano invoice status / verified block hash."""
-        with self.lock(), self._conn() as conn, conn:
-            fields = ["ts = ?"]
-            params: list = [time.time()]
-            if status is not None:
-                fields.append("status = ?")
-                params.append(status)
-            if block_hash is not None:
-                fields.append("block_hash = ?")
-                params.append(block_hash)
-            params.append(job_id)
-            conn.execute(
-                f"UPDATE nano_invoices SET {', '.join(fields)} WHERE job_id = ?",
-                params,
-            )
-
     def list_nano_invoices(self, status: str | None = None) -> list[dict]:
+        """Historical invoices only; the Nano payment rail has been removed."""
         with self.lock(), self._conn() as conn:
             if status:
                 rows = conn.execute(
@@ -1087,6 +1028,62 @@ class Treasury:
             else:
                 rows = conn.execute("SELECT * FROM nano_invoices ORDER BY ts ASC").fetchall()
             return [dict(r) for r in rows]
+
+    def is_legacy_nano_job(self, job_id: str) -> bool:
+        """Recognize retired payments, including interrupted pre-invoice writes.
+
+        Read all durable projections rather than trusting only the invoice row:
+        old versions wrote the checkout stage before the invoice, and may have
+        crashed between them. Never convert those jobs into Stripe payments.
+        """
+
+        def nano_reference(value: object) -> bool:
+            if not isinstance(value, str):
+                return False
+            value = value.lower()
+            return value.startswith(("nano:", "nano_", "inv_sim_", "inv_live_", "block_sim_")) or (
+                len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+            )
+
+        def nano_record(record: dict) -> bool:
+            return record.get("rail") == "nano" or any(
+                nano_reference(record.get(key))
+                for key in (
+                    "session_id",
+                    "checkout_session_id",
+                    "stripe_session_id",
+                    "invoice_id",
+                    "checkout_url",
+                    "url",
+                    "pay_uri",
+                    "payment_ref",
+                    "stripe_ref",
+                    "block_hash",
+                )
+            )
+
+        with self.lock(), self._conn() as conn:
+            if conn.execute("SELECT 1 FROM nano_invoices WHERE job_id = ?", (job_id,)).fetchone():
+                return True
+            for table, column in (
+                ("jobs", "id"),
+                ("stripe_checkout", "job_id"),
+                ("ledger", "job_id"),
+            ):
+                for row in conn.execute(f"SELECT * FROM {table} WHERE {column} = ?", (job_id,)):
+                    if nano_record(dict(row)):
+                        return True
+            for row in conn.execute(
+                "SELECT result_json FROM job_stages WHERE job_id = ? AND stage IN ('checkout', 'paid')",
+                (job_id,),
+            ):
+                try:
+                    record = json.loads(row["result_json"] or "{}")
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(record, dict) and nano_record(record):
+                    return True
+        return False
 
     def job_has_revenue(self, job_id: str) -> bool:
         with self.lock():

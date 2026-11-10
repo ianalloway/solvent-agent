@@ -23,7 +23,6 @@ from .calibration import calibration_factor
 from .guardrails import Guardrails
 from .pricing import PricingPolicy
 from .stages import StageRunner, _job_id_of, coerce_job, screen_and_record
-from .nano_client import NanoClient
 from .stripe_client import StripeClient
 from .treasury import Treasury
 
@@ -43,7 +42,6 @@ class Solvent:
             self.t.seed(seed_cents)
         self.guard = Guardrails(self.t)
         self.stripe = StripeClient()
-        self.nano = NanoClient()
         # Quotes are marked up when realized COGS have been running above the
         # static cost model; a fresh treasury has no history, so this is 1.0.
         self.pricing = PricingPolicy(cost_calibration=calibration_factor(self.t))
@@ -59,7 +57,6 @@ class Solvent:
             self.pricing,
             on_event=self._capture_event,
             sync_payment=sync_payment,
-            nano=self.nano,
         )
 
     def _capture_event(self, event: dict):
@@ -78,8 +75,8 @@ class Solvent:
     def handle_job(self, job: dict) -> dict:
         return self._runner.run_job(job)
 
-    def advance_job(self, job_id: str, *, verified_nano_payment: dict | None = None) -> dict:
-        return self._runner.advance_job(job_id, verified_nano_payment=verified_nano_payment)
+    def advance_job(self, job_id: str) -> dict:
+        return self._runner.advance_job(job_id)
 
     def enqueue_job(self, job: dict) -> dict:
         """Validate and persist a new job for async worker processing.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import tempfile
-import threading
 import time
 import unittest
 from dataclasses import asdict
@@ -13,7 +12,6 @@ from unittest import mock
 
 from solvent.checkout import CheckoutPolicy, sweep
 from solvent.guardrails import Guardrails
-from solvent.nano_client import NanoClient
 from solvent.pricing import PricingPolicy, quote as _quote
 from solvent.receipt import build_receipt
 from solvent.stages import StageRunner
@@ -107,47 +105,6 @@ class TestAsyncWebhookAmountValidation(unittest.TestCase):
             self.assertNotEqual(paid.get("stage"), "paid")
             self.assertFalse(t.job_has_revenue("J-under"))
             self.assertIn("below expected", paid.get("reason", "").lower())
-
-
-class TestNanoBlockAtomicBook(unittest.TestCase):
-    def test_concurrent_book_accepts_once(self):
-        import os
-
-        with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.dict(
-                os.environ,
-                {"SOLVENT_HOME": tmp, "SOLVENT_NANO": "sim"},
-                clear=False,
-            ):
-                nano = NanoClient()
-                nano.simulate = True
-                nano.mode = "sim"
-                nano.enabled = True
-                nano._booked_blocks = {}
-                block_hash = "block_sim_shared_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                outcomes = [None, None]
-                barrier = threading.Barrier(2)
-
-                def worker(i):
-                    barrier.wait()
-                    payment = {
-                        "paid": True,
-                        "job_id": f"J{i}",
-                        "invoice_id": f"inv{i}",
-                        "amount_raw": "1",
-                        "ts": time.time(),
-                    }
-                    outcomes[i] = nano._try_book_block(block_hash, payment)
-
-                threads = [
-                    threading.Thread(target=worker, args=(0,)),
-                    threading.Thread(target=worker, args=(1,)),
-                ]
-                for th in threads:
-                    th.start()
-                for th in threads:
-                    th.join()
-                self.assertEqual(sum(1 for o in outcomes if o), 1)
 
 
 class TestCustomerReceiptRedaction(unittest.TestCase):

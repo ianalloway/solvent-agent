@@ -47,8 +47,6 @@ solvent/
   stripe_client.py    two-sided Stripe layer (earn + spend)
   webhook_log.py      durable log of received Stripe webhook events
   reconcile.py        reconcile Stripe payments against the ledger (`solvent reconcile`)
-  nano_client.py      Nano (XNO) earn-side settle rail, verify-only custody
-  nano_custody.py     optional Nano custody (off unless `SOLVENT_NANO_CUSTODY`)
   checkout.py         payment reminders and link expiry (`solvent checkouts`)
   receipt.py          formatted job receipts (Telegram / email / HTTP)
   finance.py          income statement · unit economics · runway · forecast

@@ -13,7 +13,11 @@ WORKER_STATUSES = (
 
 
 def list_claimable(treasury: Treasury) -> list[dict]:
-    return treasury.list_jobs_by_status(list(WORKER_STATUSES))
+    return [
+        job
+        for job in treasury.list_jobs_by_status(list(WORKER_STATUSES))
+        if not treasury.is_legacy_nano_job(job["id"])
+    ]
 
 
 def resume_incomplete_jobs(treasury: Treasury) -> list[str]:
@@ -21,6 +25,8 @@ def resume_incomplete_jobs(treasury: Treasury) -> list[str]:
     resumed: list[str] = []
     for job in treasury.list_jobs():
         jid = job["id"]
+        if treasury.is_legacy_nano_job(jid):
+            continue
         status = job.get("status", "")
         if status in ("completed", "failed", "refund_pending") or treasury.pending_refunds(jid):
             continue

@@ -33,32 +33,12 @@ export SOLVENT_LOCAL_ACCESS=never
 
 That way the delivery or dashboard token is always required. See [docs/PRODUCTION.md](docs/PRODUCTION.md) for the rest of the deployment checklist.
 
-## Nano settle rail
+## Retired Nano rail
 
-The optional Nano (XNO) earn rail is **verify-only** (Option A custody):
+Nano payment verification and custody are no longer supported. No automated Nano
+payouts or refunds are performed. Existing records are retained for audit and
+operator reconciliation; see [the migration guide](docs/NANO_SETTLE.md) before
+upgrading an installation with outstanding Nano jobs or removing old data.
 
-- No hot wallet / seed is loaded or generated in-process.
-- **Simulate** (`SOLVENT_NANO=sim`) accepts `block_sim_…` proofs with no RPC and no network.
-- **Live** (`SOLVENT_NANO=live`) requires `SOLVENT_NANO_RPC`, `SOLVENT_NANO_ADDRESS`, and
-  `SOLVENT_NANO_RATE_USD`. Partial config fails closed (`misconfigured`); doctor refuses
-  to report OK. Live never accepts `block_sim_…` proofs; sim never calls RPC.
-- Mixing sim and live env vars is rejected.
-- A public block hash is a payment receipt, **not** privacy: amounts and
-  addresses are visible on the ledger. Do not treat Nano settlement as
-  confidential customer data handling.
-
-### Nano custody (M3, off by default)
-
-`SOLVENT_NANO_CUSTODY` is **off** unless set. When enabled:
-
-- **sim** never reads a key, never touches the network, and only sweeps to
-  `nano_sim_cold_…` addresses. Real addresses are refused.
-- **live** names its key by **reference only** (`env:VAR` or
-  `keyring:service/user`); anything that looks like an inline seed or a file
-  path is refused. Resolved secrets are wrapped in a redacting handle and are
-  never logged, persisted, or returned by `status` / `doctor`.
-- Sweeps go **only** to the configured cold address, under a min amount, a
-  rolling-24h cap, and an explicit approval (`solvent custody sweep --yes`).
-- SOLVENT ships **no live signer**. Live sweeps refuse unless an external
-  signer is injected in code. Live custody has **not** been validated with real
-  funds; treat it as experimental.
+Historical public block hashes, amounts and addresses remain public on the Nano
+ledger. Removing this integration does not make those transactions private.

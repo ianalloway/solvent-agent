@@ -6,7 +6,6 @@
 /solvent/stages.py          @ianalloway
 /solvent/treasury.py        @ianalloway
 /solvent/stripe_client.py   @ianalloway
-/solvent/nano_client.py     @ianalloway
 /solvent/checkout.py        @ianalloway
 /solvent/guardrails.py      @ianalloway
 /solvent/spending.py        @ianalloway
