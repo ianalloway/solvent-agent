@@ -55,6 +55,13 @@ python3 -m solvent worker              # resume incomplete jobs, process queue
 open "http://127.0.0.1:8787/?token=$SOLVENT_DASHBOARD_TOKEN"
 ```
 
+The server and worker preserve all existing treasury state by default. Existing
+`--keep-balance` flags remain supported. A new home starts with zero recorded
+capital; `--seed` is used only with the explicit, destructive `--reset-state`
+option. See [safe restarts and resets](PRODUCTION.md#safe-restarts-and-explicit-resets)
+before resetting test data. Keep demos in a separate `SOLVENT_HOME` from service
+instances because demo reset behavior is unchanged.
+
 The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Dashboard/control routes require `SOLVENT_DASHBOARD_TOKEN` via `?token=...` or the `X-Solvent-Dashboard-Token` header before they expose status data or route chat through the Nemotron agent loop.
 
 See [docs/PRODUCTION.md](PRODUCTION.md) for Stripe webhook setup, SMTP delivery, and reconciliation.

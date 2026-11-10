@@ -87,6 +87,7 @@ solvent/
 
   # Server, dashboard and chat
   server.py           FastAPI webhooks + job API + hosted briefs (serve)
+  startup.py          safe treasury startup options for the server and worker
   access.py           request-origin and abuse-limiting helpers for the server
   rate_limit.py       sliding-window rate limiter with SQLite persistence
   event_hub.py        thread-safe event hub for dashboard SSE

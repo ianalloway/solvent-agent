@@ -18,7 +18,7 @@ from .agent import Solvent
 from .delivery import is_safe_job_id, markdown_to_html, resolve_brief_path, verify_delivery_token
 from .event_hub import EventHub
 from .gateway import Gateway, register_outbound
-from .money import dollars_to_cents
+from .startup import add_treasury_arguments
 from .paths import data_dir
 from .paths import reports_dir as reports_dir_fn
 from .stripe_client import StripeClient
@@ -771,17 +771,16 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="SOLVENT HTTP server")
+    parser = argparse.ArgumentParser(description="SOLVENT HTTP server", allow_abbrev=False)
     parser.add_argument("--port", type=int, default=int(os.environ.get("SOLVENT_PORT", "8787")))
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--seed", type=float, default=100.0)
-    parser.add_argument("--keep-balance", action="store_true")
+    add_treasury_arguments(parser)
     args = parser.parse_args()
     try:
         import uvicorn
     except ImportError as exc:
         raise RuntimeError('uvicorn required: pip install -e ".[serve]"') from exc
-    app = create_app(seed_cents=dollars_to_cents(args.seed), fresh=not args.keep_balance)
+    app = create_app(seed_cents=args.seed_cents, fresh=args.reset_state)
     uvicorn.run(app, host=args.host, port=args.port)
 
 
