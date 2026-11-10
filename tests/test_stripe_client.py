@@ -382,6 +382,16 @@ class TestStripeClientLive(unittest.TestCase):
         self.assertTrue(pay["simulated"])
         self.assertFalse(pay["issuing"])
 
+    def test_failed_card_on_available_issuing_is_not_reported_as_paid(self):
+        # Issuing is available, so a failed card means the vendor was not paid:
+        # it must raise, never come back as a payment for the ledger to book.
+        self._mock_stripe.issuing.Cardholder.list.return_value = mock.Mock(data=[])
+        self._mock_stripe.issuing.Cardholder.create.return_value = mock.Mock(id="ich_1")
+        self._mock_stripe.issuing.Card.create.side_effect = Exception("card declined")
+        client = StripeClient()
+        with self.assertRaisesRegex(RuntimeError, "market-data-api"):
+            client.pay_vendor("market-data-api", 240, "2 pulls", job_id="job_live_123")
+
 
 class TestAgentPaymentFlow(unittest.TestCase):
     def setUp(self):

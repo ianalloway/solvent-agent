@@ -188,7 +188,9 @@ class StageRunner:
 
             handle_job_event(event)
         except Exception:
-            pass
+            logging.getLogger(__name__).warning(
+                "job notification failed for %s", event.get("job_id"), exc_info=True
+            )
         log_event(
             self.t,
             job_id=event.get("job_id", ""),
@@ -217,7 +219,7 @@ class StageRunner:
 
             dashboard.render(self.t.snapshot(), [])
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("dashboard render failed", exc_info=True)
         return event
 
     def run_job(self, job: dict) -> dict:
@@ -925,7 +927,9 @@ class StageRunner:
                 receipt_text = build_receipt(_full_job, pnl, self.t.balance_cents())
                 self._emit(stage="receipt_ready", job_id=job_id, receipt=receipt_text)
             except Exception:
-                pass
+                logging.getLogger(__name__).warning(
+                    "receipt failed for %s", job_id, exc_info=True
+                )
             return booked_event
         except Exception as e:
             reason = str(e)
@@ -1007,7 +1011,9 @@ class StageRunner:
                         receipt=refund_receipt_text,
                     )
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).warning(
+                        "refund receipt failed for %s", job_id, exc_info=True
+                    )
             return booked_event
 
     def handle_webhook_payment(self, payment: dict) -> dict | None:

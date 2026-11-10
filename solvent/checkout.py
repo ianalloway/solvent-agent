@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import time
 from dataclasses import dataclass
@@ -33,6 +34,8 @@ from typing import Any, Callable
 from . import delivery
 from .paths import config_path
 from .treasury import Treasury, fmt
+
+logger = logging.getLogger(__name__)
 
 #: Job status for a checkout nobody paid.
 EXPIRED_STATUS = "expired"
@@ -183,7 +186,7 @@ def sweep(
         try:
             t.record_event(event.get("job_id", ""), event.get("stage", ""), event)
         except Exception:
-            pass
+            logger.warning("could not record %s event", event.get("stage"), exc_info=True)
         if on_event:
             on_event(event)
 
@@ -197,15 +200,20 @@ def sweep(
                     stored = t.get_checkout(job_id) or {}
                     session_id = stored.get("session_id")
                     if session_id:
-                        stripe.expire_checkout_session(session_id)
-                except Exception:
-                    pass
+                        result = stripe.expire_checkout_session(session_id) or {}
+                        if result.get("status") == "error":
+                            raise RuntimeError(result.get("error") or "expire failed")
+                except Exception as exc:
+                    # The job still expires, but the live link may stay payable:
+                    # say so, so a late payment can be refunded rather than lost.
+                    logger.warning("could not expire Stripe checkout for %s: %s", job_id, exc)
+                    emit({"stage": "checkout_expire_failed", "job_id": job_id, "reason": str(exc)})
             nano_inv = t.get_nano_invoice(job_id)
             if nano_inv and nano is not None and hasattr(nano, "expire_invoice"):
                 try:
                     nano.expire_invoice(nano_inv)
                 except Exception:
-                    pass
+                    logger.warning("could not expire Nano invoice for %s", job_id, exc_info=True)
             # Re-check under the lock: a webhook/worker may have paid between
             # open_checkouts() and here. Never downgrade a paid/terminal job.
             with t.lock():

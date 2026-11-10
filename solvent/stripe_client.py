@@ -16,6 +16,7 @@ agent runs end-to-end for a demo.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -156,13 +157,40 @@ class StripeClient:
         except (json.JSONDecodeError, OSError):
             self._webhook_payments = {}
 
+    def _refresh_webhook_cache(self) -> None:
+        """Merge in payments that other clients have persisted since we loaded.
+
+        ``serve`` verifies webhooks on its own ``StripeClient`` while the job
+        runner (in the same process, or in ``solvent worker``) holds another,
+        so the file is the only channel between them. An unreadable file keeps
+        what is already in memory: a writer may be mid-replace.
+        """
+        cache_path = config_path("stripe_payments.json")
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return
+        if isinstance(data, dict):
+            for key, payment in data.items():
+                self._webhook_payments.setdefault(key, payment)
+
+    def _cached_webhook_payment(self, key: str) -> dict | None:
+        if key not in self._webhook_payments:
+            self._refresh_webhook_cache()
+        return self._webhook_payments.get(key)
+
     def _save_webhook_cache(self) -> None:
         cache_path = config_path("stripe_payments.json")
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(
-            json.dumps(self._webhook_payments, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        # Keep entries another client wrote, and replace atomically so a reader
+        # never sees a half-written file.
+        self._refresh_webhook_cache()
+        temp = cache_path.with_name(f"{cache_path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temp.write_text(json.dumps(self._webhook_payments, indent=2) + "\n", encoding="utf-8")
+            os.replace(temp, cache_path)
+        finally:
+            temp.unlink(missing_ok=True)
 
     def _cache_webhook_payment(self, plink_id: str, payment: dict) -> None:
         self._webhook_payments[plink_id] = payment
@@ -250,11 +278,13 @@ class StripeClient:
                         "paid",
                     )
                 except Exception:
-                    pass
+                    # The cached payment still books the job; only the
+                    # checkout row's status lags.
+                    logger.warning("could not mark checkout paid for %s", job_id, exc_info=True)
         return payment
 
     def get_cached_payment(self, job_id: str) -> dict | None:
-        cached = self._webhook_payments.get(f"job:{job_id}")
+        cached = self._cached_webhook_payment(f"job:{job_id}")
         if cached and cached.get("paid"):
             return cached
         return None
@@ -434,9 +464,9 @@ class StripeClient:
     def _poll_checkout_session(self, plink_id: str, link: dict) -> dict:
         deadline = time.time() + self.poll_timeout
         while time.time() < deadline:
-            if self.webhook_secret and plink_id in self._webhook_payments:
-                cached = self._webhook_payments[plink_id]
-                if cached.get("paid"):
+            if self.webhook_secret:
+                cached = self._cached_webhook_payment(plink_id)
+                if cached and cached.get("paid"):
                     return self._accept_payment(cached, link)
             if str(plink_id).startswith("cs_"):
                 # Session-only checkouts: retrieve the session directly.
@@ -482,8 +512,8 @@ class StripeClient:
                 "job_id": job_id or link.get("job_id"),
                 "ts": time.time(),
             }
-        if self.webhook_secret and link["id"] in self._webhook_payments:
-            cached: dict | None = self._webhook_payments[link["id"]]
+        if self.webhook_secret:
+            cached: dict | None = self._cached_webhook_payment(link["id"])
             if cached and cached.get("paid"):
                 return self._accept_payment(cached, link)
         if job_id:
@@ -572,8 +602,11 @@ class StripeClient:
                     "job_id": job_id,
                     "ts": time.time(),
                 }
-            except Exception:
-                pass
+            except Exception as exc:
+                # Issuing is available, so a failed card means the vendor was
+                # not paid. Never fall through to a simulated record the
+                # ledger would book as real spend.
+                raise RuntimeError(f"Stripe Issuing card for {vendor} failed: {exc}") from exc
         ref = "pay_sim_" + uuid.uuid4().hex[:12]
         return {
             "id": ref,
