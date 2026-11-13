@@ -317,6 +317,32 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         return response
 
+    # ------------------------------------------------------------------ #
+    # Gateway-password helpers (OpenClaw "Gateway Password" field)       #
+    # ------------------------------------------------------------------ #
+    gateway_password = os.environ.get("SOLVENT_GATEWAY_PASSWORD", "").strip()
+
+    def _check_gateway_password(req: Request) -> bool:
+        """Return True if the gateway password matches (or is not configured)."""
+        if not gateway_password:
+            return True
+        # Accept via Authorization: Bearer <password> or the custom header.
+        auth = req.headers.get("Authorization", "")
+        if auth.startswith("Bearer ") and secrets.compare_digest(
+            auth[7:].encode(), gateway_password.encode()
+        ):
+            return True
+        custom = req.headers.get("X-Solvent-Gateway-Password", "")
+        return bool(custom) and secrets.compare_digest(custom.encode(), gateway_password.encode())
+
+    def _require_gateway_password(req: Request) -> None:
+        if not _check_gateway_password(req):
+            raise HTTPException(
+                401,
+                "gateway password required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     @app.get("/health")
     def health(req: Request):
         # Public liveness probe: no financial detail unless the caller is authenticated.
@@ -324,6 +350,79 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         if _has_dashboard_auth(req):
             data["balance_cents"] = agent.t.balance_cents()
         return data
+
+    # ------------------------------------------------------------------ #
+    # Feature 1 — Discovery Domain (/.well-known/solvent.json)           #
+    # Lets the OpenClaw app auto-detect server capabilities before login. #
+    # ------------------------------------------------------------------ #
+    @app.get("/.well-known/solvent.json")
+    def well_known():
+        base_url = os.environ.get("SOLVENT_BASE_URL", "")
+        tls = base_url.startswith("https://")
+        return JSONResponse(
+            {
+                "name": "SOLVENT",
+                "version": __version__,
+                "tls": tls,
+                "gateway_password_required": bool(gateway_password),
+                "capabilities": [
+                    "chat",
+                    "jobs",
+                    "pair_qr",
+                    "stripe_webhooks",
+                    "sse_events",
+                ],
+                "endpoints": {
+                    "chat": "/api/chat",
+                    "pair_qr": "/api/pair/qr",
+                    "pair_verify": "/api/pair/verify",
+                    "settings": "/api/settings",
+                    "health": "/health",
+                },
+            },
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    # ------------------------------------------------------------------ #
+    # Feature 2 — Settings Overview (GET /api/settings)                  #
+    # Returns current server configuration for the OpenClaw app / ops.   #
+    # ------------------------------------------------------------------ #
+    @app.get("/api/settings")
+    def api_settings(req: Request):
+        _require_dashboard_auth(req)
+        from . import config as _cfg
+
+        cfg = _cfg.load_config()
+        base_url = os.environ.get("SOLVENT_BASE_URL", cfg.base_url if cfg else "")
+        tls = base_url.startswith("https://")
+        host_port = base_url.replace("https://", "").replace("http://", "").split("/")[0]
+        try:
+            host = host_port.split(":")[0]
+            port = int(host_port.split(":")[1]) if ":" in host_port else (443 if tls else 80)
+        except (IndexError, ValueError):
+            host = host_port
+            port = 443 if tls else 80
+        return JSONResponse(
+            {
+                "version": __version__,
+                "host": host,
+                "port": port,
+                "tls": tls,
+                "base_url": base_url,
+                "model": cfg.model if cfg else "offline",
+                "nemotron_model": cfg.nemotron_model if cfg else "",
+                "interaction_mode": cfg.interaction_mode if cfg else "batch",
+                "stripe_test_mode": cfg.stripe_test_mode if cfg else True,
+                "async_mode": cfg.async_mode if cfg else False,
+                "telegram_enabled": cfg.telegram_enabled if cfg else False,
+                "gateway_password_set": bool(gateway_password),
+                "rate_limits": {
+                    "burst": cfg.rate_burst_limit if cfg else 5,
+                    "hourly": cfg.rate_hourly_limit if cfg else 30,
+                    "daily": cfg.rate_daily_limit if cfg else 200,
+                },
+            }
+        )
 
     @app.get("/api/pair/qr")
     def api_pair_qr(req: Request):
@@ -352,7 +451,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     @app.post("/api/pair/verify")
     async def api_pair_verify(req: Request):
-        """Redeem a single-use pairing token (no login: the token is the credential)."""
+        """Redeem a single-use pairing token; gateway password checked first."""
+        _require_gateway_password(req)
         peer = peer_host(req) or "unknown"
         if pair_fail_peer.blocked(peer) or pair_fail_global.blocked("*"):
             raise HTTPException(
