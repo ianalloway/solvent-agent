@@ -169,6 +169,14 @@ def print_results(snap: dict, simulated: bool = False):
         print(f"   → The agent broke perfectly even{sim}.")
 
 
+def _finish_session(agent: Solvent) -> None:
+    """Show the same final summary and dashboard for either terminal mode."""
+    snap = agent.t.snapshot()
+    print_results(snap, simulated=not agent.stripe.live)
+    path = dashboard.render(snap, agent.log)
+    print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
+
+
 def run_batch_demo(seed_cents: int = 10_000, fresh: bool = True):
     """Run the standard batch demo of 4 predefined jobs."""
     print(f"\n🪙  {C_BOLD}SOLVENT — Standard Batch Run ({len(SAMPLE_JOBS)} Inbound Jobs){C_RESET}")
@@ -182,10 +190,7 @@ def run_batch_demo(seed_cents: int = 10_000, fresh: bool = True):
         show_spinner(0.4, "Analyzing inbound job specifications...")
         agent.handle_job(job)
 
-    snap = agent.t.snapshot()
-    print_results(snap, simulated=not agent.stripe.live)
-    path = dashboard.render(snap, agent.log)
-    print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
+    _finish_session(agent)
 
 
 def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
@@ -279,10 +284,7 @@ def run_interactive_mode(seed_cents: int = 10_000, fresh: bool = True):
         if cont != "y":
             break
 
-    snap = agent.t.snapshot()
-    print_results(snap, simulated=not agent.stripe.live)
-    path = dashboard.render(snap, agent.log)
-    print(f"\n   Dashboard: {C_BLUE}{path}{C_RESET}\n{BAR}\n")
+    _finish_session(agent)
 
 
 def resolve_config(args) -> SolventConfig:
