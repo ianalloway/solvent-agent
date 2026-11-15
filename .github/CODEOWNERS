@@ -3,19 +3,22 @@
 # changes here alone (see #141, which merged a payment regression unreviewed).
 
 # Earn, spend, refund and the ledger
-/solvent/stages.py          @ianalloway
-/solvent/treasury.py        @ianalloway
-/solvent/stripe_client.py   @ianalloway
-/solvent/checkout.py        @ianalloway
-/solvent/guardrails.py      @ianalloway
-/solvent/spending.py        @ianalloway
-/solvent/pricing.py         @ianalloway
-/solvent/reconcile.py       @ianalloway
-/solvent/security.py        @ianalloway
+/solvent/stages.py            @ianalloway
+/solvent/treasury.py          @ianalloway
+/solvent/treasury_schema.py   @ianalloway
+/solvent/treasury_records.py  @ianalloway
+/solvent/treasury_sessions.py @ianalloway
+/solvent/stripe_client.py     @ianalloway
+/solvent/checkout.py          @ianalloway
+/solvent/guardrails.py        @ianalloway
+/solvent/spending.py          @ianalloway
+/solvent/pricing.py           @ianalloway
+/solvent/reconcile.py         @ianalloway
+/solvent/security.py          @ianalloway
 
 # Payment endpoints and webhooks
-/solvent/server.py          @ianalloway
-/solvent/webhook_log.py     @ianalloway
+/solvent/server.py            @ianalloway
+/solvent/webhook_log.py       @ianalloway
 
 # CI, release and repo automation
-/.github/                   @ianalloway
+/.github/                     @ianalloway
