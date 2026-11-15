@@ -1,3 +1,3 @@
 """SOLVENT — a self-funding analyst agent. See run_demo.py."""
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
