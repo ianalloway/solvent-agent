@@ -287,6 +287,7 @@ def sanitise_job(job: dict) -> dict:
     job["topic"] = sanitise_prompt_input(
         job.get("topic", ""), field_name="topic", max_len=_TOPIC_MAX_LEN
     )
+    job["topic"] = " ".join(job["topic"].split())
     if job.get("context"):
         job["context"] = sanitise_prompt_input(
             job["context"], field_name="context", max_len=_CONTEXT_MAX_LEN

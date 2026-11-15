@@ -19,9 +19,8 @@ export SOLVENT_DASHBOARD_TOKEN=$(python3 -c 'import secrets; print(secrets.token
 
 # Terminal 1 — API + webhooks + interactive dashboard
 python3 -m solvent serve --port 8787
-# Prefer the header for API clients. Query tokens work for browser GETs but
-# can leak via history / Referer; the server sends Referrer-Policy: no-referrer.
-open "http://127.0.0.1:8787/?token=$SOLVENT_DASHBOARD_TOKEN"
+# Open the dashboard and paste the token into the sign-in form.
+open "http://127.0.0.1:8787/"
 # curl -H "X-Solvent-Dashboard-Token: $SOLVENT_DASHBOARD_TOKEN" http://127.0.0.1:8787/api/status
 
 # Terminal 2 — async job processor
@@ -70,7 +69,7 @@ separate disposable home for `run_demo.py`, and pass `fresh=False` when construc
 
 ### Interactive dashboard + voice
 
-`python3 -m solvent serve` serves a live dashboard at `/` protected by `SOLVENT_DASHBOARD_TOKEN`. Prefer the `X-Solvent-Dashboard-Token` header for API clients; browsers may use `?token=...` (EventSource cannot set custom headers). Responses send `Referrer-Policy: no-referrer` so query tokens are less likely to leak to third parties. The protected dashboard includes:
+`python3 -m solvent serve` serves a live dashboard at `/` protected by `SOLVENT_DASHBOARD_TOKEN`. Paste that token into the sign-in form at `/` to start a one-hour browser session. API clients send `X-Solvent-Dashboard-Token`. If you previously used tokenized dashboard URLs, rotate that token to invalidate copies in histories and access logs. The protected dashboard includes:
 
 - **SSE** (`GET /api/events`) — treasury metrics, job cards, and console log update in real time
 - **Chat** (`POST /api/chat`) — talk to the agent; supports `/status`, `/jobs`, `/quote topic | 50`
@@ -127,6 +126,10 @@ Only the documented fields are read (`id`, `topic`, `budget_cents`,
 `customer_email`, `est_tokens`, `market_data_calls`, `web_search_calls`,
 `context`, `product`); bodies over 32 KB are refused with `413`, and an `id`
 that already exists is refused with `409` (omit `id` to get a generated one).
+Unverified intake shares a persistent allowance of 12 jobs per minute, 120 per
+day and 10,000 per database. Over-limit requests return `429` before creating
+jobs or checkouts. Unverified and legacy submissions do not send unpaid
+checkout reminders; they can still pay and receive their deliverables.
 
 Check a job's status with `GET /jobs/{id}`. Without the dashboard token you get
 `{"job": {"id", "status"}}` (this is what a customer sees after cancelling out
@@ -138,26 +141,45 @@ metrics, including the customer email and costs.
 | Route | Access |
 |-------|--------|
 | `GET /health` | Public: `{status, version}`. With the dashboard token it also reports `balance_cents`. |
+| `GET /.well-known/solvent.json` | Public: server name, version, capabilities, endpoint map, and whether a gateway password is required. |
 | `POST /jobs`, `GET /jobs/{id}` | Public intake and minimal status, as above. |
 | `POST /webhooks/stripe` | Public, but the Stripe signature is verified first. |
-| `POST /api/pair/verify` | Public, but only a valid, unexpired, single-use pairing token succeeds. After 5 failed attempts from one peer (or 60 overall) it answers `429` for a few minutes. |
+| `POST /api/pair/verify` | Gateway password (if set), then a valid single-use pairing token. After 5 failed attempts from one peer (or 60 overall) invalid attempts receive `429`; a valid token can still be redeemed. |
 | `GET /briefs/{id}`, `GET /api/briefs/{id}`, `GET /api/receipt/{id}` | Delivery token (`?token=`), or a genuinely local request. |
 | `GET /api/briefs` | Genuinely local requests only. |
-| Everything else, including `GET /api/pair/qr` | Dashboard token. |
+| Everything else, including `GET /api/pair/qr`, `GET /api/settings` | Dashboard token. |
+
+### Gateway password (OpenClaw "Gateway Password" field)
+
+Set `SOLVENT_GATEWAY_PASSWORD` to protect the OpenClaw-facing endpoints from
+unauthenticated access. The app sends it as `Authorization: Bearer <password>`
+or in the `X-Solvent-Gateway-Password` header. Without it set, those endpoints
+behave as before. The discovery document (`/.well-known/solvent.json`) advertises
+whether a password is required so the app can prompt before connecting.
+
+```bash
+export SOLVENT_GATEWAY_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+```
+
+### Settings overview
+
+`GET /api/settings` (dashboard token required) returns the live server
+configuration as JSON: host, port, TLS, model, rate limits, Telegram enabled,
+Stripe test mode, and whether a gateway password is set. Useful for the
+OpenClaw app settings screen and for operator audit.
 
 ### OpenClaw pairing
 
-Minting a pairing token is an operator action. Open
-`http://127.0.0.1:8787/api/pair/qr?token=$SOLVENT_DASHBOARD_TOKEN` (or send
-`/pair qr` in the dashboard chat, or in Telegram once you are paired), scan the
+Minting a pairing token is an operator action. Sign in at `/` and open
+`http://127.0.0.1:8787/api/pair/qr` (or send `/pair qr` in the dashboard chat, or in Telegram once you are paired), scan the
 QR code with the app, and the app redeems it through `POST /api/pair/verify`.
 Tokens last 10 minutes and work once. `/pair qr` is refused over Telegram when
 `SOLVENT_TELEGRAM_DM_POLICY=open`, because anyone could then mint one.
 
 ### Running behind a reverse proxy
 
-"Local" means the TCP peer is loopback **and** the request carries no proxy
-header (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`, `CF-Connecting-IP`,
+"Local" means the TCP peer and Host are loopback, any Origin matches the
+request URL, and the request carries no proxy header (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`, `CF-Connecting-IP`,
 `True-Client-IP`, `Via`, ...). A proxy on the same host would otherwise make every
 internet request look local, so the local-only routes would be open.
 
@@ -169,7 +191,8 @@ export SOLVENT_LOCAL_ACCESS=never   # nothing is "local": delivery token or dash
 ```
 
 `SOLVENT_LOCAL_ACCESS` accepts `auto` (default, as above), `never`, and `peer`
-(the old behaviour: trust the peer address only; do not use it behind a proxy).
+(allow forwarding headers while still checking peer, Host and Origin; do not
+use it behind a proxy).
 
 ## Email delivery (optional)
 

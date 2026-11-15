@@ -52,7 +52,7 @@ python3 -m solvent serve --port 8787   # webhooks + job API + hosted briefs
 python3 -m solvent worker              # resume incomplete jobs, process queue
 
 # Interactive voice dashboard (chat + live SSE updates):
-open "http://127.0.0.1:8787/?token=$SOLVENT_DASHBOARD_TOKEN"
+open "http://127.0.0.1:8787/"  # then sign in with the dashboard token
 ```
 
 The server and worker preserve all existing treasury state by default. Existing
@@ -62,7 +62,7 @@ option. See [safe restarts and resets](PRODUCTION.md#safe-restarts-and-explicit-
 before resetting test data. Keep demos in a separate `SOLVENT_HOME` from service
 instances because demo reset behavior is unchanged.
 
-The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Dashboard/control routes require `SOLVENT_DASHBOARD_TOKEN` via `?token=...` or the `X-Solvent-Dashboard-Token` header before they expose status data or route chat through the Nemotron agent loop.
+The hosted dashboard at `/` includes a **chat panel** (type or use the mic with Web Speech API) and **live treasury updates** via Server-Sent Events (`/api/events`). Sign in with `SOLVENT_DASHBOARD_TOKEN` to use the dashboard in a browser. API clients send the token in the `X-Solvent-Dashboard-Token` header.
 
 See [docs/PRODUCTION.md](PRODUCTION.md) for Stripe webhook setup, SMTP delivery, and reconciliation.
 

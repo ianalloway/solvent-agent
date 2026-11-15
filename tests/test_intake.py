@@ -122,13 +122,13 @@ def test_blocked_domains_are_refused(treasury):
     assert screen.rule == "blocked_domain"
 
 
-def test_screening_survives_an_unreadable_history(treasury):
+def test_screening_declines_when_customer_history_is_unavailable(treasury):
     class Broken(Treasury):
-        def list_jobs(self):
+        def recent_jobs_for_customer(self, email, cutoff):
             raise RuntimeError("db gone")
 
     broken = Broken(path=treasury.path)
-    assert screen_job(JOB, broken).allowed  # fail open: a screen is not a gate on availability
+    assert not screen_job(JOB, broken).allowed
 
 
 def test_policy_file_overrides_defaults(tmp_path):

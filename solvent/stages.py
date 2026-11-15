@@ -166,6 +166,7 @@ class StageRunner:
         on_event: Callable | None = None,
         *,
         sync_payment: bool = True,
+        render_dashboard: bool = True,
     ):
         self.t = treasury
         self.guard = guard
@@ -173,6 +174,7 @@ class StageRunner:
         self.pricing = pricing or PricingPolicy()
         self.on_event = on_event
         self.sync_payment = sync_payment
+        self.render_dashboard = render_dashboard
 
     def _emit(self, **event):
         if "ts" not in event:
@@ -214,12 +216,13 @@ class StageRunner:
                 )
             },
         )
-        try:
-            from . import dashboard
+        if self.render_dashboard:
+            try:
+                from . import dashboard
 
-            dashboard.render(self.t.snapshot(), [])
-        except Exception:
-            logging.getLogger(__name__).debug("dashboard render failed", exc_info=True)
+                dashboard.render(self.t.snapshot(), [])
+            except Exception:
+                logging.getLogger(__name__).debug("dashboard render failed", exc_info=True)
         return event
 
     def _retired_payment(self, job_id: str) -> dict:

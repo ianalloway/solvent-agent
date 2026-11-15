@@ -75,7 +75,7 @@ def _human_line(record: dict) -> str:
     }
     for k, v in record.items():
         if k not in extra_skip:
-            parts.append(f"{k}={v}")
+            parts.append(f"{k}={' '.join(str(v).split())}")
     return "  ".join(parts)
 
 

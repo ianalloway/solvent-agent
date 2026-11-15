@@ -83,6 +83,10 @@ def build_application(gateway: Gateway | None = None) -> object:
             return
         user = update.effective_user
         text = update.message.text or ""
+        # CommandHandler has already validated an optional @botname suffix.
+        command, sep, rest = text.partition(" ")
+        if command.startswith("/") and "@" in command:
+            text = command.split("@", 1)[0] + sep + rest
         username = user.username
         reply = gw.handle_inbound(
             "telegram",
@@ -95,16 +99,30 @@ def build_application(gateway: Gateway | None = None) -> object:
         await _reply(update, reply)
 
     app = Application.builder().token(token).build()
-    app.add_handler(CommandHandler("start", on_message))
-    app.add_handler(CommandHandler("help", on_message))
-    app.add_handler(CommandHandler("status", on_message))
-    app.add_handler(CommandHandler("jobs", on_message))
-    app.add_handler(CommandHandler("quote", on_message))
+    for command in (
+        "start",
+        "help",
+        "status",
+        "jobs",
+        "quote",
+        "funnel",
+        "customers",
+        "capacity",
+        "alerts",
+        "products",
+        "quality",
+        "review",
+        "costs",
+    ):
+        app.add_handler(CommandHandler(command, on_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
     return app
 
 
 def main():
+    from ..startup import apply_service_config
+
+    apply_service_config(telegram=True)
     app = build_application()
     print("SOLVENT Telegram bot starting (long-poll)...")
     app.run_polling(allowed_updates=["message"])

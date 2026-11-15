@@ -64,7 +64,7 @@ def response(usage=None, text="# Brief"):
 )
 def test_denied_reservation_never_reaches_network(treasury, monkeypatch, sink):
     network = Mock(side_effect=AssertionError("network must not run"))
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     monkeypatch.setattr(llm_backend._OPENER, "open", network)
     with spending.scope(Guardrails(treasury, SpendPolicy(job_budget_cents=1)), "job", 100):
         with pytest.raises(GuardrailError):
@@ -81,7 +81,7 @@ def test_denial_prevents_live_fulfillment_and_delivery(treasury, monkeypatch):
     monkeypatch.setattr(nemotron, "_force_offline", False)
     network = Mock()
     email = Mock()
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     monkeypatch.setattr("solvent.delivery.send_brief_email", email)
     assert r._stage_fulfill_and_book(*args)["status"] == "failed"
     network.assert_not_called()
@@ -135,7 +135,7 @@ def test_timeout_cost_is_retained_and_retry_needs_new_authorization(treasury, mo
     monkeypatch.setattr(nemotron, "MAX_RETRIES", 2)
     monkeypatch.setattr(nemotron.time, "sleep", lambda _: None)
     network = Mock(side_effect=URLError("timeout after acceptance"))
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     # This prompt's request ceiling is 44 cents, leaving no room for a retry.
     with spending.scope(Guardrails(treasury, SpendPolicy(job_budget_cents=44)), "job", 100):
         with pytest.raises(GuardrailError):
@@ -155,7 +155,7 @@ def test_timeout_cost_is_retained_and_retry_needs_new_authorization(treasury, mo
 )
 def test_missing_or_invalid_usage_never_releases_unknown_cost(treasury, monkeypatch, usage):
     monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", Mock(return_value=response(usage)))
+    monkeypatch.setattr(nemotron.OPENER, "open", Mock(return_value=response(usage)))
     with spending.scope(Guardrails(treasury), "job", 100):
         if usage is None:
             nemotron._live_request("sys", "user")
@@ -169,7 +169,7 @@ def test_validated_usage_releases_only_unused_headroom(treasury, monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
     usage = {"prompt_tokens": 20, "completion_tokens": 80, "total_tokens": 100}
     network = Mock(return_value=response(usage))
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     with spending.scope(Guardrails(treasury, SpendPolicy(job_budget_cents=47)), "job", 100):
         nemotron._live_request("sys", "user")
         nemotron._live_request("sys", "user")
@@ -269,7 +269,7 @@ def test_direct_live_adapter_uses_unscoped_policy(treasury, monkeypatch):
     monkeypatch.setattr("solvent.treasury.DB_PATH", treasury.path)
     monkeypatch.setenv("SOLVENT_JOB_BUDGET_CENTS", "1")
     network = Mock()
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     with pytest.raises(GuardrailError):
         nemotron._live_request("system", "user")
     network.assert_not_called()
@@ -288,7 +288,7 @@ def test_nested_summary_and_quality_retry_share_job_budget(treasury, monkeypatch
             response(usage, "# Brief\nRetry"),
         ]
     )
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     with spending.scope(Guardrails(treasury), "job", 1000):
         result = service.fulfill({"id": "job", "topic": "AI chips", "est_tokens": 20_000})
     assert network.call_count == 4
@@ -348,7 +348,7 @@ def test_quote_exhaustion_does_not_book_an_unmade_provider_request(treasury, mon
     budget = ResourceBudget(ResourceContract.for_job({"est_tokens": 4000}, get_resource_costs()))
     budget.reserve(tokens=4000)
     network = Mock()
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     with using_budget(budget), spending.scope(Guardrails(treasury), "job", 100):
         with pytest.raises(BudgetExceeded):
             nemotron._live_request("system", "user")
@@ -366,7 +366,7 @@ def test_live_settlement_does_not_charge_unused_quote_allowance(treasury, monkey
     monkeypatch.setattr(nemotron, "_force_offline", False)
     usage = {"prompt_tokens": 20, "completion_tokens": 80, "total_tokens": 100}
     network = Mock(return_value=response(usage, "# Brief\nShort"))
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", network)
+    monkeypatch.setattr(nemotron.OPENER, "open", network)
     email = Mock()
     monkeypatch.setattr("solvent.delivery.send_brief_email", email)
     assert r._stage_fulfill_and_book(job, q, paid)["status"] == "completed"

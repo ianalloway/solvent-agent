@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from decimal import DecimalException
 
 from .money import dollars_to_cents
@@ -47,3 +48,20 @@ def add_treasury_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="preserve all existing treasury state (the default; retained for compatibility)",
     )
+
+
+def apply_service_config(*, telegram: bool = False) -> None:
+    """Honor saved deployment policy before launching any service process."""
+    from .config import apply_config, load_config
+
+    config = load_config()
+    if config is None:
+        return
+    if telegram and (not config.telegram_enabled or config.telegram_dm_policy == "disabled"):
+        raise SystemExit("Telegram is disabled in the saved SOLVENT configuration")
+    apply_config(config)
+    if config.model == "offline":
+        # Unlike interactive suggestions, a saved service policy of offline
+        # must also prevent opt-in model and research endpoints from going live.
+        for name in ("SOLVENT_LLM_BASE_URL", "SOLVENT_LLM_MODEL", "SOLVENT_LIVE_SEARCH"):
+            os.environ.pop(name, None)

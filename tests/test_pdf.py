@@ -218,7 +218,9 @@ def test_smtp_delivery_attaches_the_file(tmp_path, monkeypatch):
         def __exit__(self, *args):
             return False
 
-        def starttls(self):
+        def starttls(self, *, context):
+            assert context.check_hostname
+            assert context.verify_mode == 2
             pass
 
         def login(self, *args):

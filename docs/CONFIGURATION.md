@@ -30,7 +30,7 @@ Briefs can be written by any OpenAI-compatible `/chat/completions` server instea
 ```bash
 ollama pull llama3.2
 export SOLVENT_LLM_MODEL=llama3.2                       # base URL defaults to Ollama
-# export SOLVENT_LLM_BASE_URL=http://localhost:11434/v1  # or any OpenAI-compatible URL
+# export SOLVENT_LLM_BASE_URL=http://localhost:11434/v1  # remote servers require HTTPS
 # export SOLVENT_LLM_API_KEY=...                         # optional; sent only as a Bearer header
 solvent --no-onboard
 ```
@@ -101,3 +101,10 @@ python -m solvent pairing list # pending DM codes
 Users pair via `/start`, commission briefs in natural language, receive checkout links, and get push updates when jobs are paid and delivered.
 
 Personality and operating rules come from the **agent workspace** (`SOUL.md`, `BRAIN.md`, `AGENTS.md`) — see **[docs/WORKSPACE.md](WORKSPACE.md)**.
+
+
+Service entrypoints (`serve`, `worker`, and `telegram`) load the saved configuration
+before starting. Saved offline policy also disables optional model endpoints and
+live research. Enable Telegram in the saved configuration before starting its
+polling process. Plain HTTP model URLs are accepted only on localhost or a
+loopback address, and provider requests do not follow redirects.

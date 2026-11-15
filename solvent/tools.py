@@ -9,6 +9,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 from . import spending
+from .provider_http import OPENER, read_limited
 from .resource_budget import BudgetExceeded, current_budget
 
 MAX_TOOL_ROUNDS = 8
@@ -109,8 +110,8 @@ def _live_web_search(query: str) -> str:
             }
         )
         req = urllib.request.Request(url, headers={"User-Agent": "SOLVENT/1.0"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            data = json.loads(resp.read())
+        with OPENER.open(req, timeout=8) as resp:
+            data = json.loads(read_limited(resp, 500_000))
         abstract = data.get("AbstractText") or data.get("Heading") or ""
         related = [t.get("Text", "") for t in (data.get("RelatedTopics") or [])[:3]]
         snippets = "\n".join(f"- {s}" for s in related if s)
@@ -143,8 +144,8 @@ def _live_market_data(symbol: str) -> str:
             }
         )
         req = urllib.request.Request(url, headers={"User-Agent": "SOLVENT/1.0"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            raw = resp.read().decode("utf-8", "replace").strip()
+        with OPENER.open(req, timeout=8) as resp:
+            raw = read_limited(resp, 64_000).decode("utf-8", "replace").strip()
         # CSV header + one row: Symbol,Date,Time,Open,High,Low,Close,Volume
         rows = raw.splitlines()
         if len(rows) >= 2:

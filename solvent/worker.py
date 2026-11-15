@@ -56,6 +56,9 @@ def main():
     parser.add_argument("--poll-interval", type=float, default=2.0)
     add_treasury_arguments(parser)
     args = parser.parse_args()
+    from .startup import apply_service_config
+
+    apply_service_config()
     run_worker(
         once=args.once,
         poll_interval=args.poll_interval,

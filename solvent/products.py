@@ -151,7 +151,7 @@ def load_catalog(path: Path | None = None) -> tuple[Product, ...]:
         return CATALOG
     try:
         data = json.loads(override.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, UnicodeError, OSError):
         return CATALOG
 
     if isinstance(data, list):
@@ -160,10 +160,11 @@ def load_catalog(path: Path | None = None) -> tuple[Product, ...]:
         replace_all = False
     elif isinstance(data, dict):
         entries = data.get("products") or []
-        retire = tuple(
-            str(slug).strip().lower()
-            for slug in (data.get("retire") or [])
-            if isinstance(slug, str)
+        raw_retire = data.get("retire", [])
+        retire = (
+            tuple(slug.strip().lower() for slug in raw_retire if isinstance(slug, str))
+            if isinstance(raw_retire, list)
+            else ()
         )
         replace_all = data.get("replace") is True
     else:
@@ -264,19 +265,24 @@ def catalog_problems(path: Path | None = None) -> list[str]:
         data = json.loads(override.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         return [f"{override.name} is not valid JSON ({exc.msg} at line {exc.lineno})"]
-    except OSError as exc:
+    except (UnicodeError, OSError) as exc:
         return [f"{override.name} cannot be read ({exc})"]
 
+    problems: list[str] = []
     if isinstance(data, list):
         entries: Any = data
     elif isinstance(data, dict):
         entries = data.get("products") or []
+        retire = data.get("retire", [])
+        if not isinstance(retire, list) or any(
+            not isinstance(slug, str) or not slug.strip() for slug in retire
+        ):
+            problems.append(f"{override.name}: 'retire' must be a list of nonempty product slugs")
     else:
         return [f"{override.name} must be a list of products or an object with 'products'"]
     if not isinstance(entries, list):
-        return [f"{override.name}: 'products' must be a list"]
+        return [*problems, f"{override.name}: 'products' must be a list"]
 
-    problems: list[str] = []
     seen: set[str] = set()
     for index, entry in enumerate(entries):
         where = f"{override.name} entry {index + 1}"

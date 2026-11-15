@@ -31,6 +31,7 @@ solvent/
   upgrade.py           version check and upgrade helper (`solvent upgrade`)
   doctor.py            stack diagnostics
   paths.py             where runtime data lives (`SOLVENT_HOME` resolution)
+  provider_http.py     bounded, non-redirecting provider HTTP requests
 
   # Orchestration
   agent.py             the orchestrator (earn → fulfil → spend → book)

@@ -71,7 +71,7 @@ def test_invalid_scope_is_not_a_discount(value):
 def test_token_reservation_blocks_network_and_keeps_output_capped(backend, monkeypatch):
     request = Mock(return_value=response())
     if backend == "nvidia":
-        monkeypatch.setattr(nemotron.urllib.request, "urlopen", request)
+        monkeypatch.setattr(nemotron.OPENER, "open", request)
         complete = nemotron._live_complete
     else:
         monkeypatch.setattr(llm_backend._OPENER, "open", request)
@@ -90,7 +90,7 @@ def test_token_reservation_blocks_network_and_keeps_output_capped(backend, monke
 
 def test_large_unicode_prompt_is_rejected_before_network(monkeypatch):
     request = Mock()
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", request)
+    monkeypatch.setattr(nemotron.OPENER, "open", request)
     with using_budget(ResourceBudget(contract(est_tokens=4000))):
         with pytest.raises(BudgetExceeded):
             nemotron.complete("system", "🦔" * 1000)
@@ -99,7 +99,7 @@ def test_large_unicode_prompt_is_rejected_before_network(monkeypatch):
 
 def test_transient_failures_keep_reservations(monkeypatch):
     request = Mock(side_effect=TimeoutError)
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", request)
+    monkeypatch.setattr(nemotron.OPENER, "open", request)
     monkeypatch.setattr(nemotron.time, "sleep", lambda _: None)
     monkeypatch.setattr(nemotron, "MAX_RETRIES", 20)
     budget = ResourceBudget(contract(est_tokens=4000))
@@ -130,7 +130,7 @@ def test_tool_limits_apply_across_contexts_before_side_effects(monkeypatch):
 
 def test_nested_summary_uses_same_token_allowance(monkeypatch):
     request = Mock(return_value=response())
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", request)
+    monkeypatch.setattr(nemotron.OPENER, "open", request)
     budget = ResourceBudget(contract(est_tokens=4000))
     with using_budget(budget):
         nemotron.complete("s", "u")
@@ -142,7 +142,7 @@ def test_nested_summary_uses_same_token_allowance(monkeypatch):
 
 def test_quality_retry_shares_budget_and_retains_first_draft(monkeypatch):
     request = Mock(return_value=response())
-    monkeypatch.setattr(nemotron.urllib.request, "urlopen", request)
+    monkeypatch.setattr(nemotron.OPENER, "open", request)
     job = {
         "id": "J-budget",
         "topic": "chips",

@@ -7,6 +7,7 @@ import hmac
 import os
 import re
 import smtplib
+import ssl
 import time
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -436,7 +437,7 @@ def send_email(
     if attachment is not None:
         attached = _attach_pdf(msg, Path(attachment), attachment_name or Path(attachment).name)
     with smtplib.SMTP(host, port, timeout=30) as server:
-        server.starttls()
+        server.starttls(context=ssl.create_default_context())
         if user and password:
             server.login(user, password)
         server.sendmail(from_addr, [to_email], msg.as_string())

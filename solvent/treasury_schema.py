@@ -70,8 +70,20 @@ class _SchemaMixin:
                 ("job_payload_json", "TEXT"),
                 ("retry_count", "INTEGER DEFAULT 0"),
                 ("job_owner_session_id", "TEXT"),
+                ("public_intake", "INTEGER"),
             ):
                 self._ensure_column(conn, "jobs", col, ctype)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS public_admission (
+                    name TEXT PRIMARY KEY,
+                    window INTEGER NOT NULL,
+                    used INTEGER NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS jobs_customer_recent
+                ON jobs (lower(trim(customer_email)), created_at)
+            """)
             conn.execute("""
                     CREATE TABLE IF NOT EXISTS job_stages (
                         id TEXT PRIMARY KEY,
