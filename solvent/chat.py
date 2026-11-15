@@ -120,8 +120,10 @@ def _make_executor(agent: Solvent, session_id: str, live_search: bool, *, operat
                 "context": f"Commissioned via chat session {session_id}",
                 "job_owner_session_id": session_id,
             }
-            result = agent.enqueue_job(job)
-            if result.get("stage") != "declined" and not result.get("error"):
+            result = agent.enqueue_job(job, public=not operator)
+            if result.get("stage") not in ("declined", "limited", "duplicate") and not result.get(
+                "error"
+            ):
                 agent.t.update_chat_session(session_id, notify_job_id=job_id, pending_job_json="")
             if result.get("url"):
                 return json.dumps(

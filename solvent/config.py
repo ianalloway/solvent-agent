@@ -112,6 +112,8 @@ def apply_config(config: SolventConfig) -> None:
         os.environ["SOLVENT_TELEGRAM_DM_POLICY"] = config.telegram_dm_policy
     if config.telegram_allow_from:
         os.environ["SOLVENT_TELEGRAM_ALLOW_FROM"] = ",".join(config.telegram_allow_from)
+    else:
+        os.environ.pop("SOLVENT_TELEGRAM_ALLOW_FROM", None)
 
     try:
         from . import gateway as _gw

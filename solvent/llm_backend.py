@@ -15,13 +15,16 @@ Authorization header; it is never logged, echoed in errors, or written to the br
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit, urlunsplit
 
 from . import spending
+from .provider_http import OPENER as _OPENER
 
 log = logging.getLogger(__name__)
 
@@ -33,22 +36,6 @@ MAX_RESPONSE_BYTES = 2_000_000
 
 class LLMBackendError(RuntimeError):
     """A failed call. The message never contains the API key or response body."""
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Refuse every redirect.
-
-    urllib's default handler re-sends request headers, including Authorization,
-    to the redirect target for 301/302/303, even across hosts or from https to
-    http. That would hand SOLVENT_LLM_API_KEY to whoever the backend points at,
-    so redirects are never followed; the 3xx surfaces as an HTTPError instead.
-    """
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-_OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 def enabled() -> bool:
@@ -81,12 +68,39 @@ def describe() -> str:
     return f"{model()} @ {base_url()} (api key set: {key})"
 
 
+def _completion_url() -> str:
+    base = base_url()
+    try:
+        parsed = urlsplit(base)
+        host = parsed.hostname
+        parsed.port  # Validate the optional port as well as the host.
+        if (
+            parsed.scheme not in ("https", "http")
+            or not host
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or "\\" in base
+            or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in base)
+        ):
+            raise ValueError
+    except ValueError:
+        raise LLMBackendError("invalid SOLVENT_LLM_BASE_URL") from None
+    if parsed.scheme == "http":
+        try:
+            loopback = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            loopback = host == "localhost"
+        if not loopback:
+            raise LLMBackendError("SOLVENT_LLM_BASE_URL requires HTTPS outside loopback")
+    return urlunsplit(parsed._replace(path=parsed.path.rstrip("/") + "/chat/completions"))
+
+
 @spending.metered_model
 def complete(system: str, user: str) -> tuple[str, dict]:
     """One chat completion. Returns (text, usage). Raises LLMBackendError on any failure."""
-    url = base_url() + "/chat/completions"
-    if not url.startswith(("http://", "https://")):
-        raise LLMBackendError("SOLVENT_LLM_BASE_URL must start with http:// or https://")
+    url = _completion_url()
     body = json.dumps(
         {
             "model": model(),

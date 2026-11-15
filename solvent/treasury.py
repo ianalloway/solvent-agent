@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Literal
 
 from . import _filelock
-from .paths import db_path as _db_path
+from .paths import db_path as _db_path, private_file
 
 DB_PATH = _db_path()
 
@@ -91,6 +91,7 @@ class Treasury:
 
         self.lock_path = self.path.with_suffix(".lock")
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        private_file(self.path)
         self._init_db()
         self._restore_legacy_refund_intents()
 
@@ -184,8 +185,20 @@ class Treasury:
                 ("job_payload_json", "TEXT"),
                 ("retry_count", "INTEGER DEFAULT 0"),
                 ("job_owner_session_id", "TEXT"),
+                ("public_intake", "INTEGER"),
             ):
                 self._ensure_column(conn, "jobs", col, ctype)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS public_admission (
+                    name TEXT PRIMARY KEY,
+                    window INTEGER NOT NULL,
+                    used INTEGER NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS jobs_customer_recent
+                ON jobs (lower(trim(customer_email)), created_at)
+            """)
             conn.execute("""
                     CREATE TABLE IF NOT EXISTS job_stages (
                         id TEXT PRIMARY KEY,
@@ -611,6 +624,7 @@ class Treasury:
         "job_payload_json",
         "retry_count",
         "job_owner_session_id",
+        "public_intake",
     )
 
     def upsert_job(self, job_id: str, status: str, **kwargs) -> None:
@@ -653,7 +667,7 @@ class Treasury:
         vals = [job_id, status, ts, ts]
         for col in self._JOB_COLS:
             cols.append(col)
-            val = kwargs.get(col)
+            val = kwargs.get(col, 0 if col == "public_intake" else None)
             if col == "job_payload_json" and isinstance(val, dict):
                 val = json.dumps(val)
             vals.append(val)
@@ -672,6 +686,45 @@ class Treasury:
                 conn, job_id, status, time.time(), kwargs, verb="INSERT OR IGNORE"
             )
             return inserted == 1
+
+    def admit_public_job(self, job_id: str, *, now: float | None = None) -> str:
+        """Atomically reserve database/checkout work before processing public intake."""
+        ts = time.time() if now is None else now
+        quotas = (
+            ("minute", int(ts // 60), 12),
+            ("day", int(ts // 86400), 120),
+            ("lifetime", 0, 10_000),
+        )
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT 1 FROM jobs WHERE id = ?", (job_id,)).fetchone():
+                return "duplicate"
+            counts = {}
+            for name, window, limit in quotas:
+                row = conn.execute(
+                    "SELECT window, used FROM public_admission WHERE name = ?", (name,)
+                ).fetchone()
+                used = row["used"] if row and row["window"] >= window else 0
+                if used >= limit:
+                    return "limited"
+                counts[name] = (max(window, row["window"]) if row else window, used + 1)
+            self._insert_job_row(conn, job_id, "received", ts, {"public_intake": 1}, verb="INSERT")
+            conn.executemany(
+                "INSERT INTO public_admission (name, window, used) VALUES (?, ?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET window=excluded.window, used=excluded.used",
+                [(name, *values) for name, values in counts.items()],
+            )
+            return "admitted"
+
+    def recent_jobs_for_customer(self, email: str, cutoff: float) -> list[dict]:
+        """Fetch only the customer's bounded screening window, using the intake index."""
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, status, topic, created_at, updated_at FROM jobs "
+                "WHERE lower(trim(customer_email)) = ? AND created_at >= ?",
+                (email, cutoff),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def get_job(self, job_id: str) -> dict | None:
         with self.lock(), self._conn() as conn:

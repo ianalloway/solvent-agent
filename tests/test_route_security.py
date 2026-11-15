@@ -34,7 +34,9 @@ PROXY = {"X-Forwarded-For": "203.0.113.50"}
 def _req(host: str | None = "127.0.0.1", headers: dict | None = None):
     client = SimpleNamespace(host=host) if host is not None else None
     return SimpleNamespace(
-        client=client, headers={k.lower(): v for k, v in (headers or {}).items()}
+        client=client,
+        headers={"host": "127.0.0.1", **{k.lower(): v for k, v in (headers or {}).items()}},
+        url=SimpleNamespace(scheme="http"),
     )
 
 
@@ -126,6 +128,7 @@ def make_client(tmp_path, monkeypatch):
 
     def build(**kwargs):
         app = server.create_app(fresh=True)
+        kwargs.setdefault("base_url", "http://127.0.0.1")
         return TestClient(app, **kwargs)
 
     return build
@@ -164,7 +167,7 @@ def test_health_has_balance_with_dashboard_token(make_client):
     body = client.get("/health", headers=AUTH).json()
     assert body["status"] == "ok"
     assert isinstance(body["balance_cents"], int)
-    assert client.get(f"/health?token={TOKEN}").json()["balance_cents"] == body["balance_cents"]
+    assert "balance_cents" not in client.get(f"/health?token={TOKEN}").json()
 
 
 @pytestmark_http
@@ -199,8 +202,7 @@ def test_pair_qr_mints_a_token_for_the_operator(make_client):
     assert resp.status_code == 200
     # PNG when `qrcode` is installed, JSON fallback otherwise; both are fine.
     assert resp.headers["content-type"] in ("image/png", "application/json")
-    # The browser flow passes the token as a query parameter.
-    assert client.get(f"/api/pair/qr?token={TOKEN}").status_code == 200
+    assert client.get(f"/api/pair/qr?token={TOKEN}").status_code == 403
 
 
 @pytestmark_http
@@ -258,12 +260,10 @@ def test_pair_verify_locks_out_a_guessing_peer(make_client):
     locked = client.post("/api/pair/verify", json={"token": "OC-99999999"})
     assert locked.status_code == 429
     assert "Retry-After" in locked.headers
-    # Even a genuine token is refused while locked out (no oracle for guessers).
+    # A real token still works when many clients share the same proxy peer.
     good = t.create_openclaw_token(ttl=600)
+    assert client.post("/api/pair/verify", json={"token": good}).status_code == 200
     assert client.post("/api/pair/verify", json={"token": good}).status_code == 429
-    # A different peer is unaffected.
-    other = make_client(client=("198.51.100.7", 4444))
-    assert other.post("/api/pair/verify", json={"token": good}).status_code == 200
 
 
 @pytestmark_http
@@ -542,3 +542,36 @@ def test_every_other_route_requires_the_dashboard_token(make_client):
             resp = client.request(method, url, json={"message": "x"} if method == "POST" else None)
             assert resp.status_code in (401, 403), f"{method} {path} is reachable without auth"
     assert set(PUBLIC_ROUTES) <= seen, "PUBLIC_ROUTES lists a route that no longer exists"
+
+
+@pytestmark_http
+def test_dashboard_browser_session_exchanges_token_without_url(make_client):
+    client = make_client(base_url="https://dashboard.example.test")
+    response = client.post(
+        "/dashboard/login",
+        headers={"Origin": "https://dashboard.example.test"},
+        data={"token": TOKEN},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    cookie = response.headers["set-cookie"].lower()
+    assert all(flag in cookie for flag in ("httponly", "samesite=strict", "secure"))
+    assert TOKEN not in cookie
+    assert client.get("/api/status").status_code == 200
+    assert client.post("/api/chat", json={"message": "/help"}).status_code == 403
+
+
+@pytestmark_http
+def test_dashboard_json_routes_authenticate_before_body_and_cap_authenticated_input(make_client):
+    client = make_client()
+    for path in ("/api/chat", "/api/job"):
+        payload = {"message": "x" * 40_000}
+        assert client.post(path, json=payload).status_code == 403
+        assert client.post(path, json=payload, headers=AUTH).status_code == 413
+
+
+def test_local_routes_require_loopback_host_and_matching_origin():
+    assert is_local_request(_req(headers={"Origin": "http://127.0.0.1"}), env={})
+    assert not is_local_request(_req(headers={"Host": "outside.example.test"}), env={})
+    assert not is_local_request(_req(headers={"Origin": "https://outside.example.test"}), env={})

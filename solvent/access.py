@@ -19,14 +19,15 @@ import time
 from collections import deque
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlsplit
 
 #: Environment variable that controls how "local" is decided.
 #:
 #: * ``auto`` (default): the peer address is loopback **and** the request carries
-#:   no proxy/forwarding header.
+#:   a loopback Host, no foreign Origin, and no proxy/forwarding header.
 #: * ``never``: nothing is local.  Local-only routes then need a delivery token
 #:   (or the dashboard token).  Use this when a reverse proxy fronts the server.
-#: * ``peer``: legacy behaviour -- trust the peer address only.  Only safe when
+#: * ``peer``: allow forwarding headers, still requiring a loopback Host and no foreign Origin.  Only safe when
 #:   the server is *not* behind a proxy.
 LOCAL_ACCESS_ENV = "SOLVENT_LOCAL_ACCESS"
 
@@ -90,9 +91,28 @@ def is_local_request(request: Any, env: Mapping[str, str] | None = None) -> bool
         return False
     if not _is_loopback(peer_host(request)):
         return False
-    if mode == "peer":
-        return True
-    return not has_proxy_headers(request)
+    headers = getattr(request, "headers", {})
+    try:
+        host = urlsplit("//" + headers.get("host", ""))
+        host.port
+        if (
+            not host.hostname
+            or host.hostname == "testclient"
+            or host.path
+            or host.query
+            or host.fragment
+            or host.username is not None
+            or not _is_loopback(host.hostname)
+        ):
+            return False
+        origin = headers.get("origin")
+        if origin is not None:
+            url = getattr(request, "url", None)
+            if origin != f"{getattr(url, 'scheme', '')}://{host.netloc}":
+                return False
+    except ValueError:
+        return False
+    return mode == "peer" or not has_proxy_headers(request)
 
 
 class FailureLimiter:

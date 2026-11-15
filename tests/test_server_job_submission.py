@@ -54,7 +54,7 @@ def test_job_submission_routes_publish_each_agent_event_once(tmp_path, monkeypat
         assert [event["stage"] for event in events] == ["quote", "invoice"]
 
 
-def test_declined_job_publishes_one_event_without_recursing(tmp_path, monkeypatch):
+def test_invalid_public_job_does_not_generate_dashboard_work(tmp_path, monkeypatch):
     monkeypatch.setenv("SOLVENT_HOME", str(tmp_path))
     monkeypatch.setenv("SOLVENT_DASHBOARD_TOKEN", "d" * 32)
     monkeypatch.setattr(treasury, "DB_PATH", tmp_path / "solvent.db")
@@ -73,7 +73,7 @@ def test_declined_job_publishes_one_event_without_recursing(tmp_path, monkeypatc
     response = client.post("/jobs", json={"id": "invalid-job", "topic": ""})
     assert response.status_code == 200
     assert response.json()["stage"] == "declined"
-    assert [event["stage"] for event in published] == ["declined"]
+    assert published == []
     assert treasury.Treasury().get_job("invalid-job") is None
     assert treasury.Treasury().get_job("invalid-job") is None
 
@@ -183,3 +183,15 @@ def test_invalid_public_submission_is_declined_without_a_row(tmp_path, monkeypat
         response = client.post("/jobs", json=body)
         assert response.status_code == 422 or response.json()["stage"] == "declined"
     assert t.list_jobs() == []
+
+
+def test_public_admission_survives_restart_and_caps_checkout_work(tmp_path):
+    path = tmp_path / "intake.db"
+    store = treasury.Treasury(path)
+    for i in range(12):
+        assert store.admit_public_job(f"public-{i}", now=120) == "admitted"
+    reopened = treasury.Treasury(path)
+    assert reopened.admit_public_job("public-denied", now=121) == "limited"
+    assert reopened.get_job("public-denied") is None
+    assert reopened.admit_public_job("public-next-minute", now=180) == "admitted"
+    assert reopened.get_job("public-next-minute")["public_intake"] == 1

@@ -28,7 +28,7 @@ from .dashboard_status import (  # noqa: F401 — re-exported for existing calle
     h,
     safe_href,
 )
-from .paths import dashboard_html, data_dir
+from .paths import dashboard_html, data_dir, write_private_text
 from .treasury import fmt
 
 OUT = dashboard_html()
@@ -422,7 +422,7 @@ def render(snapshot: dict, log: list[dict], *, live: bool = False) -> Path:
 
     status_dir = data_dir()
     status_json_path = status_dir / "dashboard_status.json"
-    status_json_path.write_text(json.dumps(status_data, indent=2))
+    write_private_text(status_json_path, json.dumps(status_data, indent=2))
 
-    OUT.write_text(html)
+    write_private_text(OUT, html)
     return OUT

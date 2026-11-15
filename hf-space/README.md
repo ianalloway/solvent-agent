@@ -50,7 +50,7 @@ Or skip the UI: `pip install solvent-agent && solvent` (full demo) or `solvent q
 ## Deploy this Space (maintainers)
 
 1. Create a Space at <https://huggingface.co/new-space> (SDK: **Gradio**, hardware: CPU basic, public).
-2. Upload the files in this folder (`README.md`, `app.py`, `requirements.txt`) to the Space repo root, either in the web UI
+2. Upload the files in this folder (`README.md`, `app.py`, `demo_worker.py`, `requirements.txt`) to the Space repo root, either in the web UI
    (*Files → Add file → Upload files*) or with the CLI:
    ```bash
    hf auth login   # or: huggingface-cli login

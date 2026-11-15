@@ -293,3 +293,13 @@ def test_price_list_prices_whatever_catalogue_it_is_given(tmp_path):
     path = _write(tmp_path, {"retire": ["express", "standard"]})
     rows = price_list(PricingPolicy(), load_catalog(path))
     assert [row["slug"] for row in rows] == ["deep-dive"]
+
+
+def test_non_list_retire_is_reported_without_breaking_catalogue(tmp_path):
+    import json
+    from solvent.products import catalog_problems, load_catalog
+
+    override = tmp_path / "products.json"
+    override.write_text(json.dumps({"retire": True}))
+    assert load_catalog(override)
+    assert any("'retire' must be a list" in item for item in catalog_problems(override))

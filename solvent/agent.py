@@ -27,6 +27,9 @@ from .stripe_client import StripeClient
 from .treasury import Treasury
 
 
+MAX_RECENT_EVENTS = 500
+
+
 class Solvent:
     def __init__(
         self,
@@ -35,6 +38,7 @@ class Solvent:
         on_event: Callable | None = None,
         *,
         sync_payment: bool | None = None,
+        render_dashboard: bool = True,
     ):
         self.t = Treasury()
         if fresh:
@@ -57,19 +61,20 @@ class Solvent:
             self.pricing,
             on_event=self._capture_event,
             sync_payment=sync_payment,
+            render_dashboard=render_dashboard,
         )
 
     def _capture_event(self, event: dict):
         self.log.append(event)
+        if len(self.log) > MAX_RECENT_EVENTS:
+            del self.log[:-MAX_RECENT_EVENTS]
         if self.on_event:
             self.on_event(event)
 
     def _emit(self, **event):
         if "ts" not in event:
             event["ts"] = time.time()
-        self.log.append(event)
-        if self.on_event:
-            self.on_event(event)
+        self._capture_event(event)
         return event
 
     def handle_job(self, job: dict) -> dict:
@@ -78,7 +83,7 @@ class Solvent:
     def advance_job(self, job_id: str) -> dict:
         return self._runner.advance_job(job_id)
 
-    def enqueue_job(self, job: dict) -> dict:
+    def enqueue_job(self, job: dict, *, public: bool = False) -> dict:
         """Validate and persist a new job for async worker processing.
 
         Invalid input is declined before anything is written. A valid job then
@@ -87,9 +92,15 @@ class Solvent:
         """
         coerced, err = coerce_job(job)
         if err:
+            if public:
+                return {"stage": "declined", "job_id": _job_id_of(job, None), "reason": err}
             return self._emit(stage="declined", job_id=_job_id_of(job, None), reason=err)
         assert coerced is not None
-        if not self.t.insert_job(coerced["id"], "received"):
+        if public:
+            admission = self.t.admit_public_job(coerced["id"])
+            if admission != "admitted":
+                return {"stage": admission, "job_id": coerced["id"]}
+        elif not self.t.insert_job(coerced["id"], "received"):
             return {"stage": "declined", "job_id": coerced["id"], "reason": "job id already exists"}
         validated, err = screen_and_record(coerced, self.t)
         if err:
