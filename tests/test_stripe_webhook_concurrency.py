@@ -21,7 +21,10 @@ def _fire(client, payloads):
 
     def send(payload):
         barrier.wait()
-        codes.append(_post(client, payload).status_code)
+        try:
+            codes.append(_post(client, payload).status_code)
+        except Exception as exc:  # a server error must fail the test, not vanish
+            codes.append(f"{type(exc).__name__}: {exc}")
 
     threads = [threading.Thread(target=send, args=(p,)) for p in payloads]
     for thread in threads:
@@ -51,3 +54,32 @@ def test_simultaneous_distinct_events_for_one_session_book_once(client):
 
     assert len(codes) == THREADS and all(code == 200 for code in codes), codes
     assert _revenue(client, "race-pair") == [price]
+
+
+def test_webhook_log_survives_concurrent_writers():
+    """The log's one shared SQLite connection must not interleave transactions."""
+    from solvent.webhook_log import WebhookLog
+
+    log = WebhookLog(":memory:")
+    errors = []
+    barrier = threading.Barrier(THREADS)
+
+    def write(worker):
+        barrier.wait()
+        try:
+            for i in range(50):
+                event_id = f"evt_{worker}_{i}"
+                log.record(event_id, "checkout.session.completed", b"{}", "received", verified=True)
+                log.mark_processed(event_id)
+                log.get_status(event_id)
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+
+    threads = [threading.Thread(target=write, args=(w,)) for w in range(THREADS)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+
+    assert errors == []
+    assert log.stats()["processed"] == THREADS * 50
