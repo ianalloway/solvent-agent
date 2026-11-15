@@ -34,6 +34,18 @@ jobs:
           [[ $(git rev-parse HEAD) == "$GITHUB_SHA" ]]
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
 
+      - name: Require the protected publishing environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$GITHUB_REPOSITORY/environments/pypi" |
+            jq -e '(.protection_rules | any(.type == "required_reviewers")) and
+                   (.deployment_branch_policy.custom_branch_policies == true)' >/dev/null; then
+            echo "::error::Configure the pypi environment with required reviewers and a release tag policy before publishing."
+            exit 1
+          fi
+
       - name: Install verified build tools
         run: python -m pip install --require-hashes --only-binary=:all: -r release-build.txt
 
