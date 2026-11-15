@@ -241,7 +241,7 @@ If you use SOLVENT in research, please cite the software:
   author  = {Alloway, Ian},
   title   = {SOLVENT: a self-funding research agent with a profit gate and spend policy},
   year    = {2026},
-  version = {0.3.1},
+  version = {0.4.0},
   url     = {https://github.com/ianalloway/solvent-agent}
 }
 ```

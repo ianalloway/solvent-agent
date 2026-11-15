@@ -6,6 +6,15 @@ All notable changes to SOLVENT are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-15
+
+Minor release. **Breaking:** the Nano payment rail is removed (see
+*Removed* below and `docs/NANO_SETTLE.md`); anyone with outstanding Nano jobs
+must reconcile them before upgrading. Everything else is money-path and
+security hardening, with no config changes required for Stripe or simulation
+users. Seeded simulation/optimization results that involved declined jobs
+should be regenerated.
+
 ### Fixed
 - Checkout expiry requires confirmed Stripe closure and retains the original session; API errors and missing credentials no longer abandon payable jobs. Delayed payment success/failure events are handled, and valid terminal-job payments are atomically booked with a full refund hold without restarting fulfillment.
 - Cancelled jobs stay terminal across recovery, stale workers, payment-state repair and refund holds. Operator cancellation serializes with an active fulfillment attempt and rechecks its outcome before cancelling.
@@ -18,7 +27,7 @@ All notable changes to SOLVENT are recorded here. The format follows
 ### Removed
 - Retire the Nano payment and custody rail, its HTTP endpoints, CLI/tools, configuration and demo toggles. Stripe test-mode and offline simulation remain supported. Historical ledger, invoice and JSON records are retained; outstanding Nano jobs require operator reconciliation. See `docs/NANO_SETTLE.md`. No automated Nano payouts or refunds are performed.
 
-## [0.3.1] - YYYY-MM-DD
+## [0.3.1] - 2026-10-31
 
 Patch release: money-path hardening found in post-0.3.0 review. No new
 features, no config changes required.
@@ -205,7 +214,8 @@ earlier commit. It includes the offline demo, Stripe
 test-mode Payment Links, NVIDIA Nemotron fulfilment, the guardrail sandbox,
 `serve` / `worker` / `telegram`, and the treasury dashboard.
 
-[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/ianalloway/solvent-agent/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ianalloway/solvent-agent/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/ianalloway/solvent-agent/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ianalloway/solvent-agent/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/ianalloway/solvent-agent/compare/v0.2.1...v0.2.2
