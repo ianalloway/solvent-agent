@@ -32,6 +32,8 @@ class SolventConfig:
     telegram_dm_policy: str = "pairing"
     telegram_allow_from: list[str] | None = None
 
+    gateway_password_enabled: bool = False
+
     rate_burst_limit: int = 5
     rate_hourly_limit: int = 30
     rate_daily_limit: int = 200

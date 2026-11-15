@@ -138,12 +138,32 @@ metrics, including the customer email and costs.
 | Route | Access |
 |-------|--------|
 | `GET /health` | Public: `{status, version}`. With the dashboard token it also reports `balance_cents`. |
+| `GET /.well-known/solvent.json` | Public: server name, version, capabilities, endpoint map, and whether a gateway password is required. |
 | `POST /jobs`, `GET /jobs/{id}` | Public intake and minimal status, as above. |
 | `POST /webhooks/stripe` | Public, but the Stripe signature is verified first. |
-| `POST /api/pair/verify` | Public, but only a valid, unexpired, single-use pairing token succeeds. After 5 failed attempts from one peer (or 60 overall) it answers `429` for a few minutes. |
+| `POST /api/pair/verify` | Gateway password (if set), then a valid single-use pairing token. After 5 failed attempts from one peer (or 60 overall) it answers `429` for a few minutes. |
 | `GET /briefs/{id}`, `GET /api/briefs/{id}`, `GET /api/receipt/{id}` | Delivery token (`?token=`), or a genuinely local request. |
 | `GET /api/briefs` | Genuinely local requests only. |
-| Everything else, including `GET /api/pair/qr` | Dashboard token. |
+| Everything else, including `GET /api/pair/qr`, `GET /api/settings` | Dashboard token. |
+
+### Gateway password (OpenClaw "Gateway Password" field)
+
+Set `SOLVENT_GATEWAY_PASSWORD` to protect the OpenClaw-facing endpoints from
+unauthenticated access. The app sends it as `Authorization: Bearer <password>`
+or in the `X-Solvent-Gateway-Password` header. Without it set, those endpoints
+behave as before. The discovery document (`/.well-known/solvent.json`) advertises
+whether a password is required so the app can prompt before connecting.
+
+```bash
+export SOLVENT_GATEWAY_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+```
+
+### Settings overview
+
+`GET /api/settings` (dashboard token required) returns the live server
+configuration as JSON: host, port, TLS, model, rate limits, Telegram enabled,
+Stripe test mode, and whether a gateway password is set. Useful for the
+OpenClaw app settings screen and for operator audit.
 
 ### OpenClaw pairing
 
