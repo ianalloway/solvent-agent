@@ -27,7 +27,12 @@ git push origin vX.Y.Z
 gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | sed '$d')
 ```
 
-Publishing the Release triggers the PyPI workflow. Watch it finish.
+Publishing the Release triggers the PyPI workflow after it verifies the tag
+matches the package version and the commit is on `main`. The build uses
+`release-build.txt` with verified hashes. Configure GitHub's `pypi` environment
+to require a release maintainer's approval and allow only release version tags;
+protect those tags against unapproved creation and updates. Configure the PyPI
+trusted publisher to require that same environment. Watch the workflow finish.
 
 ## 3. After PyPI shows X.Y.Z
 

@@ -42,7 +42,7 @@ class TestTools(unittest.TestCase):
 
         import solvent.tools as t
 
-        with patch.object(t.urllib.request, "urlopen", side_effect=OSError("no net")):
+        with patch.object(t.OPENER, "open", side_effect=OSError("no net")):
             out = t.market_data("NVDA", live=True)
         self.assertIn("NVDA", out)
         self.assertIn("offline stub", out)

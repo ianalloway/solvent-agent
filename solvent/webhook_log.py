@@ -31,7 +31,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .paths import config_path
+from .paths import config_path, private_file
 
 
 class WebhookLog:
@@ -60,6 +60,7 @@ class WebhookLog:
             self._db_path = ":memory:"
         else:
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            private_file(Path(db_path))
             self._db_path = db_path
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row

@@ -35,15 +35,9 @@ Stripe checkout and the analyst brief are deterministic stubs, so the numbers ar
 ## How it works
 
 - `index.html` + `app.js` + `style.css`: plain static page, no build step.
-- On load it fetches [Pyodide](https://pyodide.org) (CPython compiled to WebAssembly) from the official jsDelivr CDN,
-  then installs the pure-Python `solvent-agent` wheel from PyPI with `micropip` (pinned: `solvent-agent==0.3.0`).
-- `space.py` holds the same logic as the Gradio version in [`../hf-space/app.py`](../hf-space/app.py), with the gradio UI
-  removed; `app.js` calls it through a tiny JSON bridge and renders the results.
-- Network: only Pyodide assets (`cdn.jsdelivr.net`) and the wheel (`pypi.org`, `files.pythonhosted.org`). No keys, no server,
-  and nothing you type is uploaded. First visit downloads Pyodide (several MB, cached by the browser afterwards).
-
-**Offline wheel (optional fallback):** if PyPI is unreachable, `app.js` tries `wheels/solvent_agent-0.3.0-py3-none-any.whl` next to `index.html`.
-Drop that file from `pip download solvent-agent==0.3.0 --no-deps -d wheels` into a `wheels/` folder to use it.
+- On load it fetches the pinned Pyodide runtime from jsDelivr and the pinned pure-Python SOLVENT wheel from PyPI. The browser verifies the hashes of both scripts and every downloaded runtime and wheel asset before use.
+- `space.py` runs the demo and quote calculations offline; `app.js` renders the results. No keys are needed, and the demo does not upload what you type.
+- If you update the runtime or wheel, update the reviewed URLs and integrity hashes together. First visit downloads several MB.
 
 ## Run locally
 
@@ -57,7 +51,7 @@ python -m http.server 8000   # then open http://localhost:8000
 ## Deploy this Space (maintainers)
 
 Create a Space with SDK **Static** (free, no hardware) and upload `README.md`, `index.html`, `app.js`, `style.css` and
-`space.py` to its root. No secrets are needed; do not add API keys. Bump the version pin in `app.js` when a new release ships.
+`space.py` to its root. No secrets are needed; do not add API keys. Update the version and integrity pins together when a new release ships.
 
 ## Links
 

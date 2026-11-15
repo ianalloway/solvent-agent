@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import json
 import os
@@ -11,6 +12,7 @@ import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import parse_qs
 
 from . import __version__
 from .access import FailureLimiter, is_local_request, peer_host
@@ -38,6 +40,10 @@ except ImportError:
 #: Largest request body accepted on the public intake / pairing routes.
 MAX_JOB_BODY_BYTES = 32 * 1024
 MAX_PAIR_BODY_BYTES = 1024
+MAX_CHAT_BODY_BYTES = 16 * 1024
+DASHBOARD_SESSION_TTL = 3600
+DASHBOARD_COOKIE = "solvent_dashboard_session"
+_PAIR_TOKEN = re.compile(r"OC-[0-9A-F]{32}")
 
 #: Bound raw Stripe events before signature verification or JSON parsing.
 MAX_STRIPE_WEBHOOK_BODY_BYTES = 1024 * 1024
@@ -160,22 +166,42 @@ def _require_fastapi():
 def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     FastAPI, HTTPException, HTMLResponse, JSONResponse, StreamingResponse = _require_fastapi()
     hub = EventHub()
-    agent = Solvent(seed_cents=seed_cents, fresh=fresh, sync_payment=False)
+    agent = Solvent(seed_cents=seed_cents, fresh=fresh, sync_payment=False, render_dashboard=False)
     gateway = Gateway(agent=agent)
     stripe = StripeClient()
     webhook_log = WebhookLog()
     status_lock = threading.Lock()
     last_status_json = ""
+    status_dirty = threading.Event()
     dashboard_token = os.environ.get("SOLVENT_DASHBOARD_TOKEN", "").strip()
 
-    def _has_dashboard_auth(req: Request) -> bool:
-        token = req.headers.get("X-Solvent-Dashboard-Token", "") or req.query_params.get(
-            "token", ""
-        )
-        # Compare as bytes: compare_digest raises TypeError on non-ASCII str.
+    def _matches_dashboard_token(token: str) -> bool:
         return bool(dashboard_token) and secrets.compare_digest(
             token.encode("utf-8"), dashboard_token.encode("utf-8")
         )
+
+    def _sign_dashboard_session(payload: str) -> str:
+        return hmac.digest(
+            dashboard_token.encode(), b"dashboard-session:" + payload.encode(), "sha256"
+        ).hex()
+
+    def _same_origin(req: Request) -> bool:
+        return req.headers.get("origin") == f"{req.url.scheme}://{req.url.netloc}"
+
+    def _has_dashboard_auth(req: Request) -> bool:
+        if _matches_dashboard_token(req.headers.get("X-Solvent-Dashboard-Token", "")):
+            return True
+        cookie = req.cookies.get(DASHBOARD_COOKIE, "")
+        if not dashboard_token or not re.fullmatch(
+            r"[0-9]{1,12}\.[0-9a-f]{32}\.[0-9a-f]{64}", cookie
+        ):
+            return False
+        expires, nonce, signature = cookie.split(".")
+        if int(expires) <= time.time() or not hmac.compare_digest(
+            signature, _sign_dashboard_session(f"{expires}.{nonce}")
+        ):
+            return False
+        return req.method in ("GET", "HEAD", "OPTIONS") or _same_origin(req)
 
     def _require_dashboard_auth(req: Request) -> None:
         if not _has_dashboard_auth(req):
@@ -210,12 +236,10 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         body = await _read_limited_body(req, limit)
         try:
             return json.loads(body or b"null")
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):
             raise HTTPException(400, "request body must be valid JSON") from None
 
-    # Pairing tokens are short, so guessing them is slowed down: a few failed
-    # verifications per peer, and a generous global ceiling (the peer address is
-    # the proxy's when behind one, so a per-peer cap alone is not enough).
+    # Throttle failed pairing attempts without locking out valid tokens.
     pair_fail_peer = FailureLimiter(max_failures=5, window=300.0)
     pair_fail_global = FailureLimiter(max_failures=60, window=600.0)
 
@@ -241,8 +265,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         hub.publish("status", {"data": data})
 
     def _on_agent_event(event: dict) -> None:
-        data = _refresh_status()
-        hub.publish("agent_event", {"event": event, "data": data})
+        status_dirty.set()
+        hub.publish("agent_event", {"event": event})
 
     # The runner already calls agent._capture_event, which logs then forwards here.
     agent.on_event = _on_agent_event
@@ -272,6 +296,9 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             last_mtime = 0.0
             while True:
                 try:
+                    if status_dirty.is_set() and hub.has_subscribers():
+                        status_dirty.clear()
+                        _publish_status()
                     if status_path.is_file():
                         mtime = status_path.stat().st_mtime
                         if mtime > last_mtime:
@@ -311,10 +338,12 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):
-        # Query-string dashboard/delivery tokens must not leak via Referer to
+        # Delivery tokens must not leak via Referer to
         # third-party assets (fonts, analytics).
         response = await call_next(request)
         response.headers.setdefault("Referrer-Policy", "no-referrer")
+        if _has_dashboard_auth(request):
+            response.headers.setdefault("Cache-Control", "no-store")
         return response
 
     # ------------------------------------------------------------------ #
@@ -454,27 +483,77 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         """Redeem a single-use pairing token; gateway password checked first."""
         _require_gateway_password(req)
         peer = peer_host(req) or "unknown"
-        if pair_fail_peer.blocked(peer) or pair_fail_global.blocked("*"):
-            raise HTTPException(
-                429, "too many failed attempts; try again later", headers={"Retry-After": "300"}
-            )
         body = await _read_limited_json(req, MAX_PAIR_BODY_BYTES)
         token = body.get("token") if isinstance(body, dict) else None
         if not isinstance(token, str) or not token.strip():
             raise HTTPException(400, "token required")
-        if not agent.t.verify_openclaw_token(token.strip()):
-            pair_fail_peer.record_failure(peer)
-            pair_fail_global.record_failure("*")
-            raise HTTPException(403, "invalid or expired token")
-        return {"verified": True}
+        token = token.strip()
+        # Only 128-bit issued tokens reach SQLite. Verify valid tokens even when
+        # invalid attempts share the same socket peer through a reverse proxy.
+        if _PAIR_TOKEN.fullmatch(token) and agent.t.verify_openclaw_token(token):
+            return {"verified": True}
+        if pair_fail_peer.blocked(peer) or pair_fail_global.blocked("*"):
+            raise HTTPException(
+                429, "too many failed attempts; try again later", headers={"Retry-After": "300"}
+            )
+        pair_fail_peer.record_failure(peer)
+        pair_fail_global.record_failure("*")
+        raise HTTPException(403, "invalid or expired token")
+
+    @app.post("/dashboard/login")
+    async def dashboard_login(req: Request):
+        from starlette.responses import RedirectResponse
+
+        if not _same_origin(req):
+            raise HTTPException(403, "dashboard login must be same-origin")
+        if req.url.scheme != "https" and not is_local_request(req):
+            raise HTTPException(403, "dashboard login requires HTTPS outside localhost")
+        if req.headers.get("content-type", "").split(";")[0] != "application/x-www-form-urlencoded":
+            raise HTTPException(415, "expected dashboard login form")
+        try:
+            values = parse_qs(
+                (await _read_limited_body(req, 2048)).decode("ascii"), max_num_fields=1
+            )
+        except (ValueError, UnicodeDecodeError):
+            raise HTTPException(400, "invalid dashboard login form") from None
+        if not _matches_dashboard_token(values.get("token", [""])[0]):
+            raise HTTPException(403, "invalid dashboard token")
+        expires = int(time.time()) + DASHBOARD_SESSION_TTL
+        value = f"{expires}.{secrets.token_hex(16)}"
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(
+            DASHBOARD_COOKIE,
+            f"{value}.{_sign_dashboard_session(value)}",
+            max_age=DASHBOARD_SESSION_TTL,
+            httponly=True,
+            samesite="strict",
+            secure=req.url.scheme == "https",
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/")
     def dashboard_page(req: Request):
-        _require_dashboard_auth(req)
+        if not _has_dashboard_auth(req):
+            if "token" in req.query_params or not dashboard_token:
+                raise HTTPException(403, "invalid dashboard token")
+            return HTMLResponse(
+                '<!doctype html><html lang="en"><meta charset="utf-8">'
+                "<title>SOLVENT dashboard sign-in</title><h1>SOLVENT dashboard</h1>"
+                '<form action="/dashboard/login" method="post">'
+                '<label>Dashboard token <input name="token" type="password" required '
+                'autocomplete="current-password" maxlength="512"></label> '
+                "<button>Sign in</button></form></html>",
+                status_code=403,
+                headers={
+                    "Cache-Control": "no-store",
+                    "Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+                },
+            )
         from . import dashboard
 
         path = dashboard.render(agent.t.snapshot(), agent.log, live=True)
-        return HTMLResponse(path.read_text(encoding="utf-8"))
+        return HTMLResponse(path.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
 
     @app.get("/api/status")
     def api_status(req: Request):
@@ -490,7 +569,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         async def stream():
             try:
                 yield EventHub.sse_format({"type": "hello", "ts": time.time()})
-                while True:
+                while _has_dashboard_auth(request):
                     try:
                         msg = await asyncio.wait_for(q.get(), timeout=15.0)
                         if msg.get("type") == "chat":
@@ -508,8 +587,13 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return StreamingResponse(stream(), media_type="text/event-stream")
 
     @app.post("/api/chat")
-    async def api_chat(body: ChatBody, req: Request):
+    async def api_chat(req: Request):
         _require_dashboard_auth(req)
+        raw = await _read_limited_json(req, MAX_CHAT_BODY_BYTES)
+        try:
+            body = ChatBody.model_validate(raw)
+        except ValueError:
+            raise HTTPException(422, "invalid chat fields") from None
         message = body.message.strip()
         if not message:
             raise HTTPException(400, "message required")
@@ -519,9 +603,13 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return {"reply": reply, "session_id": session_id}
 
     @app.post("/api/job")
-    async def api_job(body: JobBody, req: Request):
+    async def api_job(req: Request):
         _require_dashboard_auth(req)
-        payload = body.model_dump(exclude_none=True)
+        raw = await _read_limited_json(req, MAX_JOB_BODY_BYTES)
+        try:
+            payload = JobBody.model_validate(raw).model_dump(exclude_none=True)
+        except ValueError:
+            raise HTTPException(422, "invalid job fields") from None
         if not payload.get("id"):
             import uuid
 
@@ -559,8 +647,15 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             import uuid
 
             payload["id"] = "J" + uuid.uuid4().hex[:8]
-        result = agent.enqueue_job(payload)
-        _publish_status()
+        from starlette.concurrency import run_in_threadpool
+
+        result = await run_in_threadpool(agent.enqueue_job, payload, public=True)
+        if result.get("stage") == "limited":
+            raise HTTPException(
+                429, "public intake capacity reached", headers={"Retry-After": "60"}
+            )
+        if result.get("stage") == "duplicate":
+            raise HTTPException(409, "job id already exists; omit id to get a new one")
         return JSONResponse(public_job_result(result, payload["id"]))
 
     @app.get("/jobs/{job_id}")
@@ -792,6 +887,9 @@ def main():
         import uvicorn
     except ImportError as exc:
         raise RuntimeError('uvicorn required: pip install -e ".[serve]"') from exc
+    from .startup import apply_service_config
+
+    apply_service_config()
     app = create_app(seed_cents=args.seed_cents, fresh=args.reset_state)
     uvicorn.run(app, host=args.host, port=args.port)
 

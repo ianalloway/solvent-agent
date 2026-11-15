@@ -1,5 +1,13 @@
 // Shared helpers: boot Pyodide, call the Python bridge, render tiny Markdown + tables.
 const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/";
+const WHEEL_URL = "https://files.pythonhosted.org/packages/e3/5d/364fdbe54e2420728c99b8c40aa3e0e93d4f97abead26b4ecfb0ac3343ef/solvent_agent-0.3.1-py3-none-any.whl";
+const WHEEL_INTEGRITY = "sha256-YJZV0tccuOYrB2osjFthJdIDb1FR/juiBr0h2bjkszY=";
+const runtimeIntegrity = new Map(Object.entries({
+  "pyodide-lock.json": "sha384-kW8BHvD8flyCLy52v2Ca0t5mO5oCeKABys/zXNtKhH8+Mgxf/rnKFeksLsjy0y5Y",
+  "pyodide.asm.wasm": "sha384-nfuXSg0f8YmFmBVMelAoom75Yji4r0iU2RrxMHYAa+AIt0JGdHWbau1imflLNNEu",
+  "python_stdlib.zip": "sha384-3iWptIFECvk1VbDttuo8ZRZG8fk0MaHphrxgsJg6Rl40GnKqRLPRRuA7h+648E5D",
+  "sqlite3-1.0.0-cp313-cp313-pyodide_2025_0_wasm32.whl": "sha256-vJQpqJgBbwQCcrV+RMO+t86/oYImzIVtC0q8qIyM7qc=",
+}).map(([filename, integrity]) => [PYODIDE_URL + filename, integrity]));
 let py = null;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -50,20 +58,35 @@ function table(headers, rows) {
 
 function status(msg, cls = "") { const el = $("#status"); el.textContent = msg; el.className = cls; }
 
-async function boot(pkg, wheelFile) {
+async function boot() {
+  const pkg = "solvent-agent 0.3.1";
   const t0 = performance.now();
-  status("Loading Python (Pyodide, ~10 MB on first visit)…");
-  py = await loadPyodide({ indexURL: PYODIDE_URL });
-  await py.loadPackage(["micropip", "sqlite3"]);
-  status(`Installing ${pkg} from PyPI…`);
-  const micropip = py.pyimport("micropip");
+  status("Loading verified Python runtime (Pyodide)…");
+  // Pyodide fetches its WASM, stdlib, and extension wheels itself. Bind each
+  // URL to its reviewed bytes before its fetch can be sent; unknown fetches
+  // during runtime initialization fail closed.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input, location.href).href;
+    const integrity = runtimeIntegrity.get(url);
+    if (!integrity) throw new Error("Unexpected Python runtime resource");
+    return originalFetch.call(globalThis, url, { ...init, integrity, redirect: "error" });
+  };
   try {
-    await micropip.install(pkg);
-  } catch (err) {
-    // Fallback: a wheel bundled next to index.html (see README "Offline wheel").
-    console.warn("PyPI install failed, trying bundled wheel", err);
-    await micropip.install(new URL(`wheels/${wheelFile}`, location.href).href);
+    py = await loadPyodide({ indexURL: PYODIDE_URL });
+    await py.loadPackage("sqlite3", { checkIntegrity: true });
+  } finally {
+    globalThis.fetch = originalFetch;
   }
+  status(`Loading verified ${pkg} wheel…`);
+  const wheel = await fetch(WHEEL_URL, { integrity: WHEEL_INTEGRITY, redirect: "error" });
+  if (!wheel.ok) throw new Error("Verified SOLVENT wheel is unavailable");
+  py.FS.writeFile("/tmp/solvent-wheel.zip", new Uint8Array(await wheel.arrayBuffer()));
+  py.runPython(`
+import sysconfig, zipfile
+with zipfile.ZipFile("/tmp/solvent-wheel.zip") as wheel:
+    wheel.extractall(sysconfig.get_path("purelib"))
+`);
   const src = await (await fetch("space.py")).text();
   py.FS.writeFile("/home/pyodide/space.py", src);
   py.runPython("import space");
@@ -118,4 +141,4 @@ wire("#quote", () => {
   $("#cli").textContent = cli;
   $("#clibox").hidden = false;
 });
-boot("solvent-agent==0.3.0", "solvent_agent-0.3.0-py3-none-any.whl").catch((e) => status("Failed to load Python: " + e.message, "err"));
+boot().catch((e) => status("Failed to load Python: " + e.message, "err"));

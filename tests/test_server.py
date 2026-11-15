@@ -32,7 +32,7 @@ class TestHostedBriefs(unittest.TestCase):
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
 
-        client = TestClient(create_app())
+        client = TestClient(create_app(), base_url="http://127.0.0.1")
         token = make_delivery_token("victim")
         response = client.get(f"/briefs/victim?token={token}")
         self.assertEqual(response.status_code, 404)
@@ -51,7 +51,7 @@ class TestHostedBriefs(unittest.TestCase):
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
 
-        client = TestClient(create_app())
+        client = TestClient(create_app(), base_url="http://127.0.0.1")
 
         listed = client.get("/api/briefs")
         self.assertEqual(listed.status_code, 200)
@@ -79,10 +79,10 @@ class TestHostedBriefs(unittest.TestCase):
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
 
-        client = TestClient(create_app(fresh=True))
+        client = TestClient(create_app(fresh=True), base_url="http://127.0.0.1")
         self.assertEqual(client.get("/health").status_code, 200)
         self.assertEqual(client.get("/api/status").status_code, 403)
-        dash = client.get("/?token=" + "d" * 32)
+        dash = client.get("/", headers={"X-Solvent-Dashboard-Token": "d" * 32})
         self.assertEqual(dash.status_code, 200)
         self.assertIn("Agent Chat", dash.text)
         status = client.get("/api/status", headers={"X-Solvent-Dashboard-Token": "d" * 32})
@@ -100,13 +100,13 @@ class TestHostedBriefs(unittest.TestCase):
         brief_marker = "PRIVATE_DASHBOARD_LEAK_SENTINEL"
         self.report_path.write_text(f"# Private brief\n{brief_marker}", encoding="utf-8")
 
-        client = TestClient(create_app(fresh=True))
+        client = TestClient(create_app(fresh=True), base_url="http://127.0.0.1")
         status = client.get("/api/status", headers={"X-Solvent-Dashboard-Token": "d" * 32})
         self.assertEqual(status.status_code, 200)
         self.assertEqual(status.json()["briefs"].get("victim-job"), "")
         self.assertNotIn(brief_marker, status.text)
 
-        dash = client.get("/?token=" + "d" * 32)
+        dash = client.get("/", headers={"X-Solvent-Dashboard-Token": "d" * 32})
         self.assertEqual(dash.status_code, 200)
         self.assertIn('"victim-job": ""', dash.text)
         self.assertNotIn(brief_marker, dash.text)
@@ -117,7 +117,7 @@ class TestHostedBriefs(unittest.TestCase):
         except ImportError:
             self.skipTest("FastAPI test client is not installed")
 
-        client = TestClient(create_app(fresh=True))
+        client = TestClient(create_app(fresh=True), base_url="http://127.0.0.1")
         self.assertEqual(client.post("/api/chat", json={"message": "/status"}).status_code, 403)
         response = client.post(
             "/api/chat",

@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from . import llm_backend, spending, tools
+from .provider_http import OPENER, read_limited
 from .guardrails import GuardrailError
 from .resource_budget import BudgetExceeded
 
@@ -105,8 +106,8 @@ def _live_request(system: str, user: str) -> dict:
         data=body,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read())
+    with OPENER.open(req, timeout=60) as r:
+        return json.loads(read_limited(r, 2_000_000))
 
 
 def _live_complete(system: str, user: str) -> tuple[str, dict]:

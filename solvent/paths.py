@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from pathlib import Path
 
 _PKG_DIR = Path(__file__).resolve().parent
@@ -93,7 +94,9 @@ def base_dir() -> Path:
 def data_dir() -> Path:
     """Directory for the treasury DB, logs, status JSON, outboxes, etc."""
     d = base_dir() / "data"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, mode=0o700, exist_ok=True)
+    if os.name == "posix" and d.stat().st_mode & 0o077:
+        d.chmod(0o700)
     return d
 
 
@@ -110,7 +113,9 @@ def config_path(name: str) -> Path:
 def reports_dir() -> Path:
     """Directory for generated research-brief deliverables."""
     d = data_dir() / "reports"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, mode=0o700, exist_ok=True)
+    if os.name == "posix" and d.stat().st_mode & 0o077:
+        d.chmod(0o700)
     return d
 
 
@@ -120,3 +125,27 @@ def db_path() -> Path:
 
 def dashboard_html() -> Path:
     return base_dir() / "treasury_dashboard.html"
+
+
+def private_file(path: Path) -> None:
+    """Create an owner-only file or narrow access to an existing artifact."""
+    fd = os.open(path, os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+    finally:
+        os.close(fd)
+
+
+def write_private_text(path: Path, text: str) -> None:
+    """Atomically replace a text artifact without a public-permission window."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", dir=path.parent, encoding="utf-8", delete=False
+    ) as f:
+        tmp = Path(f.name)
+        try:
+            f.write(text)
+            f.close()
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)

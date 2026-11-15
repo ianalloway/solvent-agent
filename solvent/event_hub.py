@@ -30,19 +30,27 @@ class EventHub:
             if q in self._queues:
                 self._queues.remove(q)
 
+    def has_subscribers(self) -> bool:
+        with self._lock:
+            return bool(self._queues)
+
+    @staticmethod
+    def _offer(q: asyncio.Queue, message: dict) -> None:
+        try:
+            q.put_nowait(message)
+        except asyncio.QueueFull:
+            pass
+
     def publish(self, event_type: str, payload: dict[str, Any] | None = None) -> None:
         message = {"type": event_type, **(payload or {})}
         with self._lock:
             targets = list(self._queues)
             loop = self._loop
         for q in targets:
-            try:
-                if loop and loop.is_running():
-                    loop.call_soon_threadsafe(q.put_nowait, message)
-                else:
-                    q.put_nowait(message)
-            except asyncio.QueueFull:
-                pass
+            if loop and loop.is_running():
+                loop.call_soon_threadsafe(self._offer, q, message)
+            else:
+                self._offer(q, message)
 
     @staticmethod
     def sse_format(data: dict) -> str:

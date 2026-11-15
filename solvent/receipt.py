@@ -29,7 +29,7 @@ def build_receipt(job: dict, pnl_cents: int, balance_cents: int, *, internal: bo
         Multi-line string suitable for Telegram Markdown or plain text.
     """
     job_id: str = job.get("id", "")
-    topic: str = (job.get("topic") or "")[:80]
+    topic: str = " ".join((job.get("topic") or "").split())[:80]
     status: str = job.get("status", "unknown")
     revenue_cents: int = int(job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0)
 
@@ -68,7 +68,7 @@ def build_html_receipt(
         Full HTML document string.
     """
     job_id: str = job.get("id", "")
-    topic: str = (job.get("topic") or "")[:80]
+    topic: str = " ".join((job.get("topic") or "").split())[:80]
     status: str = job.get("status", "unknown")
     revenue_cents: int = int(job.get("revenue_cents", 0) or job.get("budget_cents", 0) or 0)
 
@@ -129,7 +129,7 @@ def build_refund_receipt(job: dict, refund_cents: int) -> str:
         Multi-line receipt string mentioning the refund.
     """
     job_id: str = job.get("id", "")
-    topic: str = (job.get("topic") or "")[:80]
+    topic: str = " ".join((job.get("topic") or "").split())[:80]
     reason: str = (job.get("error_reason") or "fulfillment error")[:120]
 
     return (

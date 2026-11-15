@@ -143,7 +143,9 @@ def open_checkouts(
                     else "expire"
                     if should_expire
                     else "remind"
-                    if sent < rules.max_reminders and age >= due_at
+                    if job.get("public_intake") == 0
+                    and sent < rules.max_reminders
+                    and age >= due_at
                     else "wait"
                 ),
             }

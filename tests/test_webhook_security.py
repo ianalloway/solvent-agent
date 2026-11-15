@@ -372,7 +372,7 @@ def test_webhook_admin_routes_require_dashboard_token(make_client, method, path)
     assert call(path, headers={"X-Solvent-Dashboard-Token": "wrong"}).status_code in (401, 403)
     assert call(path + "?token=wrong").status_code in (401, 403)
     assert call(path, headers=AUTH).status_code == 200
-    assert call(path + f"?token={TOKEN}").status_code == 200
+    assert call(path + f"?token={TOKEN}").status_code in (401, 403)
 
 
 def test_webhook_admin_routes_denied_when_no_token_configured(make_client, monkeypatch):

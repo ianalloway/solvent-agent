@@ -115,7 +115,7 @@ def screen_job(
     *,
     now: float | None = None,
 ) -> Screen:
-    """Screen one inbound job. Never raises; a screen failure lets work through."""
+    """Screen one inbound job before spending resources or creating a checkout."""
     rules = policy or load_policy()
     stamp = now if now is not None else time.time()
     job_id = str(job.get("id") or "")
@@ -144,18 +144,17 @@ def screen_job(
             f"{fmt(rules.max_budget_cents)}; needs an operator",
         )
 
+    topic = normalise_topic(str(job.get("topic") or ""))
+    duplicate_cutoff = stamp - rules.duplicate_window_minutes * 60
     try:
         history = [
             row
-            for row in treasury.list_jobs()
+            for row in treasury.recent_jobs_for_customer(email, min(duplicate_cutoff, stamp - 3600))
             if str(row.get("id")) != job_id
-            and (row.get("customer_email") or "").strip().lower() == email
         ]
     except Exception:
-        return Screen(True, None, "accepted (no history available)")
+        return Screen(False, "history_unavailable", "intake history unavailable")
 
-    topic = normalise_topic(str(job.get("topic") or ""))
-    duplicate_cutoff = stamp - rules.duplicate_window_minutes * 60
     for row in history:
         if row.get("status") in DEAD_STATUSES:
             continue
