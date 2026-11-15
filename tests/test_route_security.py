@@ -508,6 +508,7 @@ def test_remote_peer_is_never_local(make_client, brief):
 #: Routes intentionally reachable without the dashboard token, and why.
 PUBLIC_ROUTES = {
     ("GET", "/health"): "liveness probe; balance only with the token",
+    ("GET", "/.well-known/solvent.json"): "discovery document; static capabilities, no secrets",
     ("POST", "/api/pair/verify"): "single-use pairing token is the credential; attempt-limited",
     ("POST", "/jobs"): "public intake; input-limited, whitelisted fields, sanitized reply",
     ("GET", "/jobs/{job_id}"): "id + status only without the token",
