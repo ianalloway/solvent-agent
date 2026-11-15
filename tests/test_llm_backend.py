@@ -195,6 +195,51 @@ class LLMBackendTest(unittest.TestCase):
             with self.assertRaises(llm_backend.LLMBackendError):
                 llm_backend.complete("s", "u")
 
+    def test_non_loopback_http_rejected_before_request(self):
+        unsafe_urls = (
+            "http://example.com/v1",
+            "http://192.0.2.1/v1",
+            "http://localhost@example.com/v1",
+        )
+        for url in unsafe_urls:
+            with self.subTest(url=url), mock.patch.dict(
+                "os.environ",
+                {"SOLVENT_LLM_BASE_URL": url, "SOLVENT_LLM_API_KEY": SECRET},
+                clear=True,
+            ), mock.patch.object(llm_backend._OPENER, "open") as opened:
+                with self.assertRaisesRegex(llm_backend.LLMBackendError, "must use https"):
+                    llm_backend.complete("confidential system prompt", "confidential user prompt")
+                opened.assert_not_called()
+
+    def test_loopback_http_forms_remain_allowed(self):
+        for url in (
+            "http://localhost:11434/v1/chat/completions",
+            "http://127.0.0.1:11434/v1/chat/completions",
+            "http://[::1]:11434/v1/chat/completions",
+        ):
+            with self.subTest(url=url):
+                llm_backend._validate_endpoint_url(url)
+
+    def test_remote_https_reaches_backend_with_key(self):
+        payload = json.dumps(
+            {"choices": [{"message": {"content": "secure response"}}]}
+        ).encode()
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = payload
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "SOLVENT_LLM_BASE_URL": "https://api.example.com/v1",
+                "SOLVENT_LLM_API_KEY": SECRET,
+            },
+            clear=True,
+        ), mock.patch.object(llm_backend._OPENER, "open", return_value=response) as opened:
+            text, usage = llm_backend.complete("system", "user")
+        self.assertEqual((text, usage), ("secure response", {}))
+        request = opened.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api.example.com/v1/chat/completions")
+        self.assertEqual(request.get_header("Authorization"), f"Bearer {SECRET}")
+
     def test_describe_never_includes_key(self):
         with self._env(SOLVENT_LLM_API_KEY=SECRET):
             self.assertNotIn(SECRET, llm_backend.describe())

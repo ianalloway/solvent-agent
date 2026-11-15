@@ -15,10 +15,12 @@ Authorization header; it is never logged, echoed in errors, or written to the br
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from . import spending
@@ -81,12 +83,34 @@ def describe() -> str:
     return f"{model()} @ {base_url()} (api key set: {key})"
 
 
+def _validate_endpoint_url(url: str) -> None:
+    """Require encryption unless the backend is confined to this machine."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        hostname = parsed.hostname
+    except ValueError:
+        raise LLMBackendError("SOLVENT_LLM_BASE_URL is not a valid HTTP(S) URL") from None
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        raise LLMBackendError("SOLVENT_LLM_BASE_URL must use http:// or https://")
+    if parsed.scheme == "https":
+        return
+    if hostname == "localhost":
+        return
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        address = None
+    if address is None or not address.is_loopback:
+        raise LLMBackendError(
+            "SOLVENT_LLM_BASE_URL must use https:// for non-loopback hosts"
+        )
+
+
 @spending.metered_model
 def complete(system: str, user: str) -> tuple[str, dict]:
     """One chat completion. Returns (text, usage). Raises LLMBackendError on any failure."""
     url = base_url() + "/chat/completions"
-    if not url.startswith(("http://", "https://")):
-        raise LLMBackendError("SOLVENT_LLM_BASE_URL must start with http:// or https://")
+    _validate_endpoint_url(url)
     body = json.dumps(
         {
             "model": model(),
