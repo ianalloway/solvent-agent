@@ -242,6 +242,10 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
     # Throttle failed pairing attempts without locking out valid tokens.
     pair_fail_peer = FailureLimiter(max_failures=5, window=300.0)
     pair_fail_global = FailureLimiter(max_failures=60, window=600.0)
+    # Separate budget for the gateway password. Unlike a 128-bit pairing token
+    # it may be weak, so once blocked it is not checked at all.
+    gateway_fail_peer = FailureLimiter(max_failures=5, window=300.0)
+    gateway_fail_global = FailureLimiter(max_failures=60, window=600.0)
 
     def _sanitize_status_data(data: dict) -> dict:
         sanitized = dict(data)
@@ -365,7 +369,18 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
         return bool(custom) and secrets.compare_digest(custom.encode(), gateway_password.encode())
 
     def _require_gateway_password(req: Request) -> None:
+        if not gateway_password:
+            return
+        peer = peer_host(req) or "unknown"
+        # Refuse before comparing: a blocked guesser must learn nothing,
+        # including whether this attempt happened to be right.
+        if gateway_fail_peer.blocked(peer) or gateway_fail_global.blocked("*"):
+            raise HTTPException(
+                429, "too many failed attempts; try again later", headers={"Retry-After": "300"}
+            )
         if not _check_gateway_password(req):
+            gateway_fail_peer.record_failure(peer)
+            gateway_fail_global.record_failure("*")
             raise HTTPException(
                 401,
                 "gateway password required",
