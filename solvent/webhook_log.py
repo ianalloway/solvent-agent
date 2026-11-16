@@ -26,12 +26,31 @@ Schema:
 
 from __future__ import annotations
 
+import functools
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 from .paths import config_path, private_file
+
+
+def _locked(method):
+    """Serialize a method on the shared connection.
+
+    One ``sqlite3`` connection is shared by every request thread
+    (``check_same_thread=False``). Without this, concurrent deliveries
+    interleave statements and commits on it and fail with "cannot start a
+    transaction within a transaction" / "no transaction is active".
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class WebhookLog:
@@ -62,6 +81,7 @@ class WebhookLog:
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
             private_file(Path(db_path))
             self._db_path = db_path
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         for stmt in self._DDL:
@@ -80,6 +100,7 @@ class WebhookLog:
     # Write helpers
     # ------------------------------------------------------------------
 
+    @_locked
     def record(
         self,
         event_id: str,
@@ -107,6 +128,7 @@ class WebhookLog:
         self._conn.commit()
         return cur.rowcount == 1
 
+    @_locked
     def mark_processed(self, event_id: str) -> None:
         """Update status → 'processed'."""
         self._conn.execute(
@@ -115,6 +137,7 @@ class WebhookLog:
         )
         self._conn.commit()
 
+    @_locked
     def mark_skipped(self, event_id: str) -> None:
         """Update status → 'skipped' (verified event that was intentionally not applied)."""
         self._conn.execute(
@@ -123,6 +146,7 @@ class WebhookLog:
         )
         self._conn.commit()
 
+    @_locked
     def mark_error(self, event_id: str, error: str) -> None:
         """Update status → 'error' with an error message."""
         self._conn.execute(
@@ -149,6 +173,7 @@ class WebhookLog:
             d["received_at_fmt"] = ""
         return d
 
+    @_locked
     def list_recent(self, limit: int = 50) -> list[dict]:
         """Return up to *limit* events sorted by received_at DESC."""
         cur = self._conn.execute(
@@ -157,6 +182,7 @@ class WebhookLog:
         )
         return [self._row_to_dict(r) for r in cur.fetchall()]
 
+    @_locked
     def list_failed(self) -> list[dict]:
         """Return all events where status = 'error'."""
         cur = self._conn.execute(
@@ -164,6 +190,7 @@ class WebhookLog:
         )
         return [self._row_to_dict(r) for r in cur.fetchall()]
 
+    @_locked
     def get_status(self, event_id: str) -> str | None:
         """Return the status of a stored event, or None if the id is unknown."""
         row = self._conn.execute(
@@ -171,6 +198,7 @@ class WebhookLog:
         ).fetchone()
         return row["status"] if row else None
 
+    @_locked
     def is_verified(self, event_id: str) -> bool:
         """True only for a stored event that was signature-verified when received."""
         row = self._conn.execute(
@@ -186,6 +214,7 @@ class WebhookLog:
             out.append(row)
         return out
 
+    @_locked
     def get_payload(self, event_id: str) -> bytes | None:
         """Retrieve the raw stored payload for replay, or None if not found."""
         cur = self._conn.execute(
@@ -195,6 +224,7 @@ class WebhookLog:
         row = cur.fetchone()
         return bytes(row["payload"]) if row else None
 
+    @_locked
     def stats(self) -> dict[str, Any]:
         """Return aggregate counts: total, processed, error, skipped, last_24h."""
         cur = self._conn.execute(
