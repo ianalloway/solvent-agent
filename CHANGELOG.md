@@ -16,6 +16,7 @@ users. Seeded simulation/optimization results that involved declined jobs
 should be regenerated.
 
 ### Fixed
+- The gateway password on `POST /api/pair/verify` is attempt-limited: it was checked before the pairing limiter and wrong passwords were never counted, so it could be guessed without limit. After 5 wrong passwords from one peer (or 60 overall) requests are refused with `429` without comparing the password.
 - Checkout expiry requires confirmed Stripe closure and retains the original session; API errors and missing credentials no longer abandon payable jobs. Delayed payment success/failure events are handled, and valid terminal-job payments are atomically booked with a full refund hold without restarting fulfillment.
 - Cancelled jobs stay terminal across recovery, stale workers, payment-state repair and refund holds. Operator cancellation serializes with an active fulfillment attempt and rechecks its outcome before cancelling.
 - Verified Stripe payment-cache writes serialize the complete read/update/replace transaction across threads and processes; readers refresh corrected and removed entries. Corrupt cache storage fails closed instead of silently discarding verified payments.

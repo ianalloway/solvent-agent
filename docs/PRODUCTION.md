@@ -144,7 +144,7 @@ metrics, including the customer email and costs.
 | `GET /.well-known/solvent.json` | Public: server name, version, capabilities, endpoint map, and whether a gateway password is required. |
 | `POST /jobs`, `GET /jobs/{id}` | Public intake and minimal status, as above. |
 | `POST /webhooks/stripe` | Public, but the Stripe signature is verified first. |
-| `POST /api/pair/verify` | Gateway password (if set), then a valid single-use pairing token. After 5 failed attempts from one peer (or 60 overall) invalid attempts receive `429`; a valid token can still be redeemed. |
+| `POST /api/pair/verify` | Gateway password (if set), then a valid single-use pairing token. After 5 wrong passwords from one peer (or 60 overall) every request is refused with `429` for a few minutes, without checking the password. Separately, after 5 failed tokens from one peer (or 60 overall) invalid tokens receive `429`; a valid token can still be redeemed. |
 | `GET /briefs/{id}`, `GET /api/briefs/{id}`, `GET /api/receipt/{id}` | Delivery token (`?token=`), or a genuinely local request. |
 | `GET /api/briefs` | Genuinely local requests only. |
 | Everything else, including `GET /api/pair/qr`, `GET /api/settings` | Dashboard token. |
