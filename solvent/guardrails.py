@@ -17,6 +17,7 @@ Rules enforced:
   7. ROI rule                 — never spend on a job whose projected margin is negative.
   8. Per-job budget envelope  — each job has a hard spend cap; once used up, it fails closed.
   9. Human approval hook      — a spend above a threshold is held for a human, never auto-paid.
+ 10. Terminal job            — never book spend against a cancelled or expired job.
 
 Rules 1-3 and 6-7 bound *how much* the agent can spend; rules 4 and 5 bound
 *how it is distributed*. A single compromised or misbehaving vendor cannot
@@ -273,6 +274,13 @@ def hold_for_approval(request: ApprovalRequest) -> ApprovalVerdict:
     return "held"
 
 
+#: Job statuses that can never incur new spend. Cancellation and expiry are
+#: terminal (``Treasury.upsert_job`` refuses to reopen a cancelled job), so any
+#: charge attributed to one is money spent on work nobody will pay for.
+#: ``failed`` is deliberately absent: failed jobs can be retried.
+NO_SPEND_JOB_STATUSES = frozenset({"cancelled", "expired"})
+
+
 class GuardrailError(Exception):
     """Raised when an outbound spend request violates the spend policy."""
 
@@ -367,6 +375,21 @@ class Guardrails:
             for e in self._policy_entries()
             if e.kind == "expense" and e.job_id == job_id and e.vendor != REFUND_VENDOR
         )
+
+    def _job_status(self, job_id: str | None) -> str | None:
+        """The job's lifecycle status, or None for unscoped/unknown jobs.
+
+        Read inside :meth:`evaluate`'s fail-closed block, so a job store that
+        cannot be read denies the spend instead of skipping this rule.
+        """
+        if job_id is None:
+            return None
+        get_job = getattr(self.t, "get_job", None)
+        if get_job is None:  # ledger-only stand-ins (e.g. the simulator)
+            return None
+        row = get_job(job_id)
+        status = row.get("status") if isinstance(row, dict) else None
+        return status if isinstance(status, str) else None
 
     def _spent_last_24h(self, vendor: str | None = None) -> int:
         """Sum of expenses in the last 24 hours, optionally for one vendor only.
@@ -465,6 +488,7 @@ class Guardrails:
             txns_last_hour = self._txns_last_hour()
             balance = self.t.balance_cents()
             job_spent = self._job_spent(job_id)
+            job_status = self._job_status(job_id)
             for v in (spent_24h, vendor_spent_24h, txns_last_hour, balance, job_spent):
                 if isinstance(v, bool) or not isinstance(v, int):
                     raise TypeError(f"non-integer counter {v!r}")
@@ -497,6 +521,14 @@ class Guardrails:
                 False,
                 "positive_amount",
                 f"amount must be positive, got {amount_cents}c",
+                **ctx,
+            )
+
+        if job_status in NO_SPEND_JOB_STATUSES:
+            return Decision(
+                False,
+                "job_terminal",
+                f"job '{job_id}' is {job_status}; refusing to book spend against it",
                 **ctx,
             )
 
