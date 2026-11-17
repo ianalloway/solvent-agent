@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
 USES = re.compile(r"^\s*-?\s*uses:\s*(\S+)", re.M)
@@ -38,3 +40,11 @@ def test_security_floors_present() -> None:
     constraints = (ROOT / "constraints.txt").read_text(encoding="utf-8")
     for pin in ("urllib3==", "certifi==", "anyio==", "pillow=="):
         assert pin in constraints, pin
+
+
+def test_every_workflow_parses_as_yaml() -> None:
+    """A YAML error makes GitHub fail the run as a "workflow file issue"."""
+    yaml = pytest.importorskip("yaml")
+    for wf in WORKFLOWS:
+        doc = yaml.safe_load(wf.read_text(encoding="utf-8"))
+        assert isinstance(doc, dict) and doc.get("jobs"), wf.name
