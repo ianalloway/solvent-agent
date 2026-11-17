@@ -47,7 +47,8 @@ jobs:
           fi
 
       - name: Install verified build tools
-        run: python -m pip install --require-hashes --only-binary=:all: -r release-build.txt
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r release-build.txt
 
       - name: Build package
         run: python -m build --no-isolation
