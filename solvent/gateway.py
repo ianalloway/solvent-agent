@@ -145,6 +145,7 @@ class Gateway:
                     "Operator:",
                     "/status — treasury snapshot",
                     "/pair qr — generate OpenClaw pairing QR code",
+                    "/pair revoke — invalidate outstanding pairing tokens",
                 ] + ops.help_lines()
             lines += ["", "Or chat naturally to commission a research brief."]
             return "\n".join(lines)
@@ -174,6 +175,11 @@ class Gateway:
             return "\n".join(
                 f"{j['id']}: {j.get('status')} — {(j.get('topic') or '')[:40]}" for j in jobs
             )
+        if cmd == "/pair" and arg.strip().lower() == "revoke":
+            if not ops.is_operator(channel, external_id, chat_type=chat_type):
+                return "That command is operator-only."
+            count = self.agent.t.revoke_openclaw_tokens()
+            return f"Revoked {count} outstanding pairing token(s)."
         if cmd == "/pair" and arg.strip().lower() == "qr":
             if channel == "telegram" and pairing.dm_policy() == "open":
                 # With an open DM policy any Telegram user reaches this command;

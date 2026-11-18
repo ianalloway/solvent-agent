@@ -108,6 +108,11 @@ def run_checks() -> list[dict]:
         else "none",
     )
 
+    from .openclaw import exposure_warnings
+
+    exposure = exposure_warnings()
+    add("openclaw_exposure", not exposure, "; ".join(exposure) if exposure else "ok")
+
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
 

@@ -176,6 +176,25 @@ QR code with the app, and the app redeems it through `POST /api/pair/verify`.
 Tokens last 10 minutes and work once. `/pair qr` is refused over Telegram when
 `SOLVENT_TELEGRAM_DM_POLICY=open`, because anyone could then mint one.
 
+### Connect values and revoking tokens
+
+`python3 -m solvent connect` prints what the OpenClaw app's Connect screen asks
+for (Host, Port, Use TLS, Discovery Domain, whether a Gateway Password is set)
+from `SOLVENT_BASE_URL`, then mints a 10-minute pairing token with its QR code.
+`--json` gives the same data for scripts and `--no-token` skips the token.
+
+If a QR or token leaks, kill every outstanding one with any of:
+
+- `python3 -m solvent connect --revoke`
+- `/pair revoke` in the dashboard chat (or Telegram, operators only)
+- `DELETE /api/pair/tokens` with the dashboard token
+
+`GET /api/pair/tokens` (dashboard token) lists the live tokens masked, never in
+full. `python3 -m solvent doctor` also reports `openclaw_exposure`: on a
+non-loopback host it fails when the base URL is plain http, or when
+`SOLVENT_GATEWAY_PASSWORD` or `SOLVENT_DASHBOARD_TOKEN` is unset. Run it after
+putting SOLVENT on a Hetzner box.
+
 ### Running behind a reverse proxy
 
 "Local" means the TCP peer and Host are loopback, any Origin matches the

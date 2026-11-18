@@ -47,6 +47,22 @@ def test_operator_command_boundaries(gw, user, chat, kind, allowed, command):
 
 
 @pytest.mark.parametrize(
+    "user,chat,kind,allowed",
+    [("200", "200", "private", False), ("100", "100", "private", True)],
+)
+def test_pair_revoke_is_operator_only(gw, user, chat, kind, allowed):
+    with (
+        patch("solvent.pairing.is_allowed", return_value=True),
+        patch.object(gw.agent.t, "revoke_openclaw_tokens", return_value=2) as revoke,
+    ):
+        reply = gw.handle_inbound("telegram", user, "/pair revoke", chat_id=chat, chat_type=kind)
+    assert revoke.called == allowed
+    assert ("Revoked 2" in reply) == allowed
+    if not allowed:
+        assert "operator-only" in reply
+
+
+@pytest.mark.parametrize(
     "channel,operator,allowed",
     [
         ("telegram", False, False),

@@ -493,6 +493,18 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             return Response(content=png, media_type="image/png")
         return JSONResponse({"token": token, "note": "install qrcode[pil] for PNG output"})
 
+    @app.get("/api/pair/tokens")
+    def api_pair_tokens(req: Request):
+        """Outstanding pairing tokens, masked."""
+        _require_dashboard_auth(req)
+        return {"tokens": agent.t.list_openclaw_tokens()}
+
+    @app.delete("/api/pair/tokens")
+    def api_pair_tokens_revoke(req: Request):
+        """Revoke every outstanding pairing token, e.g. after a leaked QR."""
+        _require_dashboard_auth(req)
+        return {"revoked": agent.t.revoke_openclaw_tokens()}
+
     @app.post("/api/pair/verify")
     async def api_pair_verify(req: Request):
         """Redeem a single-use pairing token; gateway password checked first."""
