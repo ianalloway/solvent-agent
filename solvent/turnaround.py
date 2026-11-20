@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from typing import Any
 
 from .treasury import Treasury
@@ -61,16 +62,8 @@ def measure(treasury: Treasury | None = None) -> list[dict[str, Any]]:
             # The first payment is when the clock starts.
             paid_at[entry.job_id] = min(paid_at.get(entry.job_id, entry.ts), entry.ts)
 
-    delivered_at: dict[str, float] = {}
-    for event in t.list_events(limit=5_000):
-        if event.get("stage") != "delivered":
-            continue
-        job_id = event.get("job_id")
-        stamp = float(event.get("ts") or 0)
-        if job_id and stamp and job_id not in delivered_at:
-            # Events come back newest first, so the first seen is the latest
-            # delivery, and a redelivery is what the customer actually waited for.
-            delivered_at[job_id] = stamp
+    # A redelivery is the latest point the customer actually waited for.
+    delivered_at = t.latest_stage_times("delivered")
 
     rows = []
     for job_id, start in paid_at.items():
@@ -153,14 +146,19 @@ def breaches(rows: list[dict[str, Any]], promise: float | None) -> list[dict[str
 
 
 def report(
-    treasury: Treasury | None = None, *, percentile: float = PROMISE_PERCENTILE
+    treasury: Treasury | None = None,
+    *,
+    percentile: float = PROMISE_PERCENTILE,
+    target_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Everything `solvent turnaround` prints."""
+    if target_seconds is not None and (not math.isfinite(target_seconds) or target_seconds <= 0):
+        raise ValueError("target seconds must be positive and finite")
     t = treasury or Treasury()
     rows = measure(t)
     promise = promise_seconds(rows, percentile=percentile)
     missed = breaches(rows, promise)
-    return {
+    data = {
         "stats": stats(rows),
         "percentile": percentile,
         "promise_seconds": promise,
@@ -170,6 +168,16 @@ def report(
         "breach_pct": round(100 * len(missed) / len(rows), 1) if rows else 0.0,
         "slowest": sorted(rows, key=lambda row: -row["seconds"])[:5],
     }
+    if target_seconds is not None:
+        late = len(breaches(rows, target_seconds))
+        on_time = len(rows) - late
+        data["delivery_target"] = {
+            "seconds": target_seconds,
+            "on_time": on_time,
+            "late": late,
+            "on_time_pct": round(100 * on_time / len(rows), 1) if rows else None,
+        }
+    return data
 
 
 def _duration(seconds: float | None) -> str:
@@ -186,6 +194,13 @@ def format_turnaround(data: dict[str, Any]) -> str:
     """Render the turnaround report for a terminal."""
     figures = data["stats"]
     lines = ["", "  TURNAROUND — paid to delivered", f"  {'─' * 66}"]
+    if target := data.get("delivery_target"):
+        percentage = target["on_time_pct"]
+        rate = f" ({percentage:.1f}%)" if percentage is not None else ""
+        lines.append(
+            f"  Delivery target      {target['seconds']:g}s · "
+            f"{target['on_time']} of {figures['samples']} on time{rate} · {target['late']} late"
+        )
     if not figures["samples"]:
         lines += ["  No delivered jobs yet, so nothing to measure.", ""]
         return "\n".join(lines)
@@ -219,11 +234,20 @@ def main() -> None:
         default=PROMISE_PERCENTILE * 100,
         help="percentile to promise at (default 90)",
     )
+    parser.add_argument(
+        "--target-seconds",
+        type=float,
+        help="measure how many completed deliveries finished within this time",
+    )
     parser.add_argument("--json", action="store_true", dest="as_json", help="output as JSON")
     args = parser.parse_args()
 
     fraction = min(max(args.percentile / 100, 0.0), 1.0)
-    data = report(percentile=fraction)
+    if args.target_seconds is not None and (
+        not math.isfinite(args.target_seconds) or args.target_seconds <= 0
+    ):
+        parser.error("--target-seconds must be positive and finite")
+    data = report(percentile=fraction, target_seconds=args.target_seconds)
     if args.as_json:
         print(json.dumps(data, indent=2, default=str))
     else:

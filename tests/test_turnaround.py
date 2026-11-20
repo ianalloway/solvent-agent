@@ -233,3 +233,35 @@ def test_duration_helper(seconds, expected):
     from solvent.turnaround import _duration
 
     assert _duration(seconds) == expected
+
+
+def test_target_counts_exact_deadline_and_excludes_unfinished(treasury):
+    for job_id, waited in [("fast", 10), ("at", 60), ("late", 61)]:
+        _delivered(treasury, job_id, waited=waited)
+    treasury.earn(100, "unfinished", job_id="open", stripe_ref="pi_open")
+    data = report(treasury, target_seconds=60)
+    assert data["delivery_target"] == {"seconds": 60, "on_time": 2, "late": 1, "on_time_pct": 66.7}
+    assert "2 of 3 on time (66.7%)" in format_turnaround(data)
+    assert "delivery_target" not in report(treasury)
+
+
+def test_empty_delivery_target_has_no_rate(treasury):
+    data = report(treasury, target_seconds=30)
+    assert data["delivery_target"]["on_time_pct"] is None
+    assert "0 of 0 on time" in format_turnaround(data)
+
+
+@pytest.mark.parametrize("seconds", [0, -1, float("nan"), float("inf")])
+def test_delivery_target_must_be_positive_and_finite(treasury, seconds):
+    with pytest.raises(ValueError, match="positive and finite"):
+        report(treasury, target_seconds=seconds)
+
+
+def test_target_counts_deliveries_older_than_recent_event_window(treasury):
+    _delivered(treasury, "early", waited=30, paid_at=100)
+    with treasury._conn() as conn, conn:
+        conn.executemany(
+            "INSERT INTO events (id, job_id, stage, payload_json, ts) VALUES (?, 'other', 'queued', '{}', 200)",
+            ((f"event-{i}",) for i in range(5001)),
+        )
+    assert report(treasury, target_seconds=30)["delivery_target"]["on_time"] == 1
