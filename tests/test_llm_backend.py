@@ -161,15 +161,13 @@ class LLMBackendTest(unittest.TestCase):
             self.assertLogs("solvent.llm_backend", level="WARNING") as logs,
         ):
             text, usage = nemotron.complete("sys", "Research topic: chips")
-        self.assertIn("offline Nemotron stub", text)
+        self.assertEqual(text, nemotron._stub_complete("sys", "Research topic: chips"))
         self.assertTrue(usage["estimated"])
-        self.assertNotIn(SECRET, text)
         self.assertNotIn(SECRET, "\n".join(logs.output))
-        return text
+        return "\n".join(logs.output)
 
     def test_http_error_falls_back_without_leaking(self):
-        text = self._assert_falls_back("500")
-        self.assertIn("HTTP 500", text)
+        self.assertIn("HTTP 500", self._assert_falls_back("500"))
 
     def test_malformed_response_falls_back(self):
         self.assertIn("malformed", self._assert_falls_back("garbage"))
@@ -180,15 +178,21 @@ class LLMBackendTest(unittest.TestCase):
         self.assertLess(time.monotonic() - start, 1.4)
 
     def test_unreachable_falls_back(self):
-        _Handler.mode = "ok"
-        with mock.patch.dict(
-            "os.environ",
-            {"SOLVENT_LLM_BASE_URL": "http://127.0.0.1:1/v1", "SOLVENT_LLM_API_KEY": SECRET},
+        logs = self._assert_falls_back("ok", SOLVENT_LLM_BASE_URL="http://127.0.0.1:1/v1")
+        self.assertIn("unreachable", logs)
+
+    def test_live_error_returns_only_offline_brief(self):
+        with (
+            mock.patch.dict("os.environ", {"NVIDIA_API_KEY": "test-only"}, clear=True),
+            mock.patch.object(nemotron, "_force_offline", False),
+            mock.patch.object(
+                nemotron, "_live_complete", side_effect=RuntimeError("private provider detail")
+            ) as provider,
         ):
-            text, _ = nemotron.complete("sys", "Research topic: chips")
-        self.assertIn("offline Nemotron stub", text)
-        self.assertIn("unreachable", text)
-        self.assertNotIn(SECRET, text)
+            text, usage = nemotron.complete("sys", "Research topic: chips")
+        provider.assert_called_once_with("sys", "Research topic: chips")
+        self.assertEqual(text, nemotron._stub_complete("sys", "Research topic: chips"))
+        self.assertTrue(usage["estimated"])
 
     def test_bad_scheme_rejected(self):
         with mock.patch.dict("os.environ", {"SOLVENT_LLM_BASE_URL": "file:///etc"}):
@@ -217,8 +221,7 @@ class LLMBackendTest(unittest.TestCase):
                 self.assertEqual(_Catcher.seen, [], "redirect target must never be contacted")
 
     def test_redirect_falls_back_to_stub_without_leaking(self):
-        text = self._assert_falls_back("redirect:302")
-        self.assertIn("redirect", text)
+        self.assertIn("redirect", self._assert_falls_back("redirect:302"))
         self.assertEqual(_Catcher.seen, [])
 
 
