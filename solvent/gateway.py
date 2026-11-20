@@ -144,7 +144,7 @@ class Gateway:
                     "",
                     "Operator:",
                     "/status — treasury snapshot",
-                    "/pair qr — generate OpenClaw pairing QR code",
+                    "/pair qr — mint a one-time pairing token (QR)",
                 ] + ops.help_lines()
             lines += ["", "Or chat naturally to commission a research brief."]
             return "\n".join(lines)

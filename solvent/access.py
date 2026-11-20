@@ -8,6 +8,8 @@ Two small, framework-free pieces that ``server.py`` builds its gates on:
   request that carries proxy headers is never treated as local.
 * :class:`FailureLimiter` -- a tiny in-memory failed-attempt limiter used to slow
   down guessing of single-use pairing tokens.
+* :func:`public_exposure` -- the hardening gaps of a deployment whose public URL
+  is not this machine, for ``solvent doctor``.
 """
 
 from __future__ import annotations
@@ -113,6 +115,54 @@ def is_local_request(request: Any, env: Mapping[str, str] | None = None) -> bool
     except ValueError:
         return False
     return mode == "peer" or not has_proxy_headers(request)
+
+
+#: Dashboard auth is not attempt-limited, so the token itself must resist guessing.
+MIN_DASHBOARD_TOKEN_CHARS = 32
+
+
+def _url_scheme_host(url: str) -> tuple[str, str] | None:
+    """``(scheme, host)`` of a URL (a bare host is read as http), or None if malformed."""
+    raw = url.strip()
+    try:
+        parts = urlsplit(raw if "://" in raw else "http://" + raw)
+        return parts.scheme.lower(), parts.hostname or ""
+    except ValueError:
+        return None
+
+
+def is_loopback_url(url: str) -> bool:
+    """Whether ``url`` points at this machine; an empty or malformed URL does not."""
+    parsed = _url_scheme_host(url)
+    return parsed is not None and bool(parsed[1]) and _is_loopback(parsed[1])
+
+
+def public_exposure(base_url: str, env: Mapping[str, str] | None = None) -> list[str]:
+    """Hardening gaps once ``base_url`` makes SOLVENT reachable from other machines.
+
+    A loopback URL has none: only an internet- or LAN-facing deployment is judged.
+    """
+    env = os.environ if env is None else env
+    parsed = _url_scheme_host(base_url)
+    if parsed is None or not parsed[1]:
+        return [f"base URL {base_url!r} is not a valid URL"]
+    scheme, host = parsed
+    if _is_loopback(host):
+        return []
+    gaps = []
+    if scheme != "https":
+        gaps.append("base URL is plain http on a non-local host; serve it over HTTPS")
+    elif local_access_mode(env) != "never":
+        # SOLVENT cannot terminate TLS itself, so an https URL means a proxy, and a
+        # proxy that rewrites Host to 127.0.0.1 without forwarding headers is invisible.
+        gaps.append(f"https base URL means a reverse proxy; set {LOCAL_ACCESS_ENV}=never")
+    token = env.get("SOLVENT_DASHBOARD_TOKEN", "").strip()
+    if token and len(token) < MIN_DASHBOARD_TOKEN_CHARS:
+        gaps.append(
+            f"SOLVENT_DASHBOARD_TOKEN is under {MIN_DASHBOARD_TOKEN_CHARS} characters "
+            "and dashboard auth is not attempt-limited"
+        )
+    return gaps
 
 
 class FailureLimiter:

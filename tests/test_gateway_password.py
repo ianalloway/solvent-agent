@@ -1,4 +1,4 @@
-"""The OpenClaw gateway password on POST /api/pair/verify.
+"""The gateway password (``SOLVENT_GATEWAY_PASSWORD``) on POST /api/pair/verify.
 
 The password is checked before the pairing token. Unlike a 128-bit token it may
 be weak, so wrong guesses are attempt-limited, and a blocked peer is refused

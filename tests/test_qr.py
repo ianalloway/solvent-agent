@@ -21,7 +21,7 @@ def test_render_token_no_host_omits_uri() -> None:
     out = render_token("TOK123")
     assert "Pairing token: TOK123" in out
     assert "URI:" not in out
-    assert "OpenClaw app" in out
+    assert "POST /api/pair/verify" in out
 
 
 def test_render_token_uri_uses_tls_for_https_ports() -> None:

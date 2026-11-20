@@ -6,6 +6,17 @@ All notable changes to SOLVENT are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `solvent connect --install-skill` installs a `solvent` skill into an OpenClaw Gateway's workspace, so the Gateway's agent can quote, order and track briefs and read reports through SOLVENT's HTTP API. Plain `solvent connect` reports what the Gateway still needs. See `docs/OPENCLAW.md`.
+- `solvent doctor` gains `public_exposure`, `base_url` and `openclaw_skill` checks. `public_exposure` flags plain http on a non-local base URL, an https proxy without `SOLVENT_LOCAL_ACCESS=never`, and a dashboard token under 32 characters. `base_url` flags a saved `base_url` that silently overrides `SOLVENT_BASE_URL` for `serve`/`worker`.
+- `docs/HETZNER.md`: SOLVENT (systemd, Caddy) and an OpenClaw Gateway on one Hetzner VPS.
+
+### Fixed
+- Docs and messages no longer say the OpenClaw app can use SOLVENT's pairing tokens, gateway password or discovery document. The app pairs with an OpenClaw Gateway.
+
+### Removed
+- The `gateway_password_enabled` config field, which nothing read. `SOLVENT_GATEWAY_PASSWORD` is the setting.
+
 ## [0.4.0] - 2026-11-15
 
 Minor release. **Breaking:** the Nano payment rail is removed (see

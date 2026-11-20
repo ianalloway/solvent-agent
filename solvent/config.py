@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from .paths import config_path
 
 VALID_MODELS = ("offline", "nemotron")
 VALID_MODES = ("batch", "interactive", "programmatic")
+DEFAULT_BASE_URL = "http://127.0.0.1:8787"
 
 
 @dataclass
@@ -25,14 +27,12 @@ class SolventConfig:
     nemotron_model: str = "nvidia/llama-3.1-nemotron-ultra-253b-v1"
     interaction_mode: str = "batch"
     stripe_test_mode: bool = False
-    base_url: str = "http://127.0.0.1:8787"
+    base_url: str = DEFAULT_BASE_URL
     async_mode: bool = False
 
     telegram_enabled: bool = False
     telegram_dm_policy: str = "pairing"
     telegram_allow_from: list[str] | None = None
-
-    gateway_password_enabled: bool = False
 
     rate_burst_limit: int = 5
     rate_hourly_limit: int = 30
@@ -78,6 +78,23 @@ def save_config(config: SolventConfig) -> Path:
         json.dump(config.to_dict(), f, indent=2)
         f.write("\n")
     return path
+
+
+def effective_base_url(env: Mapping[str, str] | None = None) -> tuple[str, str]:
+    """The base URL ``serve`` and ``worker`` will use, and its source.
+
+    Services apply saved config over the environment (``apply_config``), so a
+    saved ``base_url`` wins over ``SOLVENT_BASE_URL`` here too.
+    """
+    env = os.environ if env is None else env
+    try:
+        cfg = load_config()
+    except (OSError, ValueError):
+        cfg = None
+    if cfg is not None and cfg.base_url:
+        return cfg.base_url, "config"
+    url = env.get("SOLVENT_BASE_URL", "").strip()
+    return (url, "env") if url else (DEFAULT_BASE_URL, "default")
 
 
 def default_config() -> SolventConfig:

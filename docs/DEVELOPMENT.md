@@ -104,6 +104,7 @@ solvent/
   notifications.py     cross-process chat notifications (JSONL outbox)
   pairing.py           OpenClaw-style pairing for Telegram DMs
   qr.py                QR codes for pairing
+  openclaw.py          `solvent connect`: install the OpenClaw skill (templates/openclaw/)
   workspace.py         SOUL/BRAIN/AGENTS prompt assembly
   _filelock.py         portable advisory file locking
 

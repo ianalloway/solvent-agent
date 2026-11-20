@@ -9,6 +9,9 @@ _Hermes-style project instructions (architecture + conventions). Operator rules 
 - **Chat surface:** `solvent/gateway.py` → `solvent/chat.py` (Nemotron + tools)
 - **Identity:** `.solvent/workspace/SOUL.md` (slot #1), `BRAIN.md`, workspace `AGENTS.md`
 - **Channels:** `python -m solvent telegram` (OpenClaw pairing pattern)
+- **OpenClaw:** `solvent connect --install-skill` (`openclaw.py`) installs a SKILL.md so an
+  OpenClaw Gateway's agent calls SOLVENT's HTTP API; the OpenClaw apps pair with the
+  Gateway, never with SOLVENT (`docs/OPENCLAW.md`, `docs/HETZNER.md`)
 
 ## Economic kernel
 
@@ -88,6 +91,7 @@ python -m solvent checkouts|intake|optimize    # unpaid links / intake screen / 
 python -m solvent capacity|alerts|export       # throughput ceiling / health sweep / books
 python -m solvent products|quality|review      # price list / brief scores / approval queue
 python -m solvent funnel|turnaround             # win rate / measured delivery time
+python -m solvent connect --install-skill       # plug SOLVENT into an OpenClaw Gateway
 ```
 
 ## Conventions

@@ -149,13 +149,15 @@ metrics, including the customer email and costs.
 | `GET /api/briefs` | Genuinely local requests only. |
 | Everything else, including `GET /api/pair/qr`, `GET /api/settings` | Dashboard token. |
 
-### Gateway password (OpenClaw "Gateway Password" field)
+### Gateway password
 
-Set `SOLVENT_GATEWAY_PASSWORD` to protect the OpenClaw-facing endpoints from
-unauthenticated access. The app sends it as `Authorization: Bearer <password>`
-or in the `X-Solvent-Gateway-Password` header. Without it set, those endpoints
-behave as before. The discovery document (`/.well-known/solvent.json`) advertises
-whether a password is required so the app can prompt before connecting.
+Set `SOLVENT_GATEWAY_PASSWORD` to require a shared password on
+`POST /api/pair/verify`. Clients send it as `Authorization: Bearer <password>`
+or in the `X-Solvent-Gateway-Password` header. Without it set, the route
+behaves as before. The discovery document (`/.well-known/solvent.json`)
+advertises whether a password is required. This is SOLVENT's own setting: the
+*Gateway Password* field in the OpenClaw app belongs to the OpenClaw Gateway
+(see [OPENCLAW.md](OPENCLAW.md)).
 
 ```bash
 export SOLVENT_GATEWAY_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
@@ -165,16 +167,34 @@ export SOLVENT_GATEWAY_PASSWORD=$(python3 -c 'import secrets; print(secrets.toke
 
 `GET /api/settings` (dashboard token required) returns the live server
 configuration as JSON: host, port, TLS, model, rate limits, Telegram enabled,
-Stripe test mode, and whether a gateway password is set. Useful for the
-OpenClaw app settings screen and for operator audit.
+Stripe test mode, and whether a gateway password is set, for operator audit
+and API clients.
 
-### OpenClaw pairing
+### Pairing tokens
 
 Minting a pairing token is an operator action. Sign in at `/` and open
-`http://127.0.0.1:8787/api/pair/qr` (or send `/pair qr` in the dashboard chat, or in Telegram once you are paired), scan the
-QR code with the app, and the app redeems it through `POST /api/pair/verify`.
-Tokens last 10 minutes and work once. `/pair qr` is refused over Telegram when
-`SOLVENT_TELEGRAM_DM_POLICY=open`, because anyone could then mint one.
+`http://127.0.0.1:8787/api/pair/qr` (or send `/pair qr` in the dashboard chat,
+or in Telegram once you are paired); a client redeems it through
+`POST /api/pair/verify`. Tokens last 10 minutes and work once. `/pair qr` is
+refused over Telegram when `SOLVENT_TELEGRAM_DM_POLICY=open`, because anyone
+could then mint one. The OpenClaw apps do not use these tokens.
+
+### OpenClaw and going public
+
+The OpenClaw apps pair with an OpenClaw Gateway, not with SOLVENT. To use
+SOLVENT from OpenClaw, install the `solvent` skill into the Gateway with
+`python3 -m solvent connect --install-skill`: see [OPENCLAW.md](OPENCLAW.md),
+and [HETZNER.md](HETZNER.md) for running both on one VPS.
+
+Run `python3 -m solvent doctor` before a deployment goes public:
+
+- `public_exposure` fails when a non-local base URL is plain http, when an
+  https one (which means a reverse proxy) runs without
+  `SOLVENT_LOCAL_ACCESS=never`, or when the dashboard token is under 32
+  characters (dashboard auth is not attempt-limited).
+- `base_url` fails when a `base_url` saved in `.solvent/config.json` overrides
+  `SOLVENT_BASE_URL`: `serve` and `worker` apply saved config over the
+  environment, so fix it with `solvent config set base_url <url>`.
 
 ### Running behind a reverse proxy
 
@@ -270,7 +290,8 @@ attempted when the provider's outcome cannot be established.
 | `STRIPE_WEBHOOK_SECRET` | Webhook signature verification |
 | `SOLVENT_BASE_URL` | Checkout success URLs + hosted briefs |
 | `SOLVENT_DELIVERY_SECRET` | HMAC token for `/briefs/{id}`; required, at least 32 characters, high entropy, and not a placeholder |
-| `SOLVENT_DASHBOARD_TOKEN` | Bearer-style shared secret for `/`, `/api/status`, `/api/events`, `/api/chat`, `/api/job`, `/api/pair/qr`, the webhook admin routes (`/api/webhooks`, `/api/webhooks/stats`, `/api/webhooks/{event_id}/replay`), and the full detail of `/health` and `/jobs/{id}`; set to a high-entropy value before serving the dashboard |
+| `SOLVENT_DASHBOARD_TOKEN` | Bearer-style shared secret for `/`, `/api/status`, `/api/events`, `/api/chat`, `/api/job`, `/api/pair/qr`, `/api/settings`, the webhook admin routes (`/api/webhooks`, `/api/webhooks/stats`, `/api/webhooks/{event_id}/replay`), and the full detail of `/health` and `/jobs/{id}`; use at least 32 random characters, since dashboard auth is not attempt-limited |
+| `SOLVENT_GATEWAY_PASSWORD` | Optional shared password required on `POST /api/pair/verify` (Bearer or `X-Solvent-Gateway-Password`); see *Gateway password* |
 | `SOLVENT_LOCAL_ACCESS` | How "local" is decided for the local-only routes: `auto` (default), `never` (use behind a reverse proxy) or `peer` (legacy). See *Running behind a reverse proxy* |
 | `SOLVENT_ASYNC` | Non-blocking payment (worker resumes jobs) |
 | `SOLVENT_ALLOW_POLL` | Legacy payment polling |
