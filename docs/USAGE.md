@@ -101,3 +101,8 @@ funds itself — a **net-P&L trend** bucketed by day/week/month, and a
 **balance forecast** (central projection with a best/worst band whose width
 grows with daily volatility). The income statement, runway, trend, and
 forecast also render as a **Financial Statement** panel in the HTML dashboard.
+
+
+## Inspect slow stages
+
+Run `solvent logs --min-duration-ms 500 --stage fulfill -n 10` to list the last ten fulfillment events that took at least half a second. Add `--follow` to watch new matches or `--json` to retain the full event fields. The duration filter requires a recorded numeric duration.

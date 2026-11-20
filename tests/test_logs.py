@@ -315,3 +315,55 @@ def test_tail_lines_preserves_unterminated_last_record(tmp_path):
     path = tmp_path / "log"
     path.write_text("first\nlast")
     assert _tail_lines(path, 1) == ["last"]
+
+
+def test_min_duration_cli_finds_older_slow_stages(tmp_path, monkeypatch, capsys):
+    from solvent.logs import main
+
+    records = [
+        {"stage": "fulfill", "duration_ms": 500, "job_id": "keep"},
+        {"stage": "quote", "duration_ms": 900},
+        {"stage": "fulfill"},
+        {"stage": "fulfill", "duration_ms": "500"},
+        {"stage": "fulfill", "duration_ms": True},
+        {"stage": "fulfill", "duration_ms": float("nan")},
+    ] + [{"stage": "fulfill", "duration_ms": 499}] * 250
+    path = _make_log(tmp_path, records)
+    monkeypatch.setattr("solvent.logs.log_path", lambda: path)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["solvent", "--min-duration-ms", "500", "--stage", "fulfill", "-n", "1", "--json"],
+    )
+    main()
+    assert json.loads(capsys.readouterr().out)["job_id"] == "keep"
+
+
+@pytest.mark.parametrize("duration", ["-0.5", "nan", "inf"])
+def test_min_duration_rejects_invalid_thresholds(duration, monkeypatch):
+    from solvent.logs import main
+
+    monkeypatch.setattr("sys.argv", ["solvent", "--min-duration-ms", duration])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 2
+
+
+def test_live_follow_applies_duration_filter(tmp_path, monkeypatch, capsys):
+    path = _make_log(tmp_path, [{"stage": "past", "duration_ms": 10}])
+    monkeypatch.setattr("solvent.logs.log_path", lambda: path)
+
+    def append_once(_seconds):
+        if append_once.called:
+            raise KeyboardInterrupt
+        append_once.called = True
+        with path.open("a") as stream:
+            for duration in [5, 10]:
+                print(json.dumps({"stage": "live", "duration_ms": duration}), file=stream)
+
+    append_once.called = False
+    monkeypatch.setattr("solvent.logs.time.sleep", append_once)
+    show_logs(follow=True, min_duration_ms=10, as_json=True)
+    assert [
+        (r["stage"], r["duration_ms"])
+        for r in map(json.loads, capsys.readouterr().out.splitlines())
+    ] == [("past", 10), ("live", 10)]
