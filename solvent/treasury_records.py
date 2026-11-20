@@ -60,6 +60,14 @@ class _RecordsMixin:
                 ).fetchall()
             return [dict(r) for r in rows]
 
+    def latest_stage_times(self, stage: str) -> dict[str, float]:
+        """Latest event timestamp for each job that reached the requested stage."""
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute(
+                "SELECT job_id, MAX(ts) FROM events WHERE stage = ? GROUP BY job_id", (stage,)
+            )
+            return {job_id: stamp for job_id, stamp in rows if job_id and stamp}
+
     def upsert_metrics(self, job_id: str, **kwargs) -> None:
         with self.lock():
             with self._conn() as conn:

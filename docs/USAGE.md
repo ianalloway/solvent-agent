@@ -86,6 +86,7 @@ python3 -m solvent quality                # scores the quality gate gave shipped
 python3 -m solvent review                 # approve/reject the jobs intake held for a human
 python3 -m solvent funnel --since 7d      # win rate: submitted → quoted → paid → delivered
 python3 -m solvent turnaround             # measured paid-to-delivered time, and the promise
+python3 -m solvent turnaround --target-seconds 300 --json  # share of measured deliveries within 5 minutes
 python3 -m solvent reconcile --since 7d   # Stripe ↔ ledger drift check
 python3 -m solvent finance                # income statement, unit economics, runway
 python3 -m solvent finance --json         # machine-readable report
