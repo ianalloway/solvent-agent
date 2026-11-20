@@ -57,6 +57,7 @@ solvent quote "Edge-AI in industrial robotics" --budget 8
 | `solvent init` | create data dirs, treasury DB, and workspace files |
 | `solvent status` | live treasury summary (`--watch` to auto-refresh) |
 | `solvent finance` | income statement, unit economics, runway, forecast |
+| `solvent funnel` | summarize submitted orders and counter-offers across their event history (`--since 7d` selects orders created in the past week) |
 | `solvent quote` | dry-run the margin gate on a job and price a counter-offer |
 | `solvent guardrails` | show the spend policy: vendor caps, velocity limit, job budgets |
 | `solvent doctor` | diagnostics: API keys, extras, workspace files |

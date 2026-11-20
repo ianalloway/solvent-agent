@@ -47,6 +47,15 @@ class _RecordsMixin:
                         ),
                     )
 
+    def job_ids_for_event_stage(self, stage: str) -> set[str]:
+        """Jobs with at least one matching event anywhere in their history."""
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT job_id FROM events WHERE stage = ? AND job_id IS NOT NULL",
+                (stage,),
+            )
+            return {row[0] for row in rows}
+
     def list_events(self, job_id: str | None = None, limit: int = 500) -> list[dict]:
         with self.lock(), self._conn() as conn:
             if job_id:
