@@ -108,10 +108,38 @@ def run_checks() -> list[dict]:
         else "none",
     )
 
-    from .openclaw import exposure_warnings
+    from .access import public_exposure
+    from .config import effective_base_url
 
-    exposure = exposure_warnings()
-    add("openclaw_exposure", not exposure, "; ".join(exposure) if exposure else "ok")
+    base_url, source = effective_base_url()
+    env_url = os.environ.get("SOLVENT_BASE_URL", "").strip()
+    overridden = source == "config" and env_url and env_url.rstrip("/") != base_url.rstrip("/")
+    add(
+        "base_url",
+        not overridden,
+        f"saved base_url {base_url} overrides SOLVENT_BASE_URL={env_url} for serve/worker; "
+        f"run: solvent config set base_url {env_url}"
+        if overridden
+        else f"{base_url} (from {source})",
+    )
+    exposure = public_exposure(base_url)
+    add("public_exposure", not exposure, "; ".join(exposure) if exposure else "ok")
+
+    from .openclaw import default_skills_dir, skill_status
+
+    skills_dir = default_skills_dir()
+    if not skills_dir.parent.is_dir():
+        add("openclaw_skill", True, f"no OpenClaw workspace at {skills_dir.parent} (optional)")
+    else:
+        add(
+            "openclaw_skill",
+            True,
+            {
+                "missing": "not installed; run: solvent connect --install-skill",
+                "current": f"installed in {skills_dir}",
+                "different": "differs from this release; run: solvent connect --install-skill --force",
+            }[skill_status(skills_dir)],
+        )
 
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")

@@ -50,7 +50,9 @@ If the server is down, slow (`SOLVENT_LLM_TIMEOUT`, default 30s), or returns an 
 | `STRIPE_PAYMENT_POLL_TIMEOUT` | Seconds to wait for payment (default `120`) |
 | `STRIPE_PAYMENT_POLL_INTERVAL` | Poll interval in seconds (default `2`) |
 | `SOLVENT_FORCE_STRIPE_SIMULATE` | Force offline simulate mode even with a key |
-| `SOLVENT_DASHBOARD_TOKEN` | Shared secret required for hosted dashboard/control routes |
+| `SOLVENT_DASHBOARD_TOKEN` | Shared secret required for hosted dashboard/control routes; at least 32 random characters |
+| `SOLVENT_GATEWAY_PASSWORD` | Optional shared password on `POST /api/pair/verify` |
+| `SOLVENT_LOCAL_ACCESS` | `auto` · `never` · `peer`: how "local" is decided for local-only routes; use `never` behind a reverse proxy |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
 | `SOLVENT_TELEGRAM_DM_POLICY` | `pairing` · `allowlist` · `open` (default `pairing`) |
 | `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |

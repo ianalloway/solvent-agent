@@ -83,7 +83,7 @@ Third-party features are **opt-in extras**, so install only what you need:
 pip install "solvent-agent[stripe]"    # real Stripe test-mode payment links
 pip install "solvent-agent[serve]"     # FastAPI webhooks + hosted briefs
 pip install "solvent-agent[telegram]"  # Telegram bot channel
-pip install "solvent-agent[qr]"        # scannable QR codes for OpenClaw pairing
+pip install "solvent-agent[qr]"        # scannable QR codes for pairing tokens
 pip install "solvent-agent[dev]"       # pytest, for running the test suite
 pip install "solvent-agent[all]"       # everything
 ```
@@ -203,6 +203,7 @@ infinity) keep the built-in price. Valid entries in the same file still apply.
 | [Commercial judgement](docs/COMMERCIAL_JUDGEMENT.md) | counter-offers, spend policy, per-job envelopes, backlog, win rate, selling |
 | [Configuration](docs/CONFIGURATION.md) | live Stripe / Nemotron / local OpenAI-compatible models, environment variables, Telegram |
 | [Development](docs/DEVELOPMENT.md) | running the tests, repository layout |
+| [OpenClaw](docs/OPENCLAW.md) · [Hetzner VPS](docs/HETZNER.md) | use SOLVENT from an OpenClaw Gateway as a skill; run both on one VPS |
 | [Production](docs/PRODUCTION.md) · [Telegram](docs/TELEGRAM.md) · [Retired Nano migration](docs/NANO_SETTLE.md) · [Releasing](docs/RELEASING.md) | deeper operator guides |
 
 ## 🔑 Make It Real

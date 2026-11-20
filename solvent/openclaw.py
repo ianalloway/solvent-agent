@@ -1,109 +1,163 @@
-"""OpenClaw app connection helpers: Connect-screen values, exposure checks, CLI."""
+"""Plug SOLVENT into an OpenClaw Gateway as a skill (`solvent connect`).
+
+The OpenClaw apps pair with an OpenClaw Gateway (WebSocket, port 18789), never
+with SOLVENT. SOLVENT joins through a SKILL.md that teaches the Gateway's agent
+to call SOLVENT's HTTP API with curl; see docs/OPENCLAW.md.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import sys
 from collections.abc import Mapping
-from urllib.parse import urlsplit
+from pathlib import Path
 
-_LOOPBACK = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+from .access import is_loopback_url
+from .config import effective_base_url
 
-
-def parse_endpoint(base_url: str) -> tuple[str, int, bool]:
-    """Split a base URL into (host, port, tls), defaulting the port from the scheme."""
-    raw = (base_url or "").strip()
-    if "://" not in raw:
-        raw = "http://" + raw
-    parts = urlsplit(raw)
-    tls = parts.scheme == "https"
-    host = parts.hostname or ""
-    try:
-        port = parts.port or (443 if tls else 80)
-    except ValueError:
-        port = 443 if tls else 80
-    return host, port, tls
+SKILL_NAME = "solvent"
+GUIDE_URL = "https://github.com/ianalloway/solvent-agent/blob/main/docs/OPENCLAW.md"
+SKILL_TEMPLATE = (
+    Path(__file__).resolve().parent / "templates" / "openclaw" / SKILL_NAME / "SKILL.md"
+)
 
 
-def is_loopback(host: str) -> bool:
-    return host.lower() in _LOOPBACK
+def skill_text() -> str:
+    """The SKILL.md this release ships."""
+    return SKILL_TEMPLATE.read_text(encoding="utf-8")
 
 
-def exposure_warnings(env: Mapping[str, str] | None = None) -> list[str]:
-    """Problems that matter once the server is reachable from the internet."""
+def default_skills_dir(env: Mapping[str, str] | None = None) -> Path:
+    """The OpenClaw workspace skills folder (also the host side of its Docker mount)."""
     env = os.environ if env is None else env
-    host, _port, tls = parse_endpoint(env.get("SOLVENT_BASE_URL", ""))
-    if not host or is_loopback(host):
-        return []
-    warnings = []
-    if not tls:
-        warnings.append("SOLVENT_BASE_URL is plain http on a public host; terminate TLS")
-    if not env.get("SOLVENT_GATEWAY_PASSWORD", "").strip():
-        warnings.append("SOLVENT_GATEWAY_PASSWORD is unset; pairing is open to anyone")
+    workspace = env.get("OPENCLAW_WORKSPACE_DIR", "").strip()
+    root = Path(workspace).expanduser() if workspace else Path.home() / ".openclaw" / "workspace"
+    return root / "skills"
+
+
+def skill_path(skills_dir: Path) -> Path:
+    return skills_dir / SKILL_NAME / "SKILL.md"
+
+
+def skill_status(skills_dir: Path) -> str:
+    """``missing``, ``current`` (this release's skill) or ``different`` (edited or older)."""
+    path = skill_path(skills_dir)
+    if not path.is_file():
+        return "missing"
+    return "current" if path.read_text(encoding="utf-8") == skill_text() else "different"
+
+
+def install_skill(skills_dir: Path, *, force: bool = False) -> str:
+    """Write the skill; returns ``installed``, ``updated``, ``unchanged`` or ``kept``.
+
+    A skill that differs from this release's (a local edit, or another release)
+    is ``kept`` unless ``force`` is set.
+    """
+    status = skill_status(skills_dir)
+    if status == "current":
+        return "unchanged"
+    if status == "different" and not force:
+        return "kept"
+    path = skill_path(skills_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(skill_text(), encoding="utf-8")
+    return "installed" if status == "missing" else "updated"
+
+
+def report(skills_dir: Path, env: Mapping[str, str] | None = None) -> dict:
+    """What the Gateway needs to reach SOLVENT, and what is still missing."""
+    env = os.environ if env is None else env
+    url, source = effective_base_url(env)
+    notes = []
+    if is_loopback_url(url):
+        notes.append(
+            f"{url} only works for a Gateway on this host outside Docker; inside a "
+            "container 127.0.0.1 is the container, so use SOLVENT's public https URL"
+        )
     if not env.get("SOLVENT_DASHBOARD_TOKEN", "").strip():
-        warnings.append("SOLVENT_DASHBOARD_TOKEN is unset; the dashboard API is unprotected")
-    return warnings
-
-
-def connect_info(env: Mapping[str, str] | None = None) -> dict:
-    """The values the OpenClaw app's Connect screen asks for."""
-    env = os.environ if env is None else env
-    host, port, tls = parse_endpoint(env.get("SOLVENT_BASE_URL", ""))
-    scheme = "https" if tls else "http"
-    default_port = 443 if tls else 80
-    netloc = host if port == default_port else f"{host}:{port}"
+        notes.append(
+            "SOLVENT_DASHBOARD_TOKEN is not set in this shell; without it on the Gateway "
+            "the skill can order and track briefs but not quote or read reports"
+        )
     return {
-        "host": host,
-        "port": port,
-        "tls": tls,
-        "discovery_url": f"{scheme}://{netloc}/.well-known/solvent.json",
-        "gateway_password_set": bool(env.get("SOLVENT_GATEWAY_PASSWORD", "").strip()),
-        "warnings": exposure_warnings(env),
+        "skill": {"path": str(skill_path(skills_dir)), "status": skill_status(skills_dir)},
+        "solvent_url": url,
+        "solvent_url_source": source,
+        "gateway_env": {
+            "SOLVENT_URL": url,
+            "SOLVENT_DASHBOARD_TOKEN": "<your SOLVENT_DASHBOARD_TOKEN>",
+        },
+        "notes": notes,
     }
 
 
-def main() -> None:
+def _tilde(path: str) -> str:
+    home = str(Path.home())
+    return "~" + path[len(home) :] if path == home or path.startswith(home + os.sep) else path
+
+
+_STATUS_TEXT = {
+    "missing": "not installed (run: solvent connect --install-skill)",
+    "current": "installed",
+    "different": "differs from this release (edited, or older); --install-skill --force replaces it",
+}
+
+_INSTALL_TEXT = {
+    "installed": "Installed the solvent skill.",
+    "updated": "Updated the solvent skill.",
+    "unchanged": "The solvent skill is already up to date.",
+    "kept": "Kept the existing solvent skill: it differs from this release. Use --force to replace it.",
+}
+
+
+def _print_report(data: dict) -> None:
+    print("SOLVENT for OpenClaw\n")
+    print("The OpenClaw app pairs with your OpenClaw Gateway (default port 18789),")
+    print("not with SOLVENT. SOLVENT joins that Gateway as a skill its agent can call.\n")
+    print(f"  Skill    {_tilde(data['skill']['path'])}")
+    print(f"           {_STATUS_TEXT[data['skill']['status']]}")
+    print(f"  SOLVENT  {data['solvent_url']}  (from {data['solvent_url_source']})\n")
+    print("Give the Gateway these, e.g. in ~/.openclaw/.env on the Gateway host:")
+    for name, value in data["gateway_env"].items():
+        print(f"  {name}={value}")
+    print("\nThen run `openclaw skills check` and start a new chat with /new.")
+    print(f"Guide: {GUIDE_URL}")
+    for note in data["notes"]:
+        print(f"\nNOTE: {note}")
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="solvent connect",
-        description="Show the OpenClaw app Connect values and mint a pairing QR.",
+        description="Plug SOLVENT into an OpenClaw Gateway as a skill.",
     )
-    parser.add_argument("--json", action="store_true", help="machine-readable output")
-    parser.add_argument("--no-token", action="store_true", help="do not mint a pairing token")
     parser.add_argument(
-        "--revoke", action="store_true", help="revoke every outstanding pairing token and exit"
+        "--install-skill", action="store_true", help="write the solvent skill into the skills dir"
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--skills-dir",
+        type=Path,
+        help="skills folder (default: $OPENCLAW_WORKSPACE_DIR/skills or ~/.openclaw/workspace/skills)",
+    )
+    parser.add_argument("--force", action="store_true", help="replace an edited or older skill")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+    if args.force and not args.install_skill:
+        parser.error("--force only applies with --install-skill")
 
-    from .treasury import Treasury
-
-    treasury = Treasury()
-    if args.revoke:
-        count = treasury.revoke_openclaw_tokens()
-        print(f"Revoked {count} outstanding pairing token(s).")
-        return
-
-    info = connect_info()
-    token = None if args.no_token else treasury.create_openclaw_token(ttl=600)
+    skills_dir = (args.skills_dir or default_skills_dir()).expanduser()
+    outcome = install_skill(skills_dir, force=args.force) if args.install_skill else None
+    data = report(skills_dir)
     if args.json:
-        print(json.dumps({**info, "token": token}, indent=2))
-        return
-
-    print("OpenClaw → Connect")
-    print(f"  Host:                 {info['host'] or '(set SOLVENT_BASE_URL)'}")
-    print(f"  Port:                 {info['port']}")
-    print(f"  Use TLS:              {'on' if info['tls'] else 'off'}")
-    print(f"  Discovery Domain:     {info['discovery_url']}")
-    pw = "set SOLVENT_GATEWAY_PASSWORD" if not info["gateway_password_set"] else "(your password)"
-    print(f"  Gateway Password:     {pw}")
-    for warning in info["warnings"]:
-        print(f"  WARNING: {warning}")
-    if token:
-        from . import qr
-
-        print()
-        print(qr.render_token(token, host=info["host"], port=info["port"]))
-        print("Token expires in 10 minutes and works once.")
+        print(json.dumps({**data, "install": outcome}, indent=2))
+    else:
+        if outcome:
+            print(_INSTALL_TEXT[outcome] + "\n")
+        _print_report(data)
+    if outcome == "kept":
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -196,32 +196,3 @@ class _SessionsMixin:
                     (token, now),
                 )
             return cur.rowcount == 1
-
-    def list_openclaw_tokens(self) -> list[dict]:
-        """Outstanding (unused, unexpired) pairing tokens, masked: never the secret."""
-        now = time.time()
-        with self.lock(), self._conn() as conn:
-            rows = conn.execute(
-                "SELECT token, created_at, expires_at FROM openclaw_tokens "
-                "WHERE used = 0 AND expires_at >= ? ORDER BY created_at",
-                (now,),
-            ).fetchall()
-        return [
-            {
-                "id": f"{r['token'][:6]}…{r['token'][-4:]}",
-                "created_at": r["created_at"],
-                "expires_in": max(0, int(r["expires_at"] - now)),
-            }
-            for r in rows
-        ]
-
-    def revoke_openclaw_tokens(self) -> int:
-        """Invalidate every outstanding pairing token; returns how many were live."""
-        now = time.time()
-        with self.lock(), self._conn() as conn:
-            with conn:
-                cur = conn.execute(
-                    "UPDATE openclaw_tokens SET used = 1 WHERE used = 0 AND expires_at >= ?",
-                    (now,),
-                )
-            return cur.rowcount

@@ -395,10 +395,8 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             data["balance_cents"] = agent.t.balance_cents()
         return data
 
-    # ------------------------------------------------------------------ #
-    # Feature 1 — Discovery Domain (/.well-known/solvent.json)           #
-    # Lets the OpenClaw app auto-detect server capabilities before login. #
-    # ------------------------------------------------------------------ #
+    # Public, machine-readable description of this server for API clients. The
+    # OpenClaw apps do not read it: they discover OpenClaw Gateways over DNS-SD.
     @app.get("/.well-known/solvent.json")
     def well_known():
         base_url = os.environ.get("SOLVENT_BASE_URL", "")
@@ -427,10 +425,7 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
-    # ------------------------------------------------------------------ #
-    # Feature 2 — Settings Overview (GET /api/settings)                  #
-    # Returns current server configuration for the OpenClaw app / ops.   #
-    # ------------------------------------------------------------------ #
+    # Live server configuration for operators and API clients.
     @app.get("/api/settings")
     def api_settings(req: Request):
         _require_dashboard_auth(req)
@@ -492,18 +487,6 @@ def create_app(seed_cents: int = 10_000, fresh: bool = False) -> object:
 
             return Response(content=png, media_type="image/png")
         return JSONResponse({"token": token, "note": "install qrcode[pil] for PNG output"})
-
-    @app.get("/api/pair/tokens")
-    def api_pair_tokens(req: Request):
-        """Outstanding pairing tokens, masked."""
-        _require_dashboard_auth(req)
-        return {"tokens": agent.t.list_openclaw_tokens()}
-
-    @app.delete("/api/pair/tokens")
-    def api_pair_tokens_revoke(req: Request):
-        """Revoke every outstanding pairing token, e.g. after a leaked QR."""
-        _require_dashboard_auth(req)
-        return {"revoked": agent.t.revoke_openclaw_tokens()}
 
     @app.post("/api/pair/verify")
     async def api_pair_verify(req: Request):

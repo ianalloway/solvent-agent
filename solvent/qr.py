@@ -1,4 +1,4 @@
-"""QR code generation for OpenClaw pairing."""
+"""QR codes for SOLVENT pairing tokens (the OpenClaw apps pair with a Gateway, not these)."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def render_token(token: str, host: str = "", port: int = 0) -> str:
     else:
         lines.append("(Install qrcode[pil] for a scannable QR image)")
 
-    lines.append("\nEnter this token in the OpenClaw app → Gateway Auth Token field.")
+    lines.append("\nIt works once: redeem it with POST /api/pair/verify before it expires.")
     return "\n".join(lines)
 
 

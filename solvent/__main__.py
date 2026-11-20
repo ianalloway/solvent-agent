@@ -20,7 +20,7 @@ Commands:
   quote         dry-run the margin gate on a job (price, cost, counter-offer)
   products      the price list, checked against current fulfilment cost
   quality       scores the quality gate gave the briefs it shipped
-  connect       OpenClaw app Connect values + pairing QR; --revoke kills live tokens
+  connect       plug SOLVENT into an OpenClaw Gateway as a skill (--install-skill)
   upgrade       check for newer version on PyPI; --check exits 1 if outdated
   jobs          list/show/retry/cancel jobs (jobs --help for sub-commands)
   backlog       rank open jobs by return on capital and fundability
