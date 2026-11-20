@@ -6,8 +6,9 @@ One Debian or Ubuntu VPS runs:
 - **Caddy** in front of it at `https://agent.example.com`. Stripe webhooks,
   checkout redirects and customers' brief links need a public HTTPS URL;
 - the **OpenClaw Gateway** in Docker, loopback-only on port 18789, which your
-  phone reaches over Tailscale. SOLVENT plugs into it as a skill
-  ([OPENCLAW.md](OPENCLAW.md)).
+  phone reaches over Tailscale. SOLVENT plugs into it as a skill and pushes
+  notifications to it ([OPENCLAW.md](OPENCLAW.md));
+- a daily **backup** of the treasury, config and delivered briefs.
 
 Replace `agent.example.com` with a DNS name that points at the VPS. Run the
 commands as root.
@@ -168,3 +169,92 @@ the VPS and the phone, give the Gateway a tailnet-only HTTPS URL
 scan a setup code from the Control UI
 ([iOS guide](https://docs.openclaw.ai/platforms/ios)). Then ask your agent "ask
 SOLVENT for its status".
+
+## 9. Get notified
+
+So SOLVENT can tell your phone about payments, deliveries, refunds and health
+alerts ([OPENCLAW.md](OPENCLAW.md), *Get notified*), turn on the Gateway's hooks
+and give SOLVENT the hook token. Run these from the OpenClaw checkout:
+
+```bash
+HOOK_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+docker compose run --rm openclaw-cli config set hooks \
+  '{"enabled": true, "token": "'"$HOOK_TOKEN"'", "path": "/hooks", "allowedAgentIds": ["main"]}' \
+  --strict-json --merge
+docker compose run --rm openclaw-cli config validate && docker compose restart
+cat >> /etc/solvent/solvent.env <<EOF
+SOLVENT_OPENCLAW_HOOKS_URL=http://127.0.0.1:18789/hooks
+SOLVENT_OPENCLAW_HOOKS_TOKEN=$HOOK_TOKEN
+EOF
+systemctl restart solvent-serve solvent-worker
+sudo -u solvent bash -c 'set -a; . /etc/solvent/solvent.env; set +a; /opt/solvent/bin/solvent notify --test'
+```
+
+Here SOLVENT runs on the host, so `127.0.0.1:18789` reaches the Gateway through
+its loopback port mapping, and the hook never leaves the machine.
+
+## 10. Back it up
+
+The treasury is your books. `solvent backup` snapshots it, the webhook log, the
+saved config and policies, the agent workspace and the delivered briefs into
+`/var/lib/solvent/backups`, consistently even while `serve` and `worker` write.
+Archives are owner-only, and the newest 14 are kept.
+
+`/etc/systemd/system/solvent-backup.service`:
+
+```ini
+[Unit]
+Description=SOLVENT backup
+
+[Service]
+Type=oneshot
+User=solvent
+Group=solvent
+EnvironmentFile=/etc/solvent/solvent.env
+ExecStart=/opt/solvent/bin/python -m solvent backup --keep 14
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/solvent
+```
+
+`/etc/systemd/system/solvent-backup.timer`:
+
+```ini
+[Unit]
+Description=Daily SOLVENT backup
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now solvent-backup.timer
+```
+
+A backup on the same disk does not survive losing the server. Copy
+`/var/lib/solvent/backups` somewhere else as well, for example to a Hetzner
+Storage Box with rsync or borg over SSH.
+
+To restore, verify the archive, unpack it into a new directory, and swap it in
+with the services stopped:
+
+```bash
+A=/var/lib/solvent/backups/solvent-backup-YYYYMMDDTHHMMSSZ.tar.gz
+/opt/solvent/bin/solvent backup --verify "$A"
+systemctl stop solvent-serve solvent-worker
+/opt/solvent/bin/solvent backup --restore "$A" --into /var/lib/solvent.restored
+chown -R solvent:solvent /var/lib/solvent.restored
+mv /var/lib/solvent /var/lib/solvent.old && mv /var/lib/solvent.restored /var/lib/solvent
+systemctl start solvent-serve solvent-worker
+```
+
+Payments that arrived after the backup are not in it. Once the services are
+back, run `solvent reconcile` against Stripe (see [PRODUCTION.md](PRODUCTION.md)).

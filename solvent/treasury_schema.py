@@ -204,5 +204,25 @@ class _SchemaMixin:
                         created_at REAL NOT NULL
                     )
                 """)
+            conn.execute("""
+                    CREATE TABLE IF NOT EXISTS push_outbox (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        dedupe_key TEXT UNIQUE,
+                        text TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        next_attempt_at REAL NOT NULL,
+                        sent_at REAL,
+                        failed_at REAL,
+                        last_error TEXT
+                    )
+                """)
+            conn.execute("""
+                    CREATE TABLE IF NOT EXISTS push_state (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at REAL NOT NULL
+                    )
+                """)
             self._ensure_column(conn, "chat_sessions", "pending_job_json", "TEXT")
             self._ensure_column(conn, "chat_sessions", "notify_job_id", "TEXT")

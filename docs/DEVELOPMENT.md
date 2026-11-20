@@ -55,6 +55,7 @@ solvent/
   receipt.py           formatted job receipts (Telegram / email / HTTP)
   finance.py           income statement · unit economics · runway · forecast
   export.py            books export + period close (`solvent export`)
+  backup.py            snapshots of the home: create, verify, restore (`solvent backup`)
 
   # Spend safety
   spending.py          durable authorization at live provider boundaries
@@ -102,6 +103,7 @@ solvent/
   chat.py              conversational loop + business tools
   memory.py            Hermes-style session memory
   notifications.py     cross-process chat notifications (JSONL outbox)
+  push.py              operator pushes to an OpenClaw Gateway's wake hook (`solvent notify`)
   pairing.py           OpenClaw-style pairing for Telegram DMs
   qr.py                QR codes for pairing
   openclaw.py          `solvent connect`: install the OpenClaw skill (templates/openclaw/)

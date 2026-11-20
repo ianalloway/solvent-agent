@@ -141,6 +141,16 @@ def run_checks() -> list[dict]:
             }[skill_status(skills_dir)],
         )
 
+    from . import push
+
+    push_error = push.config_error()
+    push_sink = push.sink()
+    add(
+        "openclaw_push",
+        push_error is None,
+        push_error or (f"on, to {push_sink.wake_url}" if push_sink else "off (optional)"),
+    )
+
     tg = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     add("telegram_token", bool(tg), "set" if tg else "telegram disabled")
 

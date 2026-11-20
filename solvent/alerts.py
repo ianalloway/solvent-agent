@@ -306,7 +306,17 @@ def format_alerts(data: dict[str, Any], *, quiet: bool = False) -> str:
 
 
 def notify(data: dict[str, Any], channel: str = "dashboard") -> int:
-    """Push non-ok alerts to chat sessions on a channel. Returns the count sent."""
+    """Push non-ok alerts to chat sessions on a channel, or to an OpenClaw Gateway
+    with channel ``openclaw``. Returns the count queued."""
+    if channel == "openclaw":
+        from . import push
+
+        if push.sink() is None:
+            reason = push.config_error() or f"set {push.HOOKS_URL_ENV} and {push.HOOKS_TOKEN_ENV}"
+            print(f"  OpenClaw push is off: {reason}", file=sys.stderr)
+            return 0
+        return push.push_alerts_now(Treasury(), data["alerts"])
+
     from .notifications import enqueue_chat
 
     sent = 0
@@ -332,7 +342,8 @@ def main() -> None:
         metavar="CHANNEL",
         nargs="?",
         const="dashboard",
-        help="also push problems to a chat channel (default: dashboard)",
+        help="also push problems to a chat channel (default: dashboard), "
+        "or to an OpenClaw Gateway with `openclaw`",
     )
     parser.add_argument(
         "--warn-exit",

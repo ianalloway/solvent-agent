@@ -11,7 +11,11 @@ _Hermes-style project instructions (architecture + conventions). Operator rules 
 - **Channels:** `python -m solvent telegram` (OpenClaw pairing pattern)
 - **OpenClaw:** `solvent connect --install-skill` (`openclaw.py`) installs a SKILL.md so an
   OpenClaw Gateway's agent calls SOLVENT's HTTP API; the OpenClaw apps pair with the
-  Gateway, never with SOLVENT (`docs/OPENCLAW.md`, `docs/HETZNER.md`)
+  Gateway, never with SOLVENT (`docs/OPENCLAW.md`, `docs/HETZNER.md`). `push.py` sends job
+  events and alert changes to the Gateway's wake hook from a durable outbox the worker
+  drains; wake text is built only from SOLVENT-controlled fields
+- **Backups:** `backup.py` snapshots the treasury and webhook DBs online, plus config,
+  workspace and briefs, into a verifiable archive (`solvent backup`)
 
 ## Economic kernel
 
@@ -92,6 +96,7 @@ python -m solvent capacity|alerts|export       # throughput ceiling / health swe
 python -m solvent products|quality|review      # price list / brief scores / approval queue
 python -m solvent funnel|turnaround             # win rate / measured delivery time
 python -m solvent connect --install-skill       # plug SOLVENT into an OpenClaw Gateway
+python -m solvent notify|backup                 # OpenClaw pushes / snapshots of the home
 ```
 
 ## Conventions
