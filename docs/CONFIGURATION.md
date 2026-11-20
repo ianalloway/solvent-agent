@@ -53,6 +53,11 @@ If the server is down, slow (`SOLVENT_LLM_TIMEOUT`, default 30s), or returns an 
 | `SOLVENT_DASHBOARD_TOKEN` | Shared secret required for hosted dashboard/control routes; at least 32 random characters |
 | `SOLVENT_GATEWAY_PASSWORD` | Optional shared password on `POST /api/pair/verify` |
 | `SOLVENT_LOCAL_ACCESS` | `auto` · `never` · `peer`: how "local" is decided for local-only routes; use `never` behind a reverse proxy |
+| `SOLVENT_OPENCLAW_HOOKS_URL` | OpenClaw Gateway hooks base (e.g. `http://127.0.0.1:18789/hooks`); with the token, turns on operator pushes. See [OPENCLAW.md](OPENCLAW.md) |
+| `SOLVENT_OPENCLAW_HOOKS_TOKEN` | The Gateway's `hooks.token` |
+| `SOLVENT_OPENCLAW_AGENT_ID` | Optional OpenClaw agent id to notify |
+| `SOLVENT_OPENCLAW_NOTIFY` | Optional comma list of pushed events (default: paid, delivered, failed, refunded, refund_pending, spend_held, delivery_review_required, alerts) |
+| `SOLVENT_OPENCLAW_ALERTS_INTERVAL` | Seconds between the worker's health sweeps for pushes (default `900`) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather |
 | `SOLVENT_TELEGRAM_DM_POLICY` | `pairing` · `allowlist` · `open` (default `pairing`) |
 | `SOLVENT_TELEGRAM_ALLOW_FROM` | Comma-separated Telegram user IDs for allowlist mode |

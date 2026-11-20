@@ -104,6 +104,50 @@ SOLVENT:
 SOLVENT's own pairing tokens (`/pair qr`), `SOLVENT_GATEWAY_PASSWORD` and
 `/.well-known/solvent.json` are unrelated to these fields.
 
+## 5. Get notified
+
+The skill lets you ask SOLVENT things; pushes let SOLVENT tell you. SOLVENT
+posts job events and health-alert changes to the Gateway's wake hook, which
+drops them into the agent's main session: the chat the app shows.
+
+Turn on the Gateway's hooks with a dedicated long random token, not the
+Gateway's own auth token ([OpenClaw inbound webhooks](https://docs.openclaw.ai/automation/cron-jobs/webhooks)):
+
+```bash
+HOOK_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+openclaw config set hooks '{"enabled": true, "token": "'"$HOOK_TOKEN"'", "path": "/hooks", "allowedAgentIds": ["main"]}' --strict-json --merge
+openclaw config validate && openclaw gateway restart
+```
+
+Then give SOLVENT's `serve` and `worker` these variables:
+
+| Variable | Value |
+|---|---|
+| `SOLVENT_OPENCLAW_HOOKS_URL` | The Gateway's hooks base, e.g. `http://127.0.0.1:18789/hooks`. Plain http is accepted only to a loopback address; use https otherwise. |
+| `SOLVENT_OPENCLAW_HOOKS_TOKEN` | The `hooks.token` above. |
+| `SOLVENT_OPENCLAW_AGENT_ID` | Optional: the agent to notify (`main`), if the Gateway cannot pick one. |
+| `SOLVENT_OPENCLAW_NOTIFY` | Optional comma list of what to push. Default: `paid, delivered, failed, refunded, refund_pending, spend_held, delivery_review_required, alerts`. Empty pushes nothing. |
+| `SOLVENT_OPENCLAW_ALERTS_INTERVAL` | Seconds between health sweeps; default `900`, minimum `60`. |
+
+`solvent notify --test` sends a test message, and `solvent notify` shows the
+settings and the outbox. `solvent doctor` checks them too (`openclaw_push`).
+
+What gets pushed:
+
+- **Jobs:** paid, delivered, refunded, or failed after payment, plus anything
+  waiting on you: a refund to review, a vendor spend held for approval, or a
+  delivery to review. Each is pushed once per job.
+- **Health:** the `solvent alerts` checks, swept by the worker. A check is
+  pushed when it turns warn or critical, when it escalates and when it clears.
+  A problem that persists is not repeated. `solvent alerts --notify openclaw`
+  pushes a sweep's problems immediately, for cron.
+
+Messages carry only what SOLVENT controls (job ids, amounts and alert
+summaries), never a customer's topic or email: OpenClaw treats wake text as a
+trusted system event. Pushes wait in an outbox in the treasury database and the
+worker sends them, backing off while the Gateway is down. A push older than a
+day is dropped.
+
 ## Security
 
 - The dashboard token is full operator access to SOLVENT. Anyone who can

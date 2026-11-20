@@ -193,6 +193,14 @@ class StageRunner:
             logging.getLogger(__name__).warning(
                 "job notification failed for %s", event.get("job_id"), exc_info=True
             )
+        try:
+            from .push import publish_job_event
+
+            publish_job_event(self.t, event)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "operator push failed for %s", event.get("job_id"), exc_info=True
+            )
         log_event(
             self.t,
             job_id=event.get("job_id", ""),
