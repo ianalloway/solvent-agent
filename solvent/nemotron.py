@@ -181,7 +181,7 @@ def complete(system: str, user: str) -> tuple[str, dict]:
             return text, usage or _estimate_tokens(system, user, text)
         except llm_backend.LLMBackendError as e:
             llm_backend.log.warning("LLM backend failed (%s); using offline stub", e)
-            text = _stub_complete(system, user) + f"\n\n<!-- local LLM call failed: {e} -->"
+            text = _stub_complete(system, user)
             return text, _estimate_tokens(system, user, text)
     if _force_offline:
         text = _stub_complete(system, user)
@@ -191,8 +191,8 @@ def complete(system: str, user: str) -> tuple[str, dict]:
             return _live_complete(system, user)
         except (BudgetExceeded, GuardrailError):
             raise
-        except Exception as e:
-            text = _stub_complete(system, user) + f"\n\n<!-- live call failed: {e} -->"
+        except Exception:
+            text = _stub_complete(system, user)
             return text, _estimate_tokens(system, user, text)
     text = _stub_complete(system, user)
     return text, _estimate_tokens(system, user, text)
