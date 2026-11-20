@@ -175,6 +175,19 @@ def test_counter_offer_outcomes_are_tracked(treasury):
     assert offers["win_rate_pct"] == 50.0
 
 
+def test_old_counter_offer_still_counts_once_after_newer_events(treasury):
+    _job(treasury, "OLD", "completed", paid=True)
+    treasury.record_event("OLD", "counter_offer", {})
+    treasury.record_event("OLD", "counter_offer", {})
+    with treasury._conn() as conn, conn:
+        conn.executemany(
+            "INSERT INTO events (id, job_id, stage, ts) VALUES (?, 'OTHER', 'progress', ?)",
+            [(f"later-{i}", 9_000_000_000 + i) for i in range(2000)],
+        )
+
+    assert analyse(treasury)["counter_offers"] == {"made": 1, "won": 1, "win_rate_pct": 100.0}
+
+
 def test_win_rate_is_broken_down_by_product_and_price_band(treasury):
     _job(treasury, "P1", "completed", budget=2_500, product="express", paid=True, checkout=True)
     _job(treasury, "P2", "failed", budget=2_500, product="express", reason="below floor")

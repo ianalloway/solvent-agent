@@ -129,11 +129,7 @@ def analyse(
         if entry.kind == "revenue" and entry.job_id:
             paid_jobs.add(entry.job_id)
     checkouts = {row["job_id"] for row in t.list_checkouts()}
-    offers = {
-        event.get("job_id")
-        for event in t.list_events(limit=2_000)
-        if event.get("stage") == "counter_offer"
-    }
+    offers = t.job_ids_for_event_stage("counter_offer")
 
     outcomes: Counter[str] = Counter()
     gate_reasons: Counter[str] = Counter()
