@@ -100,24 +100,7 @@ def test_the_footer_carries_the_job():
 
 def test_an_independent_parser_reads_the_output():
     """Our own structural checks could share a misreading; pypdf cannot."""
-    import importlib.util
-    import sys
-    import types
-
-    if importlib.util.find_spec("pypdf") is None:
-        pytest.skip("pypdf not installed")
-
-    # This machine's `cryptography` build is broken; pypdf only needs it for
-    # encrypted files, so stub the import out to use the parser itself.
-    fake = types.ModuleType("cryptography")
-    fake.exceptions = types.ModuleType("cryptography.exceptions")
-    fake.exceptions.UnsupportedAlgorithm = type("UnsupportedAlgorithm", (Exception,), {})
-    sys.modules.setdefault("cryptography", fake)
-    sys.modules.setdefault("cryptography.exceptions", fake.exceptions)
-    try:
-        from pypdf import PdfReader
-    except Exception:  # pragma: no cover - environment dependent
-        pytest.skip("pypdf unusable here")
+    from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(pdf.render(BRIEF, title="J1 brief")))
     assert len(reader.pages) >= 1

@@ -28,7 +28,7 @@ stripe = ["stripe>=9.0.0", "urllib3>=2.8.0", "certifi>=2026.10.19"]
 serve = ["fastapi>=0.110.0", "uvicorn[standard]>=0.27.0", "anyio>=4.14.2"]
 qr = ["qrcode[pil]>=7.0", "pillow>=13.0.0; python_version >= '3.11'"]
 telegram = ["python-telegram-bot>=21.0", "anyio>=4.14.2", "certifi>=2026.10.19"]
-dev = ["pytest>=7.0.0", "ruff>=0.3"]
+dev = ["pytest>=7.0.0", "ruff>=0.3", "pypdf", "tomli; python_version < '3.11'"]
 all = [
     "stripe>=9.0.0",
     "fastapi>=0.110.0",

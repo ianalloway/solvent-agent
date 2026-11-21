@@ -9,6 +9,7 @@ cover that logic and stay green whether or not qrcode is present.
 from __future__ import annotations
 
 import importlib.util
+import sys
 
 import pytest
 
@@ -35,8 +36,8 @@ def test_render_token_uri_omits_tls_for_other_ports() -> None:
     assert "URI: solvent://pair?host=pair.example.com&port=8080&tls=0&token=TOK123" in out
 
 
-@pytest.mark.skipif(_QRCODE_AVAILABLE, reason="qrcode installed: PNG path covered below")
-def test_png_bytes_returns_none_when_qrcode_absent() -> None:
+def test_png_bytes_returns_none_when_qrcode_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "qrcode", None)
     assert png_bytes("TOK123") is None
     assert png_bytes("TOK123", host="h", port=443) is None
 
@@ -48,8 +49,8 @@ def test_png_bytes_returns_png_when_qrcode_present() -> None:
     assert data[:4] == b"\x89PNG"
 
 
-@pytest.mark.skipif(_QRCODE_AVAILABLE, reason="qrcode installed")
-def test_ascii_qr_empty_when_qrcode_absent() -> None:
+def test_ascii_qr_empty_when_qrcode_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "qrcode", None)
     assert _ascii_qr("anything") == ""
 
 
