@@ -1,5 +1,5 @@
-"""Treasury records beside the ledger: events, job metrics, checkouts and
-read-only lookups of retired Nano history.
+"""Treasury records beside the ledger: events, job metrics, checkouts, the
+operator push outbox and read-only lookups of retired Nano history.
 
 Mixed into :class:`solvent.treasury.Treasury`; methods use its ``lock`` and
 ``_conn``. Import ``Treasury``, not these classes.
@@ -260,3 +260,100 @@ class _RecordsMixin:
                 if isinstance(record, dict) and nano_record(record):
                     return True
         return False
+
+    # --- operator pushes (solvent.push) ------------------------------------
+
+    def enqueue_push(self, text: str, dedupe_key: str | None = None) -> bool:
+        """Queue an operator push. A repeated ``dedupe_key`` is ignored; True if queued."""
+        now = time.time()
+        with self.lock(), self._conn() as conn, conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO push_outbox (dedupe_key, text, created_at, next_attempt_at) "
+                "VALUES (?, ?, ?, ?)",
+                (dedupe_key, text, now, now),
+            )
+            return cur.rowcount == 1
+
+    def due_pushes(self, now: float, limit: int) -> list[dict]:
+        with self.lock(), self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM push_outbox WHERE sent_at IS NULL AND failed_at IS NULL "
+                "AND next_attempt_at <= ? ORDER BY id LIMIT ?",
+                (now, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def mark_push_sent(self, push_id: int, now: float) -> None:
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute(
+                "UPDATE push_outbox SET sent_at = ?, attempts = attempts + 1 WHERE id = ?",
+                (now, push_id),
+            )
+
+    def mark_push_failed(
+        self, push_id: int, error: str, *, attempts: int, retry_at: float | None, now: float
+    ) -> None:
+        """Record a failed attempt; ``retry_at=None`` gives up on the push for good."""
+        with self.lock(), self._conn() as conn, conn:
+            if retry_at is None:
+                conn.execute(
+                    "UPDATE push_outbox SET attempts = ?, last_error = ?, failed_at = ? WHERE id = ?",
+                    (attempts, error, now, push_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE push_outbox SET attempts = ?, last_error = ?, next_attempt_at = ? "
+                    "WHERE id = ?",
+                    (attempts, error, retry_at, push_id),
+                )
+
+    def defer_pushes(self, until: float) -> None:
+        """Hold every pending push until ``until`` (the sink just failed)."""
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute(
+                "UPDATE push_outbox SET next_attempt_at = MAX(next_attempt_at, ?) "
+                "WHERE sent_at IS NULL AND failed_at IS NULL",
+                (until,),
+            )
+
+    def prune_pushes(self, before: float) -> int:
+        """Delete pushes sent or given up on before ``before``."""
+        with self.lock(), self._conn() as conn, conn:
+            cur = conn.execute(
+                "DELETE FROM push_outbox WHERE COALESCE(sent_at, failed_at) < ?", (before,)
+            )
+            return cur.rowcount
+
+    def push_summary(self) -> dict:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute(
+                "SELECT "
+                "SUM(sent_at IS NULL AND failed_at IS NULL) AS pending, "
+                "SUM(sent_at IS NOT NULL) AS sent, "
+                "SUM(failed_at IS NOT NULL) AS failed "
+                "FROM push_outbox"
+            ).fetchone()
+            last = conn.execute(
+                "SELECT last_error FROM push_outbox WHERE last_error IS NOT NULL "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return {
+            "pending": row["pending"] or 0,
+            "sent": row["sent"] or 0,
+            "failed": row["failed"] or 0,
+            "last_error": last["last_error"] if last else None,
+        }
+
+    def get_push_state(self, key: str) -> str | None:
+        with self.lock(), self._conn() as conn:
+            row = conn.execute("SELECT value FROM push_state WHERE key = ?", (key,)).fetchone()
+            return row["value"] if row else None
+
+    def set_push_state(self, key: str, value: str) -> None:
+        with self.lock(), self._conn() as conn, conn:
+            conn.execute(
+                "INSERT INTO push_state (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+                "updated_at = excluded.updated_at",
+                (key, value, time.time()),
+            )

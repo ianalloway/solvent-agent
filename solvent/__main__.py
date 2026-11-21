@@ -21,6 +21,8 @@ Commands:
   products      the price list, checked against current fulfilment cost
   quality       scores the quality gate gave the briefs it shipped
   connect       plug SOLVENT into an OpenClaw Gateway as a skill (--install-skill)
+  notify        push job events and alerts to an OpenClaw Gateway (--test, --flush)
+  backup        snapshot the treasury, config and briefs (--list, --verify, --restore)
   upgrade       check for newer version on PyPI; --check exits 1 if outdated
   jobs          list/show/retry/cancel jobs (jobs --help for sub-commands)
   backlog       rank open jobs by return on capital and fundability
@@ -87,6 +89,16 @@ def main() -> None:
         from .openclaw import main as connect_main
 
         connect_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "notify":
+        sys.argv.pop(1)
+        from .push import main as notify_main
+
+        notify_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "backup":
+        sys.argv.pop(1)
+        from .backup import main as backup_main
+
+        backup_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "products":
         sys.argv.pop(1)
         from .products import main as products_main

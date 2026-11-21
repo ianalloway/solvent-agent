@@ -9,6 +9,7 @@ from .agent import Solvent
 from .backlog import prioritise
 from .startup import add_treasury_arguments
 from .checkout import sweep as sweep_checkouts
+from .push import Pump
 from .queue import list_claimable, resume_incomplete_jobs
 
 
@@ -23,6 +24,7 @@ def run_worker(
     resumed = resume_incomplete_jobs(agent.t)
     for job_id in resumed:
         agent.advance_job(job_id)
+    pump = Pump()
 
     while True:
         # Chase or close unpaid links before picking up work: an expired job
@@ -43,6 +45,12 @@ def run_worker(
                 agent.advance_job(job_id)
             finally:
                 agent.t.release_job(job_id)
+
+        # Operator pushes queued by this pass (or by `serve`) go out last.
+        try:
+            pump.tick(agent.t)
+        except Exception as exc:
+            logging.getLogger(__name__).warning("operator push failed: %s", exc)
         if once:
             break
         time.sleep(poll_interval)

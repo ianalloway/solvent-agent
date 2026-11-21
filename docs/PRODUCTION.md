@@ -234,7 +234,16 @@ export SOLVENT_LOG_JSON=1
 
 # Reconcile Stripe vs ledger
 python3 -m solvent reconcile --since 7d
+
+# Snapshot the treasury, webhook log, config and briefs (consistent while running)
+python3 -m solvent backup                 # --list, --verify ARCHIVE, --restore ARCHIVE --into DIR
+
+# Push job events and alert changes to an OpenClaw Gateway (see docs/OPENCLAW.md)
+python3 -m solvent notify --test
 ```
+
+[HETZNER.md](HETZNER.md) runs the backup daily under a systemd timer and shows a
+restore.
 
 ### Refund uncertainty and recovery
 
