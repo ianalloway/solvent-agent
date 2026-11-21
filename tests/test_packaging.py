@@ -7,7 +7,7 @@ from pathlib import Path
 if sys.version_info >= (3, 11):
     import tomllib
 else:  # pragma: no cover
-    tomllib = None
+    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
@@ -22,7 +22,6 @@ class TestPackaging(unittest.TestCase):
 
         self.assertRegex(solvent.__version__, r"^\d+\.\d+\.\d+")
 
-    @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
     def test_console_script_and_extras_declared(self):
         data = tomllib.loads(PYPROJECT.read_text())
         scripts = data["project"]["scripts"]
@@ -33,7 +32,6 @@ class TestPackaging(unittest.TestCase):
         for name in ("serve", "telegram", "stripe", "qr", "dev", "all"):
             self.assertIn(name, extras)
 
-    @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
     def test_templates_shipped_as_package_data(self):
         data = tomllib.loads(PYPROJECT.read_text())
         pkg_data = data["tool"]["setuptools"]["package-data"]
@@ -44,7 +42,6 @@ class TestPackaging(unittest.TestCase):
         """PEP 561 marker ships so downstream type checkers can consume annotations."""
         self.assertTrue((ROOT / "solvent" / "py.typed").is_file())
 
-    @unittest.skipIf(tomllib is None, "tomllib requires Python 3.11+")
     def test_py_typed_in_package_data(self):
         data = tomllib.loads(PYPROJECT.read_text())
         pkg_data = data["tool"]["setuptools"]["package-data"]["solvent"]
